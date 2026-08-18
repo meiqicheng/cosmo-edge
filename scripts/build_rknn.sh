@@ -18,7 +18,7 @@ while getopts "c:m:r:p:tT" opt; do
         p) ROCKCHIP_MEDIA_ROOT_PATH="${OPTARG}" ;;
         t) DEV_MODE=ON ;;
         T) BUILD_TESTS_FLAG=ON ;;
-        *) echo "Usage: $0 -r <rknn-runtime-root> [-c rk3576|rv1126b] [-p <rockchip-media-root>] [-m <resource-dir>] [-t] [-T]"; exit 1 ;;
+        *) echo "Usage: $0 -r <rknn-runtime-root> [-c rk3576|rk3588|rv1126b] [-p <rockchip-media-root>] [-m <resource-dir>] [-t] [-T]"; exit 1 ;;
     esac
 done
 

@@ -149,7 +149,7 @@ endif()
 if(COSMO_NN_USE_RKNN_BACKEND)
     if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(rk3576|rk3588|rv1126b)$")
         message(FATAL_ERROR
-            "RKNN builds require COSMO_TARGET_CHIP=rk3576 or rv1126b")
+            "RKNN builds require COSMO_TARGET_CHIP=rk3576, rk3588, or rv1126b")
     endif()
     string(TOUPPER "${COSMO_TARGET_CHIP_NORMALIZED}" COSMO_TARGET_CHIP_LABEL)
     set(COSMO_PLATFORM_PROFILE
