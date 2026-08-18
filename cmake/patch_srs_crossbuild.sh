@@ -7,6 +7,9 @@
 # This script is idempotent - safe to run multiple times.
 
 DEPENDS_SH="$1/auto/depends.sh"
+# Optional second argument: the cross-compiler prefix (e.g. "aarch64-linux-gnu-"
+# or "/path/to/bin/aarch64-none-linux-gnu-"). Falls back to the distro prefix.
+CROSS_PREFIX="${2:-aarch64-linux-gnu-}"
 
 if [ ! -f "$DEPENDS_SH" ]; then
     echo "Error: $DEPENDS_SH not found"
@@ -17,7 +20,7 @@ patched=0
 
 # Replace native g++ check with cross-compiler g++
 if grep -q '^g++ --version' "$DEPENDS_SH" 2>/dev/null; then
-    sed -i 's/^g++ --version/aarch64-linux-gnu-g++ --version/' "$DEPENDS_SH"
+    sed -i "s|^g++ --version|${CROSS_PREFIX}g++ --version|" "$DEPENDS_SH"
     patched=1
 fi
 

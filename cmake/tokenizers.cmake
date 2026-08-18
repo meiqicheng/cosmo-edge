@@ -17,6 +17,32 @@ else()
     set(TOKENIZERS_PATCH_COMMAND ${CMAKE_COMMAND} -E true)
 endif()
 
+# tokenizers-c builds a Rust staticlib (cargo build --target
+# aarch64-unknown-linux-gnu).  Its onig dependency compiles C sources through
+# cc-rs, which looks up the compiler as "<target triple>-gcc" (i.e.
+# aarch64-linux-gnu-gcc) by default.  Our ARM GNU toolchain is named
+# aarch64-none-linux-gnu-*, so we must export the target-prefixed CC/CXX/AR
+# and linker variables cargo/cc-rs consult, derived from the active CMake
+# toolchain instead of hardcoding a distro prefix.
+if(COSMO_TARGET_ARCH STREQUAL "aarch64")
+    get_filename_component(TOKENIZERS_TOOLCHAIN_BIN ${CMAKE_C_COMPILER} DIRECTORY)
+    get_filename_component(TOKENIZERS_CC_NAME ${CMAKE_C_COMPILER} NAME)
+    string(REGEX REPLACE "-gcc$" "" TOKENIZERS_TRIPLE ${TOKENIZERS_CC_NAME})
+    set(TOKENIZERS_BUILD_COMMAND
+        ${CMAKE_COMMAND} -E env
+            "CC_aarch64-unknown-linux-gnu=${CMAKE_C_COMPILER}"
+            "CC_aarch64_unknown_linux_gnu=${CMAKE_C_COMPILER}"
+            "CXX_aarch64-unknown-linux-gnu=${CMAKE_CXX_COMPILER}"
+            "CXX_aarch64_unknown_linux_gnu=${CMAKE_CXX_COMPILER}"
+            "AR_aarch64-unknown-linux-gnu=${TOKENIZERS_TOOLCHAIN_BIN}/${TOKENIZERS_TRIPLE}-ar"
+            "AR_aarch64_unknown_linux_gnu=${TOKENIZERS_TOOLCHAIN_BIN}/${TOKENIZERS_TRIPLE}-ar"
+            "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=${CMAKE_C_COMPILER}"
+            ${CMAKE_COMMAND} --build .
+    )
+else()
+    set(TOKENIZERS_BUILD_COMMAND ${CMAKE_COMMAND} --build .)
+endif()
+
 ExternalProject_Add(
     tokenizers_external
 
@@ -29,6 +55,7 @@ ExternalProject_Add(
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
         -DCMAKE_INSTALL_PREFIX=${TOKENIZERS_INSTALL_DIR}
 
+    BUILD_COMMAND ${TOKENIZERS_BUILD_COMMAND}
     INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install
 
     UPDATE_COMMAND ""

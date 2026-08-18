@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+﻿cmake_minimum_required(VERSION 3.16)
 
 if(POLICY CMP0068)
     cmake_policy(SET CMP0068 NEW)
@@ -141,13 +141,13 @@ endif()
 set(COSMO_TARGET_CHIP "" CACHE STRING "Target accelerator chip recorded in release packages")
 if(COSMO_TARGET_CHIP)
     string(TOLOWER "${COSMO_TARGET_CHIP}" COSMO_TARGET_CHIP_NORMALIZED)
-    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(bm1688|cv186x|rk3576|rv1126b|unspecified)$")
+    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(bm1688|cv186x|rk3576|rk3588|rv1126b|unspecified)$")
         message(FATAL_ERROR "Unsupported COSMO_TARGET_CHIP: ${COSMO_TARGET_CHIP}")
     endif()
 endif()
 
 if(COSMO_NN_USE_RKNN_BACKEND)
-    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(rk3576|rv1126b)$")
+    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(rk3576|rk3588|rv1126b)$")
         message(FATAL_ERROR
             "RKNN builds require COSMO_TARGET_CHIP=rk3576 or rv1126b")
     endif()
@@ -375,7 +375,7 @@ set(COSMO_REPRODUCIBLE_BUILD_UNAME
 # CMake validates INTERFACE_INCLUDE_DIRECTORIES paths at configure time, but
 # ExternalProject only installs headers at build time.  Without this, a clean
 # build (rm -rf build && ./build.sh) fails because the paths don't exist yet.
-# Note: ffmpeg and openh264 are excluded — they are now provided as prebuilt
+# Note: ffmpeg and openh264 are excluded 鈥?they are now provided as prebuilt
 # binaries under prebuild/ffmpeg/<arch>/ and do not use ExternalProject.
 foreach(_tp_subdir fmt glog zlib sqlitecpp uuid uSockets mp4v2 openssl curl mqtt event cryptopp tokenizers)
     file(MAKE_DIRECTORY "${THIRDPARTY_INSTALL_PREFIX}/${_tp_subdir}/include")
@@ -466,15 +466,15 @@ add_subdirectory(src/api)
 file(GLOB_RECURSE APP_SRC CONFIGURE_DEPENDS "src/app/*.h" "src/app/*.cc")
 
 #All OBJECT library targets(grouped by dependency layer)
-#Note : cosmo_nn is excluded — it uses its own compile options(see src/nn/CMakeLists.txt)
+#Note : cosmo_nn is excluded 鈥?it uses its own compile options(see src/nn/CMakeLists.txt)
 set(ALL_OBJECT_LIBS
-#Layer 0 — Foundation(no upward dependencies)
+#Layer 0 鈥?Foundation(no upward dependencies)
     cosmo_util cosmo_db cosmo_platform cosmo_mem
-#Layer 1 — Infrastructure
+#Layer 1 鈥?Infrastructure
     cosmo_media cosmo_infer cosmo_network
-#Layer 2 — Business(linkage depends on service - layer DTO types)
+#Layer 2 鈥?Business(linkage depends on service - layer DTO types)
     cosmo_linkage cosmo_service cosmo_flow
-#Layer 3 — Interface
+#Layer 3 鈥?Interface
     cosmo_api
 )
 
@@ -571,7 +571,7 @@ if(COSMO_MEDIA_USE_ROCKCHIP_BACKEND)
     set_target_properties(${EXECUTABLE_NAME} PROPERTIES
         INSTALL_RPATH "$ORIGIN/../lib")
 endif()
-#Build order: OBJECT libs → third_build (explicit, see foreach above)
+#Build order: OBJECT libs 鈫?third_build (explicit, see foreach above)
 target_link_libraries(${EXECUTABLE_NAME} PRIVATE ${COMMON_LIBS})
 
 if(COSMO_NN_USE_RKNN_BACKEND)
@@ -757,7 +757,7 @@ if(DEFINED RESOURCE_DIR AND IS_DIRECTORY "${RESOURCE_DIR}")
         )
     endif()
 else()
-    message(STATUS "No resource directory specified — package will not contain models")
+    message(STATUS "No resource directory specified 鈥?package will not contain models")
 endif()
 
 if(COSMO_NN_USE_RKNN_BACKEND)

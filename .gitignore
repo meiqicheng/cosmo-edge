@@ -33,6 +33,15 @@ build-*
 examples/build*
 
 
+# ── RK3588 device bring-up: local debug/diagnostic tools (do not commit) ─────
+# adb toolchain for device access
+/adb
+# local agent/AI scratch dirs
+/.omo/
+/.specstory/
+# DTB / boot-image / device analysis scripts (one-off diagnostics)
+
+
 ### https://raw.github.com/github/gitignore/eee21bf0c397cddc39ff1c94615d135e0ad36f8c/Global/JetBrains.gitignore
 
 # Covers JetBrains IDEs: IntelliJ, RubyMine, PhpStorm, AppCode, PyCharm, CLion, Android Studio, WebStorm and Rider
