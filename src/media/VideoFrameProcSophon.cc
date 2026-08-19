@@ -396,7 +396,12 @@ namespace media {
             return nullptr;
         }
 
+#ifdef COSMO_LIBSOPHON_NEW_VIDEO_API
+        // libsophon 0.5.x (BM1684) spells the padding attribute type with a typo.
+        bmcv_padding_atrr_t padding_attr;
+#else
         bmcv_padding_attr_t padding_attr;
+#endif
         padding_attr.dst_crop_stx = static_cast<unsigned int>(left);
         padding_attr.dst_crop_sty = static_cast<unsigned int>(top);
         padding_attr.dst_crop_w   = static_cast<unsigned int>(width);

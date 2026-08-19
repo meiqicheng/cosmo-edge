@@ -351,12 +351,17 @@ namespace media {
             return nullptr;
         }
 
+#ifndef COSMO_LIBSOPHON_NEW_VIDEO_API
+        // The split send_frame/get_stream model exists only in libsophon 0.4.x.
+        // libsophon 0.5.x (BM1684) replaces it with the synchronous
+        // bmvpu_enc_encode() path below, which needs no framebuffer drain.
         enum class PollResult {
             kPending,
             kPacket,
             kEnd,
             kFatal,
         };
+#endif
 
         const auto pop_pending_packet = [this]() -> VideoPacketPtr {
             if (pending_packets_.empty()) {
@@ -367,6 +372,7 @@ namespace media {
             return packet;
         };
 
+#ifndef COSMO_LIBSOPHON_NEW_VIDEO_API
         const auto poll_encoded_stream = [this]() -> PollResult {
             const int result = bmvpu_enc_get_stream(encoder_, &output_frame_, &enc_params_);
             if (IsPendingEncodedOutput(result, output_frame_)) {
@@ -444,6 +450,7 @@ namespace media {
                 return pop_pending_packet();
             }
         }
+#endif  // !COSMO_LIBSOPHON_NEW_VIDEO_API
 
         auto src_fb = GetUnusedFrameBuffer();
         if (!src_fb) {
@@ -463,6 +470,59 @@ namespace media {
 
         input_frame_.framebuffer = src_fb;
 
+#ifdef COSMO_LIBSOPHON_NEW_VIDEO_API
+        // libsophon 0.5.x (BM1684) removed the split send_frame/get_stream API
+        // and exposes only the synchronous bmvpu_enc_encode() model. One call
+        // submits the raw frame and, when a fully encoded frame is ready, fills
+        // output_frame_ via the acquire/finish output-buffer callbacks. Retry
+        // until INPUT_USED is set; drain encoded output when the code says so.
+        uint32_t output_code = 0;
+        size_t encode_count  = 0;
+        while (true) {
+            memset(&output_frame_, 0, sizeof(output_frame_));
+            const int encode_ret =
+                bmvpu_enc_encode(encoder_, &input_frame_, &output_frame_, &enc_params_, &output_code);
+            if (encode_ret != BM_VPU_ENC_RETURN_CODE_OK) {
+                LOG_ERRO("bmvpu_enc_encode failed: {}", encode_ret);
+                Clean();
+                return nullptr;
+            }
+            if (output_code & BM_VPU_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE) {
+                auto* output_data    = static_cast<uint8_t*>(output_frame_.data);
+                const size_t out_sz = output_frame_.data_size;
+                if (out_sz > kMaxEncodedOutputBytes) {
+                    LOG_ERRO("Encoded packet exceeds safety limit: {}", out_sz);
+                    Clean();
+                    return nullptr;
+                }
+                if (output_data != nullptr && out_sz > 0) {
+                    try {
+                        auto packet  = std::make_shared<VideoPacket>();
+                        packet->data = std::vector<uint8_t>(output_data, output_data + out_sz);
+                        pending_packets_.push(std::move(packet));
+                    } catch (const std::bad_alloc&) {
+                        LOG_ERRO("Failed to allocate encoded packet buffer: {}", out_sz);
+                        ReleaseEncodedOutput(&output_frame_);
+                        return nullptr;
+                    }
+                }
+                CollectFrameBuffer(output_frame_);
+                ReleaseEncodedOutput(&output_frame_);
+            }
+            if (output_code & BM_VPU_ENC_OUTPUT_CODE_INPUT_USED) {
+                if (!pending_packets_.empty()) {
+                    return pop_pending_packet();
+                }
+                return nullptr;
+            }
+            if (++encode_count >= SEND_FRAME_BUFFER_MAX_COUNT) {
+                LOG_ERRO("bmvpu_enc_encode remained busy after {} attempts", encode_count);
+                frame_unused_queue_.push(src_fb);
+                return pop_pending_packet();
+            }
+            std::this_thread::sleep_for(timing::kEncoderBusyWait);
+        }
+#else
         size_t send_frame_count = 0;
 
         while (true) {
@@ -516,9 +576,51 @@ namespace media {
             }
             std::this_thread::sleep_for(timing::kEncoderBusyWait);
         }
+#endif
     }
 
     void VideoEncoderSophon::SendEndFrame() {
+#ifdef COSMO_LIBSOPHON_NEW_VIDEO_API
+        // libsophon 0.5.x (BM1684): synchronous encode model. Flush by sending
+        // a null-framebuffer raw frame until the encoder signals end-of-stream.
+        constexpr size_t kMaxFlushAttempts = 100;
+        for (size_t attempt = 0; !closed_ && attempt < kMaxFlushAttempts; ++attempt) {
+            input_frame_.framebuffer = nullptr;
+            input_frame_.dts         = 0;
+            input_frame_.pts         = 0;
+
+            memset(&output_frame_, 0, sizeof(output_frame_));
+            uint32_t output_code = 0;
+            const int ret =
+                bmvpu_enc_encode(encoder_, &input_frame_, &output_frame_, &enc_params_, &output_code);
+            if (ret != BM_VPU_ENC_RETURN_CODE_OK) {
+                LOG_ERRO("bmvpu_enc_encode flush failed: {}", ret);
+                break;
+            }
+            if (output_code & BM_VPU_ENC_OUTPUT_CODE_ENCODED_FRAME_AVAILABLE) {
+                auto* output_data    = static_cast<uint8_t*>(output_frame_.data);
+                const size_t out_sz = output_frame_.data_size;
+                if (output_data != nullptr && out_sz > 0) {
+                    try {
+                        auto packet  = std::make_shared<VideoPacket>();
+                        packet->data = std::vector<uint8_t>(output_data, output_data + out_sz);
+                        pending_packets_.push(std::move(packet));
+                    } catch (const std::bad_alloc&) {
+                        LOG_ERRO("Failed to allocate encoded packet buffer: {}", out_sz);
+                        ReleaseEncodedOutput(&output_frame_);
+                        break;
+                    }
+                }
+                CollectFrameBuffer(output_frame_);
+                ReleaseEncodedOutput(&output_frame_);
+            }
+            if (!(output_code & BM_VPU_ENC_OUTPUT_CODE_INPUT_USED)) {
+                std::this_thread::sleep_for(timing::kEncoderBusyWait);
+                continue;
+            }
+        }
+        ReleaseEncodedOutput(&output_frame_);
+#else
         constexpr size_t kMaxFlushAttempts = 100;
         for (size_t attempt = 0; !closed_ && attempt < kMaxFlushAttempts; ++attempt) {
             input_frame_.framebuffer = nullptr;
@@ -554,6 +656,7 @@ namespace media {
             ReleaseEncodedOutput(&output_frame_);
         }
         ReleaseEncodedOutput(&output_frame_);
+#endif
     }
 
     BmVpuFramebuffer* VideoEncoderSophon::GetUnusedFrameBuffer() {
