@@ -11,6 +11,14 @@
 #include "media/VideoFrameProcSophon.h"
 #include "util/Log.h"
 
+// libsophon 0.4.x (BM1688/CV186X) takes bm_image*; 0.5.x (BM1684/BM1684X)
+// takes bm_image by value. Normalize the call to the local variable form.
+#ifdef COSMO_LIBSOPHON_NEW_VIDEO_API
+#define COSMO_BM_IMAGE_DESTROY(img) bm_image_destroy(img)
+#else
+#define COSMO_BM_IMAGE_DESTROY(img) bm_image_destroy(&(img))
+#endif
+
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb/stb_image_write.h"
 
@@ -185,7 +193,7 @@ namespace media {
 
         if (img_width <= 0 || img_height <= 0) {
             LOG_ERRO("DecodeJpegHardware() - invalid dimensions {}x{}", img_width, img_height);
-            bm_image_destroy(&decode_img);
+            COSMO_BM_IMAGE_DESTROY(decode_img);
             return nullptr;
         }
 
@@ -200,7 +208,7 @@ namespace media {
         if (out_width == 0 || out_height == 0) {
             LOG_ERRO("DecodeJpegHardware() - dimensions too small after even alignment {}x{}", img_width,
                      img_height);
-            bm_image_destroy(&decode_img);
+            COSMO_BM_IMAGE_DESTROY(decode_img);
             return nullptr;
         }
 
@@ -209,7 +217,7 @@ namespace media {
         auto frame     = std::make_shared<VideoFrame>(out_width, out_height, pixel_fmt);
         if (!VideoFrameValid(frame)) {
             LOG_ERRO("{}", "DecodeJpegHardware() - create VideoFrame failed");
-            bm_image_destroy(&decode_img);
+            COSMO_BM_IMAGE_DESTROY(decode_img);
             return nullptr;
         }
 
@@ -217,13 +225,13 @@ namespace media {
             CreateBMImage(static_cast<size_t>(out_width), static_cast<size_t>(out_height), pixel_fmt);
         if (!yuv_image) {
             LOG_ERRO("{}", "DecodeJpegHardware() - CreateBMImage failed");
-            bm_image_destroy(&decode_img);
+            COSMO_BM_IMAGE_DESTROY(decode_img);
             return nullptr;
         }
 
         if (!VideoFrameAttach(frame, yuv_image.get())) {
             LOG_ERRO("{}", "DecodeJpegHardware() - VideoFrameAttach failed");
-            bm_image_destroy(&decode_img);
+            COSMO_BM_IMAGE_DESTROY(decode_img);
             return nullptr;
         }
 
@@ -233,7 +241,7 @@ namespace media {
             // vpp convert fail, try storage convert fallback
             ret = bmcv_image_storage_convert(handle, 1, &decode_img, yuv_image.get());
         }
-        bm_image_destroy(&decode_img);
+        COSMO_BM_IMAGE_DESTROY(decode_img);
 
         if (ret != BM_SUCCESS) {
             LOG_ERRO("DecodeJpegHardware() - image convert failed, ret {}", ret);

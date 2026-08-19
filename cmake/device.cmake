@@ -43,6 +43,11 @@ endif()
 # (the symbols themselves are unchanged). Signal the new family to the media layer.
 if(EXISTS "${DEVICE_LIB_DIR}/libbmvideo.so")
     add_compile_definitions(COSMO_LIBSOPHON_NEW_VIDEO_API)
+    # libsophon 0.5.x changed bm_image_destroy to take bm_image by value
+    # (0.4.x took bm_image*). Source files historically gate this exact
+    # difference behind COSMO_NN_SOPHON_1684X; define it for the 0.5.x family
+    # so those branches select the by-value call.
+    add_compile_definitions(COSMO_NN_SOPHON_1684X)
 endif()
 
 add_library(bmlib SHARED IMPORTED)
