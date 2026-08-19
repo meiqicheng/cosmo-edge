@@ -172,8 +172,18 @@ endif()
 - [x] `src/util/NnBackendConstants.h`：`kSupportedChips` 加入 `"BM1684"`（导入门禁）
 - [x] `test/test_package_profile.py`：同步更新芯片白名单断言
 - [x] 本机静态验证：bash 语法检查通过；`test_package_profile.py` 15 用例全部通过
-- [ ] `docker-compose.sophon.yml`：待 Linux/WSL2 构建环境确认现有镜像可完成 bm1684 交叉编译与打包
-- [ ] 本地冒烟 `./scripts/build.sh -c bm1684`：Windows 无法交叉编译，待 WSL2/构建环境执行（资源集可先为空）
+- [x] **Windows Docker Desktop 冒烟构建成功**（2026-08-19）：`build_sophon_package.ps1 -Chip bm1684` 产出
+  `build_output/public-runtime/bm1684/cosmo-V1.1.0-8f08fb02....tar.gz`（66.7MB，`TARGET_CHIP=bm1684`）；
+  bm1688 基线回归同样通过（60MB）——`device.cmake` 0.5.1 SDK 选择、媒体层链接
+  `bmvd→bmvideo`/`bmvenc→bmvpuapi`、`COSMO_NN_SOPHON_1684X` 条件编译全部验证生效
+- [x] `docker-compose.sophon.yml`：现有构建镜像 `ghcr.io/cosmo-wander-ai/cosmo_edge-build-env_sophon:v1`
+  已验证可完成 bm1684 交叉编译与打包（无需新镜像）
+- [x] **Windows 构建链路修复**（既有问题，本次首次 Windows 构建暴露）：
+  - `build_sophon_package.ps1`：docker stderr（`Container Creating` 等进度信息）合并到 stdout，
+    避免 PowerShell 5.1 `NativeCommandError` 误报失败（`Invoke-Docker` 与 compose run 两处 `2>&1`）
+  - `sync-source-volume.sh`：新增 LF 规范化（`tr -d '\r'` + 权限保留），修复 Git for Windows
+    CRLF 检出导致 3rd configure 脚本 shebang 无法执行（`No such file or directory`）的问题
+    ——覆盖 configure/config/Configure/*.sh/*.pl/*.py 及任意 shebang 文件，不碰二进制
 - [ ] CI（`.github/workflows/nightly-build-test-sophon.yml`）：**延后到 Phase 2**（`aiboxresource_bm1684` 资源集就绪后再加矩阵，避免 nightly 失败）
 
 ### Phase 2 — 资源集与模型转换（骨架已完成，转换需 Linux；真机验证延后）

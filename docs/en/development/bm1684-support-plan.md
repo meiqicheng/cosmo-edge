@@ -181,8 +181,18 @@ On device (to do; ⚠️ device temporarily unavailable — all blocked):
 - [x] `src/util/NnBackendConstants.h`: `kSupportedChips` + `"BM1684"` (import gate)
 - [x] `test/test_package_profile.py`: chip allowlist assertions updated
 - [x] Local static validation: bash syntax check passed; `test_package_profile.py` 15/15 passed
-- [ ] `docker-compose.sophon.yml`: confirm existing image completes bm1684 cross-compile/package on Linux/WSL2
-- [ ] Local smoke `./scripts/build.sh -c bm1684`: cannot cross-compile on Windows; run in WSL2/build env (empty resource set OK)
+- [x] **Windows Docker Desktop smoke build succeeded** (2026-08-19): `build_sophon_package.ps1 -Chip bm1684`
+  produced `build_output/public-runtime/bm1684/cosmo-V1.1.0-8f08fb02....tar.gz` (66.7 MB, `TARGET_CHIP=bm1684`);
+  bm1688 baseline regression also passed (60 MB) — device.cmake 0.5.1 SDK selection, media linking
+  `bmvd→bmvideo`/`bmvenc→bmvpuapi`, and `COSMO_NN_SOPHON_1684X` conditionals all verified working
+- [x] `docker-compose.sophon.yml`: existing image `ghcr.io/cosmo-wander-ai/cosmo_edge-build-env_sophon:v1`
+  verified to complete bm1684 cross-compile/package (no new image needed)
+- [x] **Windows build-chain fixes** (pre-existing, exposed by this first Windows build):
+  - `build_sophon_package.ps1`: merged docker stderr (`Container Creating` progress lines) into stdout
+    to avoid PowerShell 5.1 `NativeCommandError` false failures (`2>&1` in `Invoke-Docker` and compose run)
+  - `sync-source-volume.sh`: added LF normalization (`tr -d '\r'` + mode preservation) fixing Git for
+    Windows CRLF checkouts breaking 3rd configure shebangs (`No such file or directory`)
+    — covers configure/config/Configure/*.sh/*.pl/*.py and any shebang file; never touches binaries
 - [ ] CI (`.github/workflows/nightly-build-test-sophon.yml`): **deferred to Phase 2** (add to matrix after `aiboxresource_bm1684` is ready, avoid nightly failures)
 
 ### Phase 2 — Resource set & model conversion (skeleton done; conversion needs Linux; device verification deferred)
