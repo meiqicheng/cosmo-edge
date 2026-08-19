@@ -47,7 +47,7 @@ static constexpr const char* kModelFileExt = ".nn";
 
 /// Supported Sophon chip types, as written to config.json "chip_type".
 /// Add a new chip here to support it across the model pipeline.
-static constexpr const char* kSupportedChips[] = {"BM1688", "CV186X"};
+static constexpr const char* kSupportedChips[] = {"BM1688", "CV186X", "BM1684"};
 
 #elif defined(COSMO_NN_USE_RKNN_BACKEND)
 

@@ -13,16 +13,16 @@ esac
 chip="bm1688"
 if [ "$#" -gt 0 ]; then
     if [ "$#" -ne 2 ] || [ "$1" != "--chip" ]; then
-        echo "Usage: $0 [--chip <bm1688|cv186x>]" >&2
+        echo "Usage: $0 [--chip <bm1688|cv186x|bm1684>]" >&2
         exit 1
     fi
     chip="$2"
 fi
 chip="${chip,,}"
 case "${chip}" in
-    bm1688|cv186x) ;;
+    bm1688|cv186x|bm1684) ;;
     *)
-        echo "ERROR: unsupported Sophon chip '${chip}'; expected bm1688 or cv186x" >&2
+        echo "ERROR: unsupported Sophon chip '${chip}'; expected bm1688, cv186x or bm1684" >&2
         exit 1
         ;;
 esac

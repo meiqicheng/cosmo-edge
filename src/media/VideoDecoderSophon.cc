@@ -42,7 +42,14 @@ namespace media {
     using BmImagePtr = std::unique_ptr<bm_image, BmImageDeleter>;
 
     VideoDecoderSophon::VideoDecoderSophon(size_t name, void* mediaHandle) : VideoDecoder(name) {
+        // libsophon 0.4.x (BM1688/CV186X) names the log level ERR; 0.5.x
+        // (BM1684/BM1684X) renamed it to ERROR and marks the header deprecated.
+        // The bmvpu_dec_* symbols themselves are unchanged across both families.
+#ifdef COSMO_LIBSOPHON_NEW_VIDEO_API
+        bmvpu_dec_set_logging_threshold(BmVpuDecLogLevel::BMVPU_DEC_LOG_LEVEL_ERROR);
+#else
         bmvpu_dec_set_logging_threshold(BmVpuDecLogLevel::BMVPU_DEC_LOG_LEVEL_ERR);
+#endif
 
         bm_handle_ = reinterpret_cast<bm_handle_t>(mediaHandle);
         stop_      = true;

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("bm1688", "cv186x")]
+    [ValidateSet("bm1688", "cv186x", "bm1684")]
     [string]$Chip = "bm1688"
 )
 
