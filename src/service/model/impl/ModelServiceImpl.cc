@@ -103,14 +103,15 @@ struct ModelServiceImpl::ModelLabel {
 
 struct ModelServiceImpl::ModelJsonInfo {
     std::string type;
+    std::string model_type;
     std::string chip_type;
     std::string algorithm_code;
     std::string version;
     std::string name;
     std::vector<ModelLabel> labels;
     ModelJsonConfig config;
-    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(ModelJsonInfo, type, chip_type, algorithm_code, version,
-                                                config)
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE_WITH_DEFAULT(ModelJsonInfo, type, model_type, chip_type, algorithm_code,
+                                                version, config)
 };
 
 struct ModelServiceImpl::ModelLabelInfo {
@@ -292,6 +293,16 @@ cosmo::util::ErrorEnum ModelServiceImpl::CheckModelValid(std::string un_zip_file
         LOG_WARN("{} Unsupported ChipType:{}", un_zip_file, cfgInfo.chip_type);
         return cosmo::util::ErrorEnum::ModelFilePlatform;
     }
+#ifdef COSMO_NN_SOPHON_1684X
+    // BM1684/BM1684X (libsophon 0.5.x family) has no transformer engine, so
+    // VLM models (Qwen3VL / Qwen3.5) cannot run. Reject them at import time
+    // instead of failing at runtime.
+    if (cfgInfo.model_type == "qwen3vl" || cfgInfo.model_type == "qwen3_5") {
+        LOG_WARN("{} VLM model_type '{}' is not supported on this chip", un_zip_file,
+                 cfgInfo.model_type);
+        return cosmo::util::ErrorEnum::ModelFilePlatform;
+    }
+#endif
     cfgInfo.version = version;
 
     return cosmo::util::ErrorEnum::Success;
