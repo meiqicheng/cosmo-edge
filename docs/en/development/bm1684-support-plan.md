@@ -193,7 +193,7 @@ On device (to do; ⚠️ device temporarily unavailable — all blocked):
   - `sync-source-volume.sh`: added LF normalization (`tr -d '\r'` + mode preservation) fixing Git for
     Windows CRLF checkouts breaking 3rd configure shebangs (`No such file or directory`)
     — covers configure/config/Configure/*.sh/*.pl/*.py and any shebang file; never touches binaries
-- [ ] CI (`.github/workflows/nightly-build-test-sophon.yml`): **deferred to Phase 2** (add to matrix after `aiboxresource_bm1684` is ready, avoid nightly failures)
+- [ ] CI (`.github/workflows/nightly-build-test-sophon.yml`): **defer until device available** (`test-sophon` needs a BM1684 device; the matrix would fail without one; keep the single bm1688 job for now)
 
 ### Phase 2 — Resource set & model conversion (✅ both models converted and wrapped; device verification deferred)
 
@@ -234,7 +234,13 @@ On device (to do; ⚠️ device temporarily unavailable — all blocked):
     (`bmvpu.h`/`bmvpu_types.h`/`bmvpu_logging.h`)
   - Adjust `VideoFrameProcSophon` VPSS-specific size constraints (`kSophonVppMinDimension=16`) to BM1684 VPP semantics (measured)
 - [ ] Memory: verify heap mask on BM1684; select per-chip heap in `AllocatorSophon`/`DeviceContextSophon`
-- [ ] VLM gating: disable/hide `qwen3vl` / `qwen3_5` on BM1684 builds; document capability gap
+- [x] VLM gate (commit `cb0cf195`): `ModelServiceImpl::CheckModelValid` rejects model import
+  with `model_type` `qwen3vl`/`qwen3_5` on `COSMO_NN_SOPHON_1684X` builds
+  (returns `ModelFilePlatform`) — BM1684/BM1684X has no transformer engine, so VLM is
+  blocked at import instead of failing at runtime; `ModelJsonInfo` gained `model_type`
+- [ ] Runtime chip probe: **skipped after evaluation** — BMRT already validates chip match
+  when loading a bmodel (a BM1684 bmodel fails on BM1688); `bm_get_chipid` probe adds
+  little; confirm BMRT behavior on device instead of adding probe code
 - [ ] Audit INT8 dequant assumptions in `sophon_yolo_decode_npu_node.cc` etc.
 
 ### Phase 4 — Docs & release materials

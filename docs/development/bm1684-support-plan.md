@@ -184,7 +184,8 @@ endif()
   - `sync-source-volume.sh`：新增 LF 规范化（`tr -d '\r'` + 权限保留），修复 Git for Windows
     CRLF 检出导致 3rd configure 脚本 shebang 无法执行（`No such file or directory`）的问题
     ——覆盖 configure/config/Configure/*.sh/*.pl/*.py 及任意 shebang 文件，不碰二进制
-- [ ] CI（`.github/workflows/nightly-build-test-sophon.yml`）：**延后到 Phase 2**（`aiboxresource_bm1684` 资源集就绪后再加矩阵，避免 nightly 失败）
+- [ ] CI（`.github/workflows/nightly-build-test-sophon.yml`）：**待真机可用后加**（`test-sophon`
+  job 需在 BM1684 真机上跑，真机不可用时矩阵会挂；当前保持 bm1688 单 job）
 
 ### Phase 2 — 资源集与模型转换（✅ 两个模型已转换并封装，真机验证延后）
 
@@ -227,8 +228,13 @@ endif()
   - 调整 `VideoFrameProcSophon` 中 VPSS 专属尺寸约束（如 `kSophonVppMinDimension=16`）为 BM1684 VPP 语义（实测）
 - [ ] 内存：验证 `bm_malloc_device_byte_heap_mask(..., 3, ...)` 在 BM1684 的堆语义；
   如不同，按芯片在 `AllocatorSophon`/`DeviceContextSophon` 选择堆掩码
-- [ ] VLM 门禁：BM1684 构建禁用/隐藏 `qwen3vl` / `qwen3_5` 节点与前端入口，
-  模型导入路径利用 `IsSupportedChip` 天然拦截；文档明确能力差异
+- [x] VLM 门禁（commit `cb0cf195`）：`ModelServiceImpl::CheckModelValid` 在
+  `COSMO_NN_SOPHON_1684X` 构建时拒绝 `model_type` 为 `qwen3vl`/`qwen3_5` 的模型导入
+  （返回 `ModelFilePlatform`）——BM1684/BM1684X 无 Transformer 引擎，导入即拦截而非
+  运行时失败；`ModelJsonInfo` 新增 `model_type` 字段
+- [ ] 运行时芯片探测：**评估后跳过**——BMRT 加载 bmodel 时本身校验芯片匹配
+  （BM1684 bmodel 载入 BM1688 会失败），`bm_get_chipid` 探测收益有限；真机验证时
+  确认 BMRT 行为即可，不新增探测代码
 - [ ] 检查 `sophon_yolo_decode_npu_node.cc` 等后处理的 INT8 反量化假设
 
 ### Phase 4 — 文档与发布物料
