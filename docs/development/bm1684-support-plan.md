@@ -86,6 +86,52 @@ CosmoEdge 当前支持两条 Sophon 产品线：**BM1688** 与 **CV186X**（均�
 | 芯片探测 | — | `bmrt_arch_info.h` 含 `BM1684`；`bm_get_chip_id` | 新增运行时芯片身份校验 |
 | 设备端固件 | `bm1688_firmware*.bin`、`bmtpu.ko` | `bm1684_ddr.bin`、`bm1684_tcm.bin`、`bmtpu.ko`/`vpu.ko`/`jpu.ko` | 部署/安装脚本需带 BM1684 对应固件与驱动 |
 
+### 2.1 历史遗留宏 `COSMO_NN_SOPHON_1684X`（重要发现）
+
+在适配媒体层 0.5.x API 时发现：**NN 层源码里早已存在按 `COSMO_NN_SOPHON_1684X` 宏区分的分支**，
+且该宏的语义恰好覆盖了 0.5.x SDK 的 API 变化。这是本任务最重要的代码级发现之一。
+
+**发现过程**：`src/nn/utils/net_utils.cc`（16 处）、`src/nn/device/sophon/` 下 6 个文件
+（`sophon_affine_crop_node.cc`、`sophon_dino_encode_node.cc`、`sophon_filter.cc`、
+`sophon_image_guard.h`、`sophon_normalize_node.cc`、`sophon_sequence_node.cc`，共 32 处）
+都含有如下模式的分支：
+
+```cpp
+#ifdef COSMO_NN_SOPHON_1684X
+    bm_image_destroy(image);        // 按值传参（bm_image）
+#else
+    bm_image_destroy(&image);       // 按指针传参（bm_image*）
+#endif
+```
+
+**宏语义（推断）**：`COSMO_NN_SOPHON_1684X` 表示"1684X 家族的传值风格 API"——即
+BM1688/CV186X（0.4.x 时代 SDK）的 `bm_image_destroy` 已按值传参，而 BM1684 当时是
+按指针传参，所以代码用该宏区分两支。
+
+**关键事实**：
+- 全仓 grep 确认 **`COSMO_NN_SOPHON_1684X` 从未被 `#define` 定义**（不在 CMakeLists、
+  cmake/、任何头文件中）——历史遗留的空门控
+- 因此所有 `#ifdef` 分支**从未启用**，一直走 `#else`（按指针 `&x`）分支——这与 0.4.11
+  SDK 下 BM1684 的 `bm_image_destroy(bm_image*)` 签名一致，所以现有 BM1688/CV186X
+  构建一直正常（注意：现有 Sophon 构建均用 0.4.11，走 `&x` 分支恰好正确）
+
+**0.5.1 SDK 的变化**：`bm_image_destroy` 签名改为**按值传参**（`bm_image_destroy(bm_image)`），
+BM1684 也被统一为传值 API。此时 `#else` 分支的 `&x`（传 `bm_image**`）编译失败。
+
+**解决方案（已实施）**：`cmake/device.cmake` 在选中 0.5.x SDK 时定义
+`COSMO_NN_SOPHON_1684X`，让所有历史分支自动切到按值调用——**无需逐个修改 NN 层 32 处**：
+
+```cmake
+if(EXISTS "${DEVICE_LIB_DIR}/libbmvideo.so")
+    add_compile_definitions(COSMO_NN_SOPHON_1684X)
+endif()
+```
+
+**宏统一决策**：媒体层新增的 0.5.x 适配（解码日志枚举 `BMVPU_DEC_LOG_LEVEL_ERROR`、
+编码器 `bmvpu_enc_encode` 同步模型、`bmcv_padding_atrr_t` 拼写、`bm_image_destroy` 按值）
+也全部挂到 `COSMO_NN_SOPHON_1684X` 门下（commit `9ff30b77`），代码库**统一一种 API 门控**，
+语义为"libsophon 0.5.x 家族的 API 风格"，与 NN 层既有分支一致。
+
 ---
 
 ## 3. 工作分解（Phase 0 → Phase 6）

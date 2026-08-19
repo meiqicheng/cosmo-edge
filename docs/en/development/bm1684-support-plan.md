@@ -89,6 +89,57 @@ deprecated API produces **no compile warnings**.
 | Chip probe | — | `bmrt_arch_info.h` includes `BM1684`; `bm_get_chip_id` | Add runtime chip identity check |
 | On-device firmware | `bm1688_firmware*.bin`, `bmtpu.ko` | `bm1684_ddr.bin`, `bm1684_tcm.bin`, `bmtpu.ko`/`vpu.ko`/`jpu.ko` | Deployment/install scripts need BM1684 firmware + drivers |
 
+### 2.1 Legacy gate macro `COSMO_NN_SOPHON_1684X` (key finding)
+
+While adapting the media layer to the 0.5.x API, we found that **the NN layer already
+contains branches gated on the `COSMO_NN_SOPHON_1684X` macro**, and that macro's semantics
+exactly cover the 0.5.x API changes. This is one of the most important code-level findings
+of this task.
+
+**Discovery**: `src/nn/utils/net_utils.cc` (16 sites) plus 6 files under
+`src/nn/device/sophon/` (`sophon_affine_crop_node.cc`, `sophon_dino_encode_node.cc`,
+`sophon_filter.cc`, `sophon_image_guard.h`, `sophon_normalize_node.cc`,
+`sophon_sequence_node.cc`; 32 sites total) contain branches of this shape:
+
+```cpp
+#ifdef COSMO_NN_SOPHON_1684X
+    bm_image_destroy(image);        // by value (bm_image)
+#else
+    bm_image_destroy(&image);       // by pointer (bm_image*)
+#endif
+```
+
+**Macro semantics (inferred)**: `COSMO_NN_SOPHON_1684X` means "the by-value API style of
+the 1684X family" — i.e. on the 0.4.x-era SDK, BM1688/CV186X already used a by-value
+`bm_image_destroy`, while BM1684 used by-pointer, so the code branched on this macro.
+
+**Key facts**:
+- Repo-wide grep confirms **`COSMO_NN_SOPHON_1684X` was never `#define`d** (not in
+  CMakeLists.txt, cmake/, or any header) — a historical dead gate
+- Therefore all `#ifdef` branches were **never active**; the `#else` (by-pointer `&x`)
+  branch was always compiled — consistent with BM1684's `bm_image_destroy(bm_image*)`
+  signature on the 0.4.11 SDK, so existing BM1688/CV186X builds were always correct
+  (they use 0.4.11 and the `&x` branch is exactly right)
+
+**0.5.1 SDK change**: `bm_image_destroy` now takes **bm_image by value**, unifying BM1684
+onto the by-value API. The `#else` branch's `&x` (passing `bm_image**`) no longer compiles.
+
+**Solution (implemented)**: `cmake/device.cmake` defines `COSMO_NN_SOPHON_1684X` when the
+0.5.x SDK is selected, so every historical branch automatically switches to the by-value
+call — **no need to edit the 32 NN-layer sites individually**:
+
+```cmake
+if(EXISTS "${DEVICE_LIB_DIR}/libbmvideo.so")
+    add_compile_definitions(COSMO_NN_SOPHON_1684X)
+endif()
+```
+
+**Unified gate decision**: the media-layer 0.5.x adaptations (decode log enum
+`BMVPU_DEC_LOG_LEVEL_ERROR`, encoder `bmvpu_enc_encode` synchronous model,
+`bmcv_padding_atrr_t` typo, by-value `bm_image_destroy`) also use `COSMO_NN_SOPHON_1684X`
+(commit `9ff30b77`), giving the codebase **one API gate** whose semantics are "libsophon
+0.5.x family API style", consistent with the NN-layer branches.
+
 ---
 
 ## 3. Work breakdown (Phase 0 → Phase 6)
