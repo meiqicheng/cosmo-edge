@@ -37,16 +37,16 @@ else()
     set(BMVENC_LIB ${DEVICE_LIB_DIR}/libbmvpuapi.so)
 endif()
 
-# Video decode API differences across libsophon families:
-#   - 0.4.x exposes BmVpuDecLogLevel::BMVPU_DEC_LOG_LEVEL_ERR
-#   - 0.5.x renamed it to BMVPU_DEC_LOG_LEVEL_ERROR and marks the header deprecated
-# (the symbols themselves are unchanged). Signal the new family to the media layer.
+# Video decode/encode API differences across libsophon families:
+#   - 0.4.x exposes BmVpuDecLogLevel::BMVPU_DEC_LOG_LEVEL_ERR and the split
+#     bmvpu_enc_send_frame/bmvpu_enc_get_stream encoder API
+#   - 0.5.x renamed the log level to BMVPU_DEC_LOG_LEVEL_ERROR, removed
+#     BM_ERR_VDEC_SUCCESS, changed bm_image_destroy to take bm_image by value,
+#     and replaced the encoder API with bmvpu_enc_encode()
+# (the bmvpu_dec_* symbols themselves are unchanged). Source files gate these
+# differences behind COSMO_NN_SOPHON_1684X; define it for the 0.5.x family so
+# the by-value/new-API branches are selected.
 if(EXISTS "${DEVICE_LIB_DIR}/libbmvideo.so")
-    add_compile_definitions(COSMO_LIBSOPHON_NEW_VIDEO_API)
-    # libsophon 0.5.x changed bm_image_destroy to take bm_image by value
-    # (0.4.x took bm_image*). Source files historically gate this exact
-    # difference behind COSMO_NN_SOPHON_1684X; define it for the 0.5.x family
-    # so those branches select the by-value call.
     add_compile_definitions(COSMO_NN_SOPHON_1684X)
 endif()
 

@@ -13,7 +13,7 @@
 
 // libsophon 0.4.x (BM1688/CV186X) takes bm_image*; 0.5.x (BM1684/BM1684X)
 // takes bm_image by value. Normalize the call to the local variable form.
-#ifdef COSMO_LIBSOPHON_NEW_VIDEO_API
+#ifdef COSMO_NN_SOPHON_1684X
 #define COSMO_BM_IMAGE_DESTROY(img) bm_image_destroy(img)
 #else
 #define COSMO_BM_IMAGE_DESTROY(img) bm_image_destroy(&(img))

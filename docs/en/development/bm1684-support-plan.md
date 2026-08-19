@@ -120,7 +120,7 @@ On device (to do; ⚠️ device temporarily unavailable — all blocked):
 - [x] `src/media/CMakeLists.txt` link target: no change needed — `device.cmake` maps link names `bmvd`/`bmvenc` to
   `libbmvideo.so`/`libbmvpuapi.so` (auto-detected via `EXISTS`); `bmvpu_dec_*`/`bmvpu_enc_*` symbols verified identical
 - [x] `src/media/VideoDecoderSophon.cc:45`: decode log enum `BMVPU_DEC_LOG_LEVEL_ERR` → conditional via
-  `COSMO_LIBSOPHON_NEW_VIDEO_API` (defined by device.cmake per SDK) selecting `ERROR` (0.5.1)/`ERR` (0.4.11);
+  `COSMO_NN_SOPHON_1684X` (defined by device.cmake per SDK) selecting `ERROR` (0.5.1)/`ERR` (0.4.11);
   encode enums are identical across both SDKs — no change needed (headers compared)
 - [x] `scripts/build.sh`: allowlist + Usage + resource dir mapping for `bm1684`
 - [x] `scripts/build_sophon_package.sh` / `.ps1`: `--chip bm1684` allowlist + Usage

@@ -117,7 +117,7 @@ CosmoEdge 当前支持两条 Sophon 产品线：**BM1688** 与 **CV186X**（均�
 - [x] `src/media/CMakeLists.txt` 链接目标：无需改动——`device.cmake` 将链接名 `bmvd`/`bmvenc` 映射到
   `libbmvideo.so`/`libbmvpuapi.so`（0.5.1 按 `EXISTS` 探测自动选择），`bmvpu_dec_*`/`bmvpu_enc_*` 符号已实测一致
 - [x] `src/media/VideoDecoderSophon.cc:45`：解码日志枚举 `BMVPU_DEC_LOG_LEVEL_ERR` → 按
-  `COSMO_LIBSOPHON_NEW_VIDEO_API`（device.cmake 按 SDK 定义）条件编译选择 `ERROR`（0.5.1）/`ERR`（0.4.11）；
+  `COSMO_NN_SOPHON_1684X`（device.cmake 按 SDK 定义）条件编译选择 `ERROR`（0.5.1）/`ERR`（0.4.11）；
   编码枚举两个 SDK 完全一致，无需改动（已对比头文件确认）
 - [x] `scripts/build.sh`：白名单与 Usage 加入 `bm1684`；资源目录映射 `aiboxresource_bm1684`
 - [x] `scripts/build_sophon_package.sh` 与 `.ps1`：`--chip` 白名单与 Usage 加入 `bm1684`

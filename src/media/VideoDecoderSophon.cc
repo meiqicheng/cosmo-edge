@@ -14,7 +14,7 @@
 // libsophon 0.4.x (BM1688/CV186X) reports decoder success as
 // BMVidDecRetStatus::BM_ERR_VDEC_SUCCESS; libsophon 0.5.x (BM1684/BM1684X)
 // removed that enumerator — BM_SUCCESS (0) is the equivalent success code.
-#ifdef COSMO_LIBSOPHON_NEW_VIDEO_API
+#ifdef COSMO_NN_SOPHON_1684X
 #define COSMO_VDEC_SUCCESS BM_SUCCESS
 #else
 #define COSMO_VDEC_SUCCESS BM_ERR_VDEC_SUCCESS
@@ -42,7 +42,7 @@ namespace media {
                 if (bm_image_is_attached(*p)) {
                     bm_image_detach(*p);
                 }
-#ifdef COSMO_LIBSOPHON_NEW_VIDEO_API
+#ifdef COSMO_NN_SOPHON_1684X
                 // libsophon 0.5.x (BM1684) takes bm_image by value.
                 bm_image_destroy(*p);
 #else
@@ -59,7 +59,7 @@ namespace media {
         // libsophon 0.4.x (BM1688/CV186X) names the log level ERR; 0.5.x
         // (BM1684/BM1684X) renamed it to ERROR and marks the header deprecated.
         // The bmvpu_dec_* symbols themselves are unchanged across both families.
-#ifdef COSMO_LIBSOPHON_NEW_VIDEO_API
+#ifdef COSMO_NN_SOPHON_1684X
         bmvpu_dec_set_logging_threshold(BmVpuDecLogLevel::BMVPU_DEC_LOG_LEVEL_ERROR);
 #else
         bmvpu_dec_set_logging_threshold(BmVpuDecLogLevel::BMVPU_DEC_LOG_LEVEL_ERR);

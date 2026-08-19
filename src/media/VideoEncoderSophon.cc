@@ -351,7 +351,7 @@ namespace media {
             return nullptr;
         }
 
-#ifndef COSMO_LIBSOPHON_NEW_VIDEO_API
+#ifndef COSMO_NN_SOPHON_1684X
         // The split send_frame/get_stream model exists only in libsophon 0.4.x.
         // libsophon 0.5.x (BM1684) replaces it with the synchronous
         // bmvpu_enc_encode() path below, which needs no framebuffer drain.
@@ -372,7 +372,7 @@ namespace media {
             return packet;
         };
 
-#ifndef COSMO_LIBSOPHON_NEW_VIDEO_API
+#ifndef COSMO_NN_SOPHON_1684X
         const auto poll_encoded_stream = [this]() -> PollResult {
             const int result = bmvpu_enc_get_stream(encoder_, &output_frame_, &enc_params_);
             if (IsPendingEncodedOutput(result, output_frame_)) {
@@ -450,7 +450,7 @@ namespace media {
                 return pop_pending_packet();
             }
         }
-#endif  // !COSMO_LIBSOPHON_NEW_VIDEO_API
+#endif  // !COSMO_NN_SOPHON_1684X
 
         auto src_fb = GetUnusedFrameBuffer();
         if (!src_fb) {
@@ -470,7 +470,7 @@ namespace media {
 
         input_frame_.framebuffer = src_fb;
 
-#ifdef COSMO_LIBSOPHON_NEW_VIDEO_API
+#ifdef COSMO_NN_SOPHON_1684X
         // libsophon 0.5.x (BM1684) removed the split send_frame/get_stream API
         // and exposes only the synchronous bmvpu_enc_encode() model. One call
         // submits the raw frame and, when a fully encoded frame is ready, fills
@@ -580,7 +580,7 @@ namespace media {
     }
 
     void VideoEncoderSophon::SendEndFrame() {
-#ifdef COSMO_LIBSOPHON_NEW_VIDEO_API
+#ifdef COSMO_NN_SOPHON_1684X
         // libsophon 0.5.x (BM1684): synchronous encode model. Flush by sending
         // a null-framebuffer raw frame until the encoder signals end-of-stream.
         constexpr size_t kMaxFlushAttempts = 100;
