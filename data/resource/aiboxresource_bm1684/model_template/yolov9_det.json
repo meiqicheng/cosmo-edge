@@ -1,4 +1,4 @@
-﻿{
+{
   "model_type": "yolov9_det",
   "chip_type": "BM1684",
   "algorithm_code": "4000001",
