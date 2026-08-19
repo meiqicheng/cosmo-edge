@@ -9,6 +9,8 @@
 > 已定案：SDK **拷贝为 `3rd/libsophon-0.5.1/`**（随仓库走，CI 可复现）；
 > VPU 解码 **沿用 deprecated `bmvpu_dec_*`**（符号已实测确认仍导出，改动最小，新 API 迁移列为技术债）；
 > 转换环境 **WSL2**。
+> ⚠️ **真机状态（2026-08-19）：BM1684 真机暂不在身边**——Phase 0 实测、Phase 3 真机联调、
+> Phase 5 验证全部**阻塞**；无真机可推进项（构建冒烟、资源集、模型转换、纯代码、文档）优先执行。
 
 ---
 
@@ -99,7 +101,7 @@ CosmoEdge 当前支持两条 Sophon 产品线：**BM1688** 与 **CV186X**（均�
 - [x] 转换环境：**WSL2（Ubuntu 22.04+，x86_64）**，TPU-MLIR >= 1.15（pip 安装）；Docker Desktop 为备选
 - [x] 首发范围：仅单路检测+分类
 
-待真机执行：
+待真机执行（⚠️ 真机暂不在身边，以下全部阻塞）：
 - [ ] 在设备上确认 libsophon 运行时版本（`/opt/sophon/libsophon` 或设备预装 0.5.x）与固件加载方式（0.5.1 `data/load.sh`）
 - [ ] 实测 `bm_malloc_device_byte_heap_mask(..., heap=3, ...)` 堆语义与 `bm_get_chip_id` 返回值
 - [ ] 实测 VPP/VPU 可用性与 `VideoFrameProcSophon` 尺寸约束（`kSophonVppMinDimension` 等）是否适用
@@ -127,10 +129,13 @@ CosmoEdge 当前支持两条 Sophon 产品线：**BM1688** 与 **CV186X**（均�
 - [ ] 本地冒烟 `./scripts/build.sh -c bm1684`：Windows 无法交叉编译，待 WSL2/构建环境执行（资源集可先为空）
 - [ ] CI（`.github/workflows/nightly-build-test-sophon.yml`）：**延后到 Phase 2**（`aiboxresource_bm1684` 资源集就绪后再加矩阵，避免 nightly 失败）
 
-### Phase 2 — 资源集与模型转换（需 Linux + 设备）
+### Phase 2 — 资源集与模型转换（骨架已完成，转换需 Linux；真机验证延后）
 
-- [ ] 建立 `data/resource/aiboxresource_bm1684/`：复制 `aiboxresource_bm1688/` 的
-  `algorithm/ algorithm_template/ i18n/ layout/ model_template/` 骨架，按 BM1684 调整
+- [x] 建立 `data/resource/aiboxresource_bm1684/`：已从 `aiboxresource_bm1688/` 复制
+  `algorithm/ algorithm_template/ i18n/ layout/`（无芯片引用，原样复制）与 `model_template/`（14 个 json，
+  `chip_type: "BM1688"` → `"BM1684"` 已替换）；`models/` 为空目录待转换产物
+- [ ] 待 Phase 2 转换时处理：`model_template/dino.json` 的 `groundingdino_bm1688_fp16.bmodel` 文件名
+  （VLM 相关，不在首发；届时按 BM1684 转换结果或随 VLM 门禁一并处理）
 - [ ] 模型转换（按 AGENTS.md 的 agent 工作流执行，属 model-conversion 任务）：
   `scripts/agent/start.sh` → `doctor.sh --task model-conversion` → `convert_model.sh` → `verify.sh`
   - 转换环境：**WSL2（Ubuntu 22.04+，x86_64，已定案）**；Docker Desktop（Linux 容器）为备选
@@ -199,6 +204,8 @@ CosmoEdge 当前支持两条 Sophon 产品线：**BM1688** 与 **CV186X**（均�
 ---
 
 ## 5. 未决问题
+
+⚠️ **真机暂不可用**（2026-08-19）：Phase 0 实测 / Phase 3 联调 / Phase 5 验证阻塞，恢复后按顺序执行。
 
 已确认（用户提供）：
 1. ✅ 目标设备：SM5 SoC 模块（媒体管线走 VPU 硬解）

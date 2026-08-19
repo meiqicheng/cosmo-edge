@@ -10,6 +10,9 @@
 > Decided: SDK is **copied to `3rd/libsophon-0.5.1/`** (tracked, CI reproducible);
 > VPU decode **keeps deprecated `bmvpu_dec_*`** (symbols verified still exported; new API migration is tech debt);
 > conversion environment **WSL2**.
+> ⚠️ **Device status (2026-08-19): BM1684 hardware temporarily unavailable** — Phase 0 measurements,
+> Phase 3 on-device bring-up and Phase 5 verification are **blocked**; no-device work (build smoke,
+> resource set, model conversion, pure code, docs) proceeds first.
 
 ---
 
@@ -101,7 +104,7 @@ Confirmed:
 - [x] Conversion environment: **WSL2 (Ubuntu 22.04+, x86_64)**, TPU-MLIR >= 1.15 (pip); Docker Desktop as fallback
 - [x] First-release scope: single-stream detector + classifier only
 
-On device (to do):
+On device (to do; ⚠️ device temporarily unavailable — all blocked):
 - [ ] Confirm on-device libsophon runtime version (`/opt/sophon/libsophon` or preinstalled 0.5.x) and firmware loading (0.5.1 `data/load.sh`)
 - [ ] Measure `bm_malloc_device_byte_heap_mask(..., heap=3, ...)` semantics and `bm_get_chip_id` return values
 - [ ] Measure VPP/VPU availability and whether `VideoFrameProcSophon` size constraints (`kSophonVppMinDimension` etc.) apply
@@ -129,9 +132,13 @@ On device (to do):
 - [ ] Local smoke `./scripts/build.sh -c bm1684`: cannot cross-compile on Windows; run in WSL2/build env (empty resource set OK)
 - [ ] CI (`.github/workflows/nightly-build-test-sophon.yml`): **deferred to Phase 2** (add to matrix after `aiboxresource_bm1684` is ready, avoid nightly failures)
 
-### Phase 2 — Resource set & model conversion (needs Linux + device)
+### Phase 2 — Resource set & model conversion (skeleton done; conversion needs Linux; device verification deferred)
 
-- [ ] Create `data/resource/aiboxresource_bm1684/` skeleton from `aiboxresource_bm1688/`
+- [x] Create `data/resource/aiboxresource_bm1684/`: copied from `aiboxresource_bm1688/` —
+  `algorithm/ algorithm_template/ i18n/ layout/` (no chip refs, copied as-is) and `model_template/`
+  (14 json, `chip_type: "BM1688"` → `"BM1684"` replaced); `models/` empty, awaiting conversion artifacts
+- [ ] During Phase 2 conversion: handle `model_template/dino.json` `groundingdino_bm1688_fp16.bmodel` file name
+  (VLM-related, out of first-release scope; resolve with conversion results or the VLM gate)
 - [ ] Model conversion via AGENTS.md agent workflow (model-conversion task):
   `scripts/agent/start.sh` → `doctor.sh --task model-conversion` → `convert_model.sh` → `verify.sh`
   - Conversion env: **WSL2 (Ubuntu 22.04+, x86_64, decided)**; Docker Desktop (Linux container) as fallback
@@ -193,6 +200,9 @@ On device (to do):
 ---
 
 ## 5. Open questions
+
+⚠️ **Device temporarily unavailable** (2026-08-19): Phase 0 measurements / Phase 3 bring-up / Phase 5
+verification blocked; proceed in order once hardware returns.
 
 Confirmed (from user):
 1. ✅ Target: SM5 SoC module (VPU decode pipeline)
