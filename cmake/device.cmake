@@ -3,9 +3,11 @@
 # libsophon ships in two release families that are not interchangeable:
 #   - 0.4.x  : BM1688 / CV186X (this repository's default, 3rd/libsophon-0.4.11)
 #   - 0.5.x  : BM1684 / BM1684X (3rd/libsophon-0.5.1)
+# Both BM1684 and BM1684X use the 0.5.x SDK family.
 # The default SDK is chosen per target chip; override it explicitly with
 # -DCOSMO_LIBSOPHON_ROOT=<path> when a different SDK root is required.
-if(COSMO_TARGET_CHIP_NORMALIZED STREQUAL "bm1684")
+if(COSMO_TARGET_CHIP_NORMALIZED STREQUAL "bm1684" OR
+   COSMO_TARGET_CHIP_NORMALIZED STREQUAL "bm1684x")
     set(_cosmo_default_sophon_sdk "${CMAKE_SOURCE_DIR}/3rd/libsophon-0.5.1")
 else()
     set(_cosmo_default_sophon_sdk "${CMAKE_SOURCE_DIR}/3rd/libsophon-0.4.11")

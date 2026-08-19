@@ -6,6 +6,8 @@
 > Confirmed: target is **SM5 SoC module**; BM1684 dev device available; first release is
 > **single-stream detector + classifier only**; device SDK is **libsophon-0.5.1**
 > (linux-aarch64 at `E:\Gdsc\projects\dev\devlibs\linux-aarch64\libsophon-0.5.1`),
+> **both BM1684 and BM1684X use the 0.5.1 SDK family** (`device.cmake` selects by
+> `bm1684`/`bm1684x`),
 > **NOT** `3rd/libsophon-0.4.11`; model conversion runs in **WSL2** (Ubuntu 22.04+, Docker Desktop as fallback).
 > Decided: SDK is **copied to `3rd/libsophon-0.5.1/`** (tracked, CI reproducible);
 > VPU decode **keeps deprecated `bmvpu_dec_*`** (symbols verified still exported; new API migration is tech debt);

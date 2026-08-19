@@ -5,6 +5,7 @@
 > 目标：在现有 BM1688 / CV186X Sophon 支持的基础上，扩展对算能 BM1684（SM5 SoC 模块）的支持。
 > 已确认：目标设备 **SM5 SoC 模块**；有 BM1684 开发设备；首发范围**仅单路检测+分类**；
 > 设备 SDK 使用 **libsophon-0.5.1**（linux-aarch64，`E:\Gdsc\projects\dev\devlibs\linux-aarch64\libsophon-0.5.1`），
+> **BM1684 与 BM1684X 均使用 0.5.1 SDK 家族**（`device.cmake` 按 `bm1684`/`bm1684x` 选择）；
 > **不使用** `3rd/libsophon-0.4.11`；模型转换环境用 **WSL2**（Ubuntu 22.04+，备选 Docker Desktop）。
 > 已定案：SDK **拷贝为 `3rd/libsophon-0.5.1/`**（随仓库走，CI 可复现）；
 > VPU 解码 **沿用 deprecated `bmvpu_dec_*`**（符号已实测确认仍导出，改动最小，新 API 迁移列为技术债）；

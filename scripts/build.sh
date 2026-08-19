@@ -30,7 +30,7 @@ while getopts "c:m:tT" opt; do
         m) RESOURCE_DIR="$OPTARG" ;;
         t) DEV_MODE=ON ;;
         T) BUILD_TESTS_FLAG=ON ;;
-        *) echo "Usage: $0 [-c <bm1688|cv186x|bm1684> | -m <resource_repo_path>] [-t] [-T]"; exit 1 ;;
+        *) echo "Usage: $0 [-c <bm1688|cv186x|bm1684|bm1684x> | -m <resource_repo_path>] [-t] [-T]"; exit 1 ;;
     esac
 done
 
@@ -46,11 +46,11 @@ fi
 if [ -z "${RESOURCE_DIR}" ]; then
     CHIP_MODEL="${CHIP_MODEL:-bm1688}"
     case "${CHIP_MODEL}" in
-        bm1688|cv186x|bm1684)
+        bm1688|cv186x|bm1684|bm1684x)
             RESOURCE_DIR="${PROJECT_ROOT_PATH}/data/resource/aiboxresource_${CHIP_MODEL}"
             ;;
         *)
-            echo "ERROR: unsupported Sophon chip '${CHIP_MODEL}'; expected bm1688, cv186x or bm1684" >&2
+            echo "ERROR: unsupported Sophon chip '${CHIP_MODEL}'; expected bm1688, cv186x, bm1684 or bm1684x" >&2
             exit 1
             ;;
     esac
