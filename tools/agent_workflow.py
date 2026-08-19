@@ -379,6 +379,10 @@ def _run(
             check=False,
             timeout=timeout,
             env=env,
+            # Tolerate non-UTF-8 bytes from foreign runtimes (e.g. a Windows
+            # Python emitting GBK console text) instead of raising.
+            encoding="utf-8",
+            errors="replace",
         )
     except (OSError, subprocess.TimeoutExpired) as error:
         return subprocess.CompletedProcess(command, 127, "", str(error))

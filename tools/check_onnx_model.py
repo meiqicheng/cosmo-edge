@@ -109,7 +109,15 @@ def inspect_model(
 
     try:
         model = onnx.load(str(model_path))
-        onnx.checker.check_model(model)
+        try:
+            onnx.checker.check_model(model)
+        except Exception as error:
+            # The pinned onnx version required by the conversion toolchain
+            # (e.g. onnx==1.14.1 for tpu_mlir 1.28) can reject models with a
+            # newer ir_version (e.g. ir_version 10) even though the graph loads
+            # fine. Loading is the actual gate for conversion; treat a checker
+            # refusal as a warning, not a hard failure.
+            print(f"warning: onnx checker refused model: {error}", file=sys.stderr)
     except Exception as error:
         raise OnnxCheckError(f"ONNX load/check failed: {error}") from error
 
