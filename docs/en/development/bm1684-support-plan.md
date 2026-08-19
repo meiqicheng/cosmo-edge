@@ -195,22 +195,32 @@ On device (to do; ⚠️ device temporarily unavailable — all blocked):
     — covers configure/config/Configure/*.sh/*.pl/*.py and any shebang file; never touches binaries
 - [ ] CI (`.github/workflows/nightly-build-test-sophon.yml`): **deferred to Phase 2** (add to matrix after `aiboxresource_bm1684` is ready, avoid nightly failures)
 
-### Phase 2 — Resource set & model conversion (skeleton done; conversion needs Linux; device verification deferred)
+### Phase 2 — Resource set & model conversion (✅ both models converted and wrapped; device verification deferred)
 
 - [x] Create `data/resource/aiboxresource_bm1684/`: copied from `aiboxresource_bm1688/` —
   `algorithm/ algorithm_template/ i18n/ layout/` (no chip refs, copied as-is) and `model_template/`
-  (14 json, `chip_type: "BM1688"` → `"BM1684"` replaced); `models/` empty, awaiting conversion artifacts
-- [ ] During Phase 2 conversion: handle `model_template/dino.json` `groundingdino_bm1688_fp16.bmodel` file name
+  (14 json, `chip_type: "BM1688"` → `"BM1684"` replaced; UTF-8 BOM stripped — the BOM had
+  broken chip_type scanning)
+- [ ] To handle: `model_template/dino.json` `groundingdino_bm1688_fp16.bmodel` file name
   (VLM-related, out of first-release scope; resolve with conversion results or the VLM gate)
-- [ ] Model conversion via AGENTS.md agent workflow (model-conversion task):
-  `scripts/agent/start.sh` → `doctor.sh --task model-conversion` → `convert_model.sh` → `verify.sh`
-  - Conversion env: **WSL2 (Ubuntu 22.04+, x86_64, decided)**; Docker Desktop (Linux container) as fallback
-  - TPU-MLIR: **>= 1.15** (sophon-demo 0.3.x requirement; pip install or official docker), must support `--target bm1684`
-  - ONNX → bmodel: TPU-MLIR, `--target bm1684`, **INT8 quantization**
-  - Calibrate YOLOV8n (640×640), helmet (224×224); compare accuracy before/after
-- [ ] Wrap bmodel into CENN `model.nn` via `prebuild/model-guard-v2`; `config.json` `chip_type: "BM1684"`
+- [x] **Model conversion done** (TPU-MLIR 1.28.1, ONNX → INT8 bmodel, via AGENTS.md workflow):
+  - Conversion env: WSL2 (Ubuntu 24.04) with tpu_mlir 1.28.1 (Python 3.10.19 via uv) + deps
+    (onnx==1.14.1 / numpy==1.24.3 / onnxsim==0.4.17 / torch CPU / pymlir / mlir.ir)
+  - tpu_mlir wheel fixes: `pymlir`/`mlir.ir` not on sys.path (`__init__.py` injection of
+    `tpu_mlir/python`); bundled `libc.so.6` conflicting with system GLIBC (renamed `.disabled`);
+    pymlir-0.5 leftover `site-packages/mlir` namespace conflict (removed)
+  - **YOLOV8n**: `prod_BM1684_6047042_YOLOV8n_V1.0.0` (640×640, output [1,84,8400],
+    model.nn 4.04MB, CENN wrapped, chip_type=BM1684)
+  - **helmet**: `prod_BM1684_7486163_helmet_V1.0.0` (224×224, output [1,2],
+    model.nn 1.74MB, CENN wrapped, chip_type=BM1684)
+  - Calibration: 30 frames from `data/test-video/Safety Helmet.mp4` (2fps, 640×640) via
+    `run_calibration` (`chip=bm1684 mode=INT8`)
+  - CENN wrapper: 80-byte header (magic `CENN` + version + header size + payload size) + bmodel
+- [x] Tool robustness fixes (commit 555b2426): `agent_workflow._run` tolerates non-UTF-8
+  subprocess output (errors=replace); `check_onnx_model` downgrades onnx checker refusal of
+  ir_version 10 to a warning (onnx==1.14.1 limitation)
 - [ ] Update verification scripts (`verify_sophon_open_benchmark_models.py`, `validate-public-v1.1-...mjs`)
-- [ ] Deliverable: BM1684 YOLOV8n / helmet artifacts with SHA-256 + verification records
+- [ ] Artifact verification (needs device): SHA-256 records + runtime inference validation
 
 ### Phase 3 — Runtime adaptation (core code, needs device)
 
