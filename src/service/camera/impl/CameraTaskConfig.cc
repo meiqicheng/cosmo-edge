@@ -47,7 +47,8 @@ namespace {
 // ============================================================
 
 util::ErrorEnum CameraServiceImpl::CheckTaskStartResource() const {
-#if defined(COSMO_NN_USE_SOPHON_BACKEND) || defined(COSMO_NN_USE_RKNN_BACKEND)
+#if defined(COSMO_NN_USE_SOPHON_BACKEND) || defined(COSMO_NN_USE_RKNN_BACKEND) || \
+    defined(COSMO_NN_USE_AXERA_BACKEND)
     if (!ServiceRegistry::Instance().Get<IConfigReadService>().GetResourceLimit()) {
         return util::ErrorEnum::Success;
     }

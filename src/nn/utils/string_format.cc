@@ -32,6 +32,8 @@ std::string DeviceTypeToString(DeviceType val) {
             return "CPU";
         case DEVICE_RKNN:
             return "RKNN";
+        case DEVICE_AXERA:
+            return "AXERA";
         default:
             return "UNKNOWN";
     }

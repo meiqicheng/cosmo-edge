@@ -194,6 +194,13 @@ util::ErrorEnum ModelImportExporter::ValidateAddModelInputs(
         LOG_WARN("[AddModel] Unsupported {} model type: {}", cosmo::util::kEngineType, modelType);
         return util::ErrorEnum::InvalidParam;
     }
+#elif defined(COSMO_NN_USE_AXERA_BACKEND)
+    static const std::vector<std::string> kSupportedAxeraModelTypes = {"yolov8_det", "classify"};
+    if (std::find(kSupportedAxeraModelTypes.begin(), kSupportedAxeraModelTypes.end(), modelType) ==
+        kSupportedAxeraModelTypes.end()) {
+        LOG_WARN("[AddModel] Unsupported {} model type: {}", cosmo::util::kEngineType, modelType);
+        return util::ErrorEnum::InvalidParam;
+    }
 #endif
 
     resolved_model_code = generate_unique_model_code_();
@@ -414,6 +421,19 @@ util::ErrorEnum ModelImportExporter::WriteNnFile(const std::string& modelType,
             convert_error = "Failed to copy RKNN model to " + model_file_path + ": " + ec.message();
         else
             LOG_INFO("[AddModel] RKNN: copied model file to {}", model_file_path);
+    }
+#elif defined(COSMO_NN_USE_AXERA_BACKEND)
+    std::string convert_error;
+    if (bmodel_paths.size() != 1) {
+        convert_error = "AXERA add-model requires exactly one model file";
+    } else {
+        const std::string model_file_path = model_dir + "/model.axmodel";
+        std::error_code ec;
+        fs::copy_file(bmodel_paths[0], model_file_path, fs::copy_options::overwrite_existing, ec);
+        if (ec)
+            convert_error = "Failed to copy AXERA model to " + model_file_path + ": " + ec.message();
+        else
+            LOG_INFO("[AddModel] AXERA: copied model file to {}", model_file_path);
     }
 #elif defined(COSMO_NN_USE_ONNX_BACKEND)
     // CPU/x86: copy .onnx file directly; no Sophon wrapper needed.

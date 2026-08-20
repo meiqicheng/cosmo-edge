@@ -75,6 +75,28 @@ static constexpr bool kSupportsRkllm = false;
 static constexpr const char* kModelFileExt     = ".rknn";
 static constexpr const char* kSupportedChips[] = {COSMO_RKNN_TARGET_CHIP_LABEL};
 
+#elif defined(COSMO_NN_USE_AXERA_BACKEND)
+
+#ifndef COSMO_AXERA_TARGET_CHIP
+#error "AXERA builds must define COSMO_AXERA_TARGET_CHIP through COSMO_TARGET_CHIP"
+#endif
+#ifndef COSMO_AXERA_TARGET_CHIP_LABEL
+#error "AXERA builds must define COSMO_AXERA_TARGET_CHIP_LABEL through COSMO_TARGET_CHIP"
+#endif
+
+/// Legacy target-labelled directories remain readable. Newly imported models
+/// use a vendor-level token; config.json chip_type is the compatibility gate.
+static constexpr const char* kPlatformDirPrefix    = "prod_" COSMO_AXERA_TARGET_CHIP_LABEL "_";
+static constexpr const char* kNewDirPrefix         = "prod_AXERA_";
+static constexpr const char* kPlatformDirRegex     = "prod_[A-Z0-9]+_([0-9]+)_.*";
+static constexpr const char* kBackendType          = "AXERA";
+static constexpr const char* kEngineType           = COSMO_AXERA_TARGET_CHIP_LABEL;
+static constexpr const char* kTargetChip           = COSMO_AXERA_TARGET_CHIP;
+static constexpr const char* kHardwareSpecFallback = "axera," COSMO_AXERA_TARGET_CHIP;
+static constexpr bool kSupportsRkllm      = false;
+static constexpr const char* kModelFileExt     = ".axmodel";
+static constexpr const char* kSupportedChips[] = {COSMO_AXERA_TARGET_CHIP_LABEL};
+
 #elif defined(COSMO_NN_USE_CPU_BACKEND)
 
 /// Directory prefix for CPU/x86 backend model directories: "prod_X86_".

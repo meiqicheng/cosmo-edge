@@ -696,7 +696,8 @@ Status Graph::LoadWeight(const std::string& model_path) {
 #endif
 
     std::ifstream stream(authorized_model_path, std::ios::in | std::ios::binary);
-#if defined(COSMO_NN_USE_ONNX_BACKEND) || defined(COSMO_NN_USE_RKNN_BACKEND)
+#if defined(COSMO_NN_USE_ONNX_BACKEND) || defined(COSMO_NN_USE_RKNN_BACKEND) || \
+    defined(COSMO_NN_USE_AXERA_BACKEND)
     if (stream.fail() && !std::filesystem::is_directory(authorized_model_path))
         return Status(COSMO_NN_ERR_LOAD_MODEL, "open model file failed");
 #else
@@ -704,7 +705,8 @@ Status Graph::LoadWeight(const std::string& model_path) {
         return Status(COSMO_NN_ERR_LOAD_MODEL, "open model file failed");
 #endif
 
-#if defined(COSMO_NN_USE_ONNX_BACKEND) || defined(COSMO_NN_USE_RKNN_BACKEND)
+#if defined(COSMO_NN_USE_ONNX_BACKEND) || defined(COSMO_NN_USE_RKNN_BACKEND) || \
+    defined(COSMO_NN_USE_AXERA_BACKEND)
     stream.close();
 
     namespace fs = std::filesystem;
@@ -712,6 +714,9 @@ Status Graph::LoadWeight(const std::string& model_path) {
 #ifdef COSMO_NN_USE_RKNN_BACKEND
     constexpr const char* model_extension = ".rknn";
     constexpr const char* backend_name    = "RKNN";
+#elif defined(COSMO_NN_USE_AXERA_BACKEND)
+    constexpr const char* model_extension = ".axmodel";
+    constexpr const char* backend_name    = "AXERA";
 #else
     constexpr const char* model_extension = ".onnx";
     constexpr const char* backend_name    = "ONNX";

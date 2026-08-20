@@ -100,7 +100,7 @@ void HardwareQueryUtil::ReadDeviceSnAndModel(std::string* device_sn, std::string
     if (!device_sn || !device_model) {
         return;
     }
-#if defined(COSMO_NN_USE_RKNN_BACKEND)
+#if defined(COSMO_NN_USE_RKNN_BACKEND) || defined(COSMO_NN_USE_AXERA_BACKEND)
     *device_sn = ReadDeviceTreeText("/proc/device-tree/serial-number");
     if (device_sn->empty())
         *device_sn = ReadDeviceTreeText("/sys/firmware/devicetree/base/serial-number");
@@ -109,7 +109,7 @@ void HardwareQueryUtil::ReadDeviceSnAndModel(std::string* device_sn, std::string
     *device_model = ReadDeviceTreeText("/proc/device-tree/model");
     if (device_model->empty())
         *device_model = cosmo::util::kEngineType;
-    LOG_INFO("RKNN deviceSn:{} deviceModel:{}", *device_sn, *device_model);
+    LOG_INFO("deviceSn:{} deviceModel:{}", *device_sn, *device_model);
     return;
 #elif !defined(COSMO_NN_USE_SOPHON_BACKEND)
     *device_sn    = "CA16T01-X86-TRIAL";
@@ -147,7 +147,7 @@ void HardwareQueryUtil::ReadDeviceSnAndModel(std::string* device_sn, std::string
 }
 
 std::string HardwareQueryUtil::ReadHardwareSpec() {
-#if defined(COSMO_NN_USE_RKNN_BACKEND)
+#if defined(COSMO_NN_USE_RKNN_BACKEND) || defined(COSMO_NN_USE_AXERA_BACKEND)
     auto compatible = ReadDeviceTreeText("/proc/device-tree/compatible", ',');
     return compatible.empty() ? cosmo::util::kHardwareSpecFallback : compatible;
 #elif !defined(COSMO_NN_USE_SOPHON_BACKEND)
@@ -166,11 +166,11 @@ std::string HardwareQueryUtil::ReadHardwareSpec() {
 }
 
 std::string HardwareQueryUtil::ReadKernelRevision() {
-#if defined(COSMO_NN_USE_RKNN_BACKEND)
+#if defined(COSMO_NN_USE_RKNN_BACKEND) || defined(COSMO_NN_USE_AXERA_BACKEND)
     struct utsname system_info {};
     if (uname(&system_info) == 0)
         return system_info.release;
-    LOG_WARN("uname failed while querying RKNN kernel revision: {}", std::strerror(errno));
+    LOG_WARN("uname failed while querying kernel revision: {}", std::strerror(errno));
     return {};
 #elif !defined(COSMO_NN_USE_SOPHON_BACKEND)
     return "X86-Generic-Kernel";

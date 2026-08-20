@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "chip": "ax650n",
+  "display_name": "AX650N",
+  "backend": "axera",
+  "toolchain_lock": "../axera/toolchain-lock.json",
+  "conversion": {
+    "target_hardware": "AX650"
+  },
+  "runtime": {
+    "architecture": "aarch64",
+    "sdk_family": "ax_engine_soc",
+    "sdk_version": "V3.10.2",
+    "model_file_ext": ".axmodel"
+  },
+  "media": {
+    "default_backend": "cpu",
+    "cpu_fallback": true,
+    "note": "Phase-1 AX650N uses the FFmpeg software media backend; native AX650 IVPS/VDEC/VENC is follow-up work"
+  },
+  "packaging": {
+    "directory_token": "AX650N",
+    "resource_template_directory": "data/resource/aiboxresource_ax650n",
+    "resource_overlay_directory": "data/resource/aiboxresource_ax650n",
+    "legacy_models_directory": "data/resource/aiboxresource_ax650n/models"
+  },
+  "device": {
+    "compatible_tokens": ["ax650n"]
+  },
+  "qualification": {
+    "status": "UNVERIFIED",
+    "requires_target_bound_evidence": true,
+    "note": "Board-side baseline pending measurement on a real AX650N device (stage 6 of the AX650N support plan)"
+  }
+}

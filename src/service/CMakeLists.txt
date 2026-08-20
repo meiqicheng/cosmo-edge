@@ -38,3 +38,14 @@ if(COSMO_NN_USE_RKNN_BACKEND)
         COSMO_NN_USE_HOST_BACKEND
         COSMO_NN_USE_RAW_MODEL_BACKEND)
 endif()
+
+if(COSMO_NN_USE_AXERA_BACKEND)
+    target_link_libraries(cosmo_service PRIVATE ax_engine)
+    if(TARGET ax_sys)
+        target_link_libraries(cosmo_service PRIVATE ax_sys)
+    endif()
+    target_compile_definitions(cosmo_service PRIVATE
+        COSMO_NN_USE_AXERA_BACKEND
+        COSMO_NN_USE_HOST_BACKEND
+        COSMO_NN_USE_RAW_MODEL_BACKEND)
+endif()

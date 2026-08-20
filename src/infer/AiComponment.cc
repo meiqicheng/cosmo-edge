@@ -18,6 +18,8 @@ cosmo::nn::DeviceType GetDeviceType() {
     return cosmo::nn::DeviceType::DEVICE_CPU;
 #elif defined(COSMO_NN_USE_RKNN_BACKEND)
     return cosmo::nn::DeviceType::DEVICE_RKNN;
+#elif defined(COSMO_NN_USE_AXERA_BACKEND)
+    return cosmo::nn::DeviceType::DEVICE_AXERA;
 #else
     return cosmo::nn::DeviceType::DEVICE_SOPHON_TPU;
 #endif

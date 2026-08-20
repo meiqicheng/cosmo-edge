@@ -103,18 +103,20 @@ endif()
 option(COSMO_NN_USE_SOPHON_BACKEND "Enable Sophon TPU backend" ON)
 option(COSMO_NN_USE_CPU_BACKEND "Enable CPU inference backend (ONNX Runtime)" OFF)
 option(COSMO_NN_USE_RKNN_BACKEND "Enable Rockchip RKNN backend" OFF)
+option(COSMO_NN_USE_AXERA_BACKEND "Enable Axera AX650 backend" OFF)
 
 set(_cosmo_nn_backend_count 0)
 foreach(_nn_backend_option
         COSMO_NN_USE_SOPHON_BACKEND
         COSMO_NN_USE_CPU_BACKEND
-        COSMO_NN_USE_RKNN_BACKEND)
+        COSMO_NN_USE_RKNN_BACKEND
+        COSMO_NN_USE_AXERA_BACKEND)
     if(${_nn_backend_option})
         math(EXPR _cosmo_nn_backend_count "${_cosmo_nn_backend_count} + 1")
     endif()
 endforeach()
 if(NOT _cosmo_nn_backend_count EQUAL 1)
-    message(FATAL_ERROR "Exactly one NN backend must be enabled: Sophon, CPU, or RKNN")
+    message(FATAL_ERROR "Exactly one NN backend must be enabled: Sophon, CPU, RKNN, or AXERA")
 endif()
 
 # The selected inference backend is a build-wide compile contract. Business,
@@ -133,6 +135,11 @@ elseif(COSMO_NN_USE_RKNN_BACKEND)
         COSMO_NN_USE_RKNN_BACKEND
         COSMO_NN_USE_HOST_BACKEND
         COSMO_NN_USE_RAW_MODEL_BACKEND)
+elseif(COSMO_NN_USE_AXERA_BACKEND)
+    add_compile_definitions(
+        COSMO_NN_USE_AXERA_BACKEND
+        COSMO_NN_USE_HOST_BACKEND
+        COSMO_NN_USE_RAW_MODEL_BACKEND)
 endif()
 
 # A target package is always chip-specific even when several chips share one
@@ -141,7 +148,7 @@ endif()
 set(COSMO_TARGET_CHIP "" CACHE STRING "Target accelerator chip recorded in release packages")
 if(COSMO_TARGET_CHIP)
     string(TOLOWER "${COSMO_TARGET_CHIP}" COSMO_TARGET_CHIP_NORMALIZED)
-    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(bm1688|cv186x|bm1684|bm1684x|rk3576|rk3588|rv1126b|unspecified)$")
+    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(bm1688|cv186x|bm1684|bm1684x|rk3576|rk3588|rv1126b|ax650n|unspecified)$")
         message(FATAL_ERROR "Unsupported COSMO_TARGET_CHIP: ${COSMO_TARGET_CHIP}")
     endif()
 endif()
@@ -162,6 +169,24 @@ if(COSMO_NN_USE_RKNN_BACKEND)
         COSMO_RKNN_TARGET_CHIP_LABEL="${COSMO_TARGET_CHIP_LABEL}")
     message(STATUS
         "RKNN platform profile: ${COSMO_TARGET_CHIP_NORMALIZED} (${COSMO_PLATFORM_PROFILE})")
+endif()
+
+if(COSMO_NN_USE_AXERA_BACKEND)
+    if(NOT COSMO_TARGET_CHIP_NORMALIZED STREQUAL "ax650n")
+        message(FATAL_ERROR
+            "AXERA builds require COSMO_TARGET_CHIP=ax650n")
+    endif()
+    string(TOUPPER "${COSMO_TARGET_CHIP_NORMALIZED}" COSMO_TARGET_CHIP_LABEL)
+    set(COSMO_PLATFORM_PROFILE
+        "${CMAKE_SOURCE_DIR}/config/axera/platforms/${COSMO_TARGET_CHIP_NORMALIZED}.json")
+    if(NOT EXISTS "${COSMO_PLATFORM_PROFILE}")
+        message(FATAL_ERROR "AXERA platform profile not found: ${COSMO_PLATFORM_PROFILE}")
+    endif()
+    add_compile_definitions(
+        COSMO_AXERA_TARGET_CHIP="${COSMO_TARGET_CHIP_NORMALIZED}"
+        COSMO_AXERA_TARGET_CHIP_LABEL="${COSMO_TARGET_CHIP_LABEL}")
+    message(STATUS
+        "AXERA platform profile: ${COSMO_TARGET_CHIP_NORMALIZED} (${COSMO_PLATFORM_PROFILE})")
 endif()
 
 # Media acceleration is selected independently from inference. Defaults keep
@@ -407,6 +432,9 @@ endif()
 if(COSMO_NN_USE_RKNN_BACKEND)
     include(cmake/rknn.cmake)
     include(cmake/rkllm.cmake)
+endif()
+if(COSMO_NN_USE_AXERA_BACKEND)
+    include(cmake/axera.cmake)
 endif()
 if(COSMO_MEDIA_USE_ROCKCHIP_BACKEND)
     include(cmake/rockchip_media.cmake)

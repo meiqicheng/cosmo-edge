@@ -48,6 +48,13 @@ if(COSMO_NN_USE_RKNN_BACKEND)
     list(APPEND NN_ALL_SRC ${NN_RKNN_SRC})
 endif()
 
+if(COSMO_NN_USE_AXERA_BACKEND)
+    file(GLOB_RECURSE NN_AXERA_SRC
+        "${NN_DIR}/device/axera/*.h" "${NN_DIR}/device/axera/*.cc"
+    )
+    list(APPEND NN_ALL_SRC ${NN_AXERA_SRC})
+endif()
+
 # ── Build cosmo_nn OBJECT library ──
 add_library(cosmo_nn OBJECT ${NN_ALL_SRC})
 
@@ -83,6 +90,13 @@ if(COSMO_NN_USE_RKNN_BACKEND)
         COSMO_NN_USE_RAW_MODEL_BACKEND)
 endif()
 
+if(COSMO_NN_USE_AXERA_BACKEND)
+    target_compile_definitions(cosmo_nn PRIVATE
+        COSMO_NN_USE_AXERA_BACKEND
+        COSMO_NN_USE_HOST_BACKEND
+        COSMO_NN_USE_RAW_MODEL_BACKEND)
+endif()
+
 # Symbol hiding + suppress C++11-era warnings
 target_compile_options(cosmo_nn PRIVATE
     -fvisibility=hidden
@@ -103,6 +117,12 @@ if(COSMO_NN_USE_RKNN_BACKEND)
     target_link_libraries(cosmo_nn PRIVATE rknnrt)
     if(COSMO_MEDIA_USE_ROCKCHIP_BACKEND)
         target_link_libraries(cosmo_nn PRIVATE rockchip_rga)
+    endif()
+endif()
+if(COSMO_NN_USE_AXERA_BACKEND)
+    target_link_libraries(cosmo_nn PRIVATE ax_engine)
+    if(TARGET ax_sys)
+        target_link_libraries(cosmo_nn PRIVATE ax_sys)
     endif()
 endif()
 
