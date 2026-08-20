@@ -22,22 +22,23 @@
 编译、打包、部署并在 **爱芯元智 AX650N**（SoC 模块）上完成推理，达到与其他平台
 相同的验收门槛。首发范围参照 BM1684：**单路检测 + 分类**。
 
-### 平台事实（已核实，来源：AXERA-TECH 官方仓库/文档）
+### 平台事实（已核实，来源：AXERA 官方 SDK/仓库/文档，均本地可用）
 
-| 项 | 值 |
-| --- | --- |
-| 芯片 | 爱芯元智 **AX650N**（AX650A/AX650N 同族，终端计算 SoC） |
-| 开发板 | Sipeed **AXera-Pi Pro**（基于 AX650N） |
-| 模型格式 | `.axmodel`（Pulsar2 工具链从 ONNX 转换，INT8 量化；原生格式，无需封装） |
-| 模型转换工具 | **Pulsar2**（支持 AX650A/AX650N/AX630C/AX620Q；HuggingFace `AXERA-TECH/Pulsar2` 下载） |
-| 运行时 SDK | **AXCL**（`axcl-runtime`，`libaxcl.so`/`libaxcl_npu.so`，`AXCL_ENGINE_*` API）；AX650 传统栈为 **ax-engine**（`libax_engine.so`，`AX_ENGINE_*` API）——**需以官方最新 SDK 确认为准** |
-| 官方参考 | `AXERA-TECH/ax-samples`（BSD-3-Clause）、`ax-engine`、`axcl-runtime`、`ax-pipeline` |
-| 平台 | AArch64 Linux |
+| 项 | 值 | 本地位置 |
+| --- | --- | --- |
+| 芯片 | 爱芯元智 **AX650N**（AX650A/AX650N 同族，终端计算 SoC） | — |
+| 开发板 | Sipeed **AXera-Pi Pro**（基于 AX650N）；另有 AX650_emmc_ubuntu_rootfs 镜像 | `hardware/Axera爱芯元智/AX650_emmc_ubuntu_rootfs_desktop_V3.10.2_*.axp` |
+| **设备 SDK** | **AX650 SDK V3.10.2**（SoC 模式 = `package/msp/out`：`ax_engine_api.h`/`ax_engine_type.h`/`ax_sys_api.h` + `libax_engine.so`/`libax_sys.so`） | `hardware/Axera爱芯元智/AXERA-TECH/AX650-Community-Hub/AX650_SDK_V3.10.2_20260513151335` |
+| 模型格式 | `.axmodel`（Pulsar2 从 ONNX 转换，INT8 量化；**原生格式，无需封装**） | — |
+| 模型转换工具 | **Pulsar2**（自包含：`bin/pulsar2`，无需额外装 Python） | `hardware/Axera爱芯元智/AXERA-TECH/Pulsar2/ax_pulsar2_*_package` |
+| 推理 API | SoC 模式：`AX_ENGINE_Init` → `AX_ENGINE_CreateHandle`（从内存加载）→ `AX_ENGINE_CreateContext` → `AX_ENGINE_GetIOInfo` → `AX_SYS_MemAlloc`（物理内存）→ `AX_ENGINE_RunSync` → `AX_ENGINE_DestroyHandle`/`Deinit` | `ax_engine_api.h` + `ax_sys_api.h`（SDK 内） |
+| 官方示例 | `ax-samples`（BSD-3-Clause）`examples/ax650/ax_yolov8_steps.cc` 等 | `hardware/Axera爱芯元智/AXERA-TECH/ax-samples` |
+| 媒体 API | `ax_ivps_api.h`（图像处理）、`ax_adec/ax_venc`（编解码）、`ax_isp_api.h` | SDK `msp/out/include/` |
+| 烧录工具 | AXDL V1.23.33.1 | `hardware/Axera爱芯元智/AXDL_V1.23.33.1` |
 
-**注意**：ax-samples 中 `ax_asr_api` 显示 AX650/AX630C/AX620Q 传统上走 `ax_engine_impl`
-（`AX_ENGINE_*`），AX8850 走 `axcl_engine_impl`（`AXCL_ENGINE_*`）；而 `axcl-runtime`
-仓库同时托管 AXCL 实现并支持 AX650。**两条 API 线在拿到官方 SDK 前都保留为备选**，
-计划按 AXCL 主线（新统一 SDK），ax-engine 为降级备选。
+**SoC 模式（AX650N 板端）已定案**：使用 `ax_engine_api.h`（`AX_ENGINE_*`）+ `ax_sys_api.h`
+（`AX_SYS_MemAlloc`/`AX_SYS_MemAllocCached`，物理+虚拟地址，NPU DMA 经 phyAddr 访问）。
+AXCL（`AXCL_ENGINE_*`）为 PCIe/axcl-runtime 统一栈，**本任务不使用**（SDK 内 axcl 目录保留参考）。
 
 ### 边界（AGENTS.md 约束）
 
@@ -101,22 +102,23 @@ AX650N 需要新增**第四后端**（`COSMO_NN_USE_AXERA_BACKEND`），以下�
 
 确认全部需改动点，拿到 AX650N 全套 SDK 物料，识别无设备时的验证边界。
 
-### 待确认物料清单（已定决策更新）
+### 阶段 0 物料（已确认，均本地可用）
 
-- [ ] **AXCL SDK（axcl-runtime）**：AArch64 版本，`axcl.h` 头文件 + `libaxcl.so`/`libaxcl_npu.so` 运行库；**暂无现成 SDK，需从爱芯官方渠道获取**（HuggingFace/官网/axcl-runtime 仓库）；确认 AX650N 支持的 API 面（`AXCL_ENGINE_*` vs `AX_ENGINE_*`）
-- [ ] **Pulsar2 工具链**：HuggingFace `AXERA-TECH/Pulsar2` 下载，Python 3.10 环境（**WSL2 Ubuntu，复用 BM1684 转换环境**）
-- [ ] **AX650N 开发板/SoC 模块**：Sipeed AXera-Pi Pro 或客户 AX650N 模块（真机联调用）
-- [ ] **官方示例**：`ax-samples`（BSD-3-Clause）中 YOLOV8/分类示例，作为 `device/axera` 代码参照
-- [ ] **设备端内核模块/固件**：`axcl` 设备驱动、`/dev/ax*` 设备节点依赖确认
+- [x] **AX650 SDK V3.10.2**：`package/msp/out`（SoC 模式）——`ax_engine_api.h`/`ax_sys_api.h` + `libax_engine.so`/`libax_sys.so`，路径：`hardware/Axera爱芯元智/AXERA-TECH/AX650-Community-Hub/AX650_SDK_V3.10.2_20260513151335`
+- [x] **Pulsar2 工具链**：自包含 `bin/pulsar2`（自带 python3 与依赖库，无需额外环境），路径：`hardware/Axera爱芯元智/AXERA-TECH/Pulsar2/ax_pulsar2_*_package`
+- [x] **官方示例**：`ax-samples/examples/ax650/`（`ax_yolov8_steps.cc`、`ax_classification_steps.cc`、`middleware/io.hpp`），BSD-3-Clause
+- [x] **烧录/镜像**：AXDL V1.23.33.1 烧录工具 + AX650_emmc_ubuntu_rootfs_desktop_V3.10.2 根文件系统镜像
+- [ ] **AX650N 开发板/SoC 模块**：Sipeed AXera-Pi Pro 或客户 AX650N 模块（真机联调用，待确认）
+- [ ] **设备端驱动**：SDK `msp/out` 需随板部署（驱动/固件在 rootfs 镜像内）
 
-### 风险清单
+### 风险清单（已更新）
 
 | 风险 | 影响 | 缓解 |
 | --- | --- | --- |
-| AXCL vs ax-engine API 线不确定 | 后端代码方向 | 阶段 0 锁定官方 SDK 后定案；两个 API 面做条件编译隔离 |
-| AX650N 设备内存模型（`UsesHostMemory` 归属）不确定 | DeviceType 设计 | 拿 SDK 头文件后确认 `axclrtMalloc` vs host 指针 |
-| Pulsar2 转换环境依赖 | 模型转换阻塞 | WSL2 + Python 3.10（复用 BM1684 环境） |
 | 真机不在身边 | 端到端验收阻塞 | 无真机可推进项优先执行 |
+| Pulsar2 转换兼容性（onnxslim 前置） | 模型转换阻塞 | 官方要求转换前 `onnxslim` 优化（或 `--onnx_opt.enable_onnxsim true`），与 BM1684 流程可复用环境 |
+| AX_SYS_MemAlloc 物理内存模型与 CosmoEdge 内存抽象不匹配 | 后端接入复杂度 | 官方示例 `middleware/io.hpp` 已提供标准做法；初期按 host 内存模型接入 |
+| SDK 版本更新（V3.10.2 为当前本地版本） | 兼容性 | 以本地 SDK 为准，文档记录版本
 
 ---
 
@@ -155,24 +157,54 @@ AX650N 需要新增**第四后端**（`COSMO_NN_USE_AXERA_BACKEND`），以下�
 
 ## 7. 阶段 3 —— AXERA 推理后端接入
 
-### 新增 `src/nn/device/axera/`（参照 `rknn/` 结构）
+### 推理 API（已由官方 `ax_engine_api.h` / ax-samples `ax_yolov8_steps.cc` 确认）
+
+```cpp
+// 初始化（进程一次）
+AX_ENGINE_NPU_ATTR_T npu_attr{};
+npu_attr.eHardMode = AX_ENGINE_VIRTUAL_NPU_DISABLE;
+AX_ENGINE_Init(&npu_attr);
+
+// 从内存加载 .axmodel
+AX_ENGINE_HANDLE handle;
+AX_ENGINE_CreateHandle(&handle, model_buffer.data(), model_buffer.size());
+AX_ENGINE_CreateContext(handle);
+
+// 查询 IO 元数据
+AX_ENGINE_IO_INFO_T* io_info;
+AX_ENGINE_GetIOInfo(handle, &io_info);  // pInputs[i].pShape/pName/eDataType/eLayout/nSize
+
+// 分配 IO（SoC：AX_SYS_MemAlloc / AX_SYS_MemAllocCached，物理+虚拟地址）
+AX_SYS_MemAlloc(&phy, &vir, meta.nSize, 128, (const AX_S8*)"cosmo");
+memcpy(io_t->pInputs[i].pVirAddr, input_data, size);  // 输入写入
+
+// 同步推理
+AX_ENGINE_RunSync(handle, &io_data);
+// 输出从 io_t->pOutputs[i].pVirAddr 读取
+
+// 清理
+AX_ENGINE_DestroyHandle(handle);
+AX_ENGINE_Deinit();
+```
+
+### 新增 `src/nn/device/axera/`（参照 `rknn/` 结构 + 官方示例）
 
 | 文件 | 职责 |
 | --- | --- |
-| `axera_device.cc/.h` | `TypeDeviceRegister<...>(DEVICE_AXERA)`；设备内存分配（AXCL 或 host） |
+| `axera_device.cc/.h` | `TypeDeviceRegister<...>(DEVICE_AXERA)`；设备内存分配（宿主模型，`AX_SYS_MemAlloc` 物理内存或 host 内存） |
 | `axera_node_creator.cc/.h` | `NodeCreatorRegister<AxeraNodeCreator>(DEVICE_AXERA)` |
-| `axera_net_node.cc/.h` | 加载 `.axmodel`、`AXCL_ENGINE_*`（或 `AX_ENGINE_*`）创建 handle、绑定 IO、同步推理 |
-| `axera_preprocess_node.cc/.h` | 图像预处理（缩放/归一化/布局转换）——初期可用 CPU 节点或 AXERA IVPS |
+| `axera_net_node.cc/.h` | 加载 `.axmodel`（内存 buffer）、`AX_ENGINE_*` 创建 handle/context/IO、同步 `RunSync`、结果拷贝 |
+| `axera_preprocess_node.cc/.h` | 图像预处理（缩放/归一化/布局）——初期用 CPU 节点或 AXERA IVPS |
 | `axera_yolov8_adapter.cc/.h` | YOLOV8 输出解码（参照 rknn_yolov8_adapter） |
 
 ### 与 RKNN 模式的异同
 
 - **同**：`.axmodel` 原生格式无需封装；node creator/register 机制一致；`NnBackendConstants` 分支一致
-- **异**：SDK API 面（AXCL vs RKNN）；内存管理（需按 SDK 定）；IVPS（AXERA 硬件图像处理）是否启用
+- **异**：SDK API 面（`AX_ENGINE_*`/`AX_SYS_MemAlloc` vs `rknn_*`）；输入为物理内存（SoC）；IVPS（AXERA 硬件图像处理）是否启用
 
 ### 验收标准
 
-- `device/axera` 编译通过；x86/mock 冒烟（若 SDK 支持 x86 仿真）
+- `device/axera` 编译通过（x86 冒烟 stub，不依赖 SDK 时的桩路径）
 - 模型导入路径识别 `chip_type: AX650N`
 
 ---
@@ -194,20 +226,39 @@ AX650N 需要新增**第四后端**（`COSMO_NN_USE_AXERA_BACKEND`），以下�
 
 ## 9. 阶段 5 —— 模型转换与资源
 
-### 转换流程（参照 BM1684 的 TPU-MLIR 流程）
+### 转换流程（已由 Pulsar2 官方文档 `quick_start_ax650` 确认）
 
-1. **Pulsar2 安装**：WSL2 Ubuntu（Python 3.10），HuggingFace `AXERA-TECH/Pulsar2` wheel
-2. **ONNX → .axmodel**：`pulsar2 build`，目标 `AX650`，INT8 量化（需标定集）
-3. **产物**：YOLOV8n + 安全帽检测 `.axmodel`（首发范围，参照 BM1684）
-4. **资源集**：`data/resource/aiboxresource_ax650n/`：
-   - `model_template/`（yolov8_det.json 等，参照 bm1684 资源集）
-   - `models/prod_AXERA_<alg>_<name>_<ver>/config.json`（`chip_type: "AX650N"`）+ `model.axmodel`
-   - `algorithm/`、`i18n/`、`layout/`（参照 bm1684 资源集结构）
+```bash
+# Pulsar2 为自包含工具（bin/pulsar2，自带 python3 与依赖库）
+export PATH=$PATH:/path/to/ax_pulsar2_*_package/bin
+
+# 0) 模型优化（官方要求 onnxslim，或用 --onnx_opt.enable_onnxsim true）
+# pulsar2 build --onnx_opt.enable_onnxsim true ...
+
+# 1) 转换 ONNX -> .axmodel（目标 AX650）
+pulsar2 build --target_hardware AX650 \
+    --input model/yolov8n.onnx \
+    --output_dir output \
+    --config config/yolov8n_build_config.json
+# 产物：output/compiled.axmodel
+```
+
+**build_config.json 要点**（官方样例）：`model_type: ONNX`、`npu_mode: NPU1`、
+`quant.input_configs[]`（calibration_dataset/calibration_size/mean/std、MinMax）、
+`input_processors[]`（BGR/U8/NHWC、csc_mode NoCSC）。
+
+### 产物
+
+- **YOLOV8n + 安全帽检测 `.axmodel`**（首发范围，参照 BM1684；模型文件体积/量化信息记录）
+- 资源集 `data/resource/aiboxresource_ax650n/`：
+  - `model_template/`（yolov8_det.json 等，参照 bm1684 资源集）
+  - `models/prod_AXERA_<alg>_<name>_<ver>/config.json`（`chip_type: "AX650N"`）+ `model.axmodel`
+  - `algorithm/`、`i18n/`、`layout/`（参照 bm1684 资源集结构）
 
 ### 验收标准
 
 - Pulsar2 转换成功，`config.json` 的 `chip_type` 与 `NnBackendConstants.kSupportedChips` 匹配
-- 模型文件体积/量化信息记录（对标 bm1684 的 model.nn 记录）
+- `.axmodel` 可直接被 `AX_ENGINE_CreateHandle` 加载（可在 x86 用 `pulsar2 run` 仿真验证）
 
 ---
 
@@ -235,8 +286,8 @@ AX650N 需要新增**第四后端**（`COSMO_NN_USE_AXERA_BACKEND`），以下�
 
 ## 11. 阶段 0 之后的第一批行动项（无真机可做）
 
-1. 获取 AXCL SDK（AArch64）→ 确认 API 面与内存模型 → 定案 `DeviceType`/`UsesHostMemory`
-2. 编写 `cmake/axera.cmake` + `scripts/build_axera.sh` + 白名单/常量扩展
-3. 搭建 Pulsar2 转换环境（WSL2）→ 转换 YOLOV8n + 安全帽 `.axmodel`
+1. ✅ SDK 定位（已确认：AX650 SDK V3.10.2，SoC 模式 `msp/out`，`ax_engine_api.h` + `libax_engine.so`）
+2. 编写 `cmake/axera.cmake` + `scripts/build_axera.sh` + 白名单/常量扩展（Phase 1）
+3. 用 Pulsar2 转换 YOLOV8n + 安全帽 `.axmodel`（`pulsar2 build --target_hardware AX650`）
 4. 创建 `aiboxresource_ax650n/` 资源集
 5. 文档
