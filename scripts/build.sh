@@ -113,10 +113,21 @@ fi
 cmake --build . "${build_targets[@]}" -j"$(nproc)"
 
 echo "Auditing installed AArch64 ELF paths..."
+# Auto-detect the aarch64 readelf (ARM GNU Toolchain first, then distro apt).
+if [[ -n "${CROSS_READELF:-}" ]]; then
+    readelf_bin="${CROSS_READELF}"
+elif command -v aarch64-none-linux-gnu-readelf >/dev/null 2>&1; then
+    readelf_bin=aarch64-none-linux-gnu-readelf
+elif command -v aarch64-linux-gnu-readelf >/dev/null 2>&1; then
+    readelf_bin=aarch64-linux-gnu-readelf
+else
+    echo "ERROR: no aarch64 readelf found (set CROSS_READELF)" >&2
+    exit 1
+fi
 unsafe_elf_path=0
 while IFS= read -r -d '' installed_file; do
-    if aarch64-linux-gnu-readelf -hW "${installed_file}" >/dev/null 2>&1; then
-        dynamic_metadata=$(aarch64-linux-gnu-readelf -dW "${installed_file}")
+    if "${readelf_bin}" -hW "${installed_file}" >/dev/null 2>&1; then
+        dynamic_metadata=$("${readelf_bin}" -dW "${installed_file}")
         if grep -Eq '/workspace|thirdparty_install|3rd/libsophon' \
                 <<<"${dynamic_metadata}"
         then

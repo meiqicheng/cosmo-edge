@@ -13,7 +13,15 @@ fi
 
 runtime_root="$(cd "$1" && pwd)"
 output_dir="${2:-$PWD/build/rknn-runtime-probe}"
-cxx="${CXX:-aarch64-linux-gnu-g++}"
+# Use CXX if given, else auto-detect the aarch64 cross compiler (ARM GNU
+# Toolchain first, then the distro apt package).
+if [[ -n "${CXX:-}" ]]; then
+    cxx="$CXX"
+elif command -v aarch64-none-linux-gnu-g++ >/dev/null 2>&1; then
+    cxx=aarch64-none-linux-gnu-g++
+else
+    cxx=aarch64-linux-gnu-g++
+fi
 
 header="$runtime_root/include/rknn_api.h"
 library="$runtime_root/lib/librknnrt.so"
