@@ -4,11 +4,12 @@
 > 基线：`feature/multi-chip-support`（0a1e7ba9，含 BM1684 + RK3588 支持）
 > 目标：在现有 Sophon（BM1688/CV186X/BM1684）与 Rockchip（RK3576/RK3588）基础上，
 > 新增爱芯元智（AXERA）**AX650N**（SoC 模块）支持。
-> 状态：**计划中（Reviewed）**
+> 状态：**实施中**（Phase 0/1/3/5 已完成；Phase 2/6/7 待办）
 > 已确认决策（2026-08-20）：
 > - **AXCL SDK**：暂无现成 SDK，需从爱芯官方渠道获取（HuggingFace/官网/axcl-runtime 仓库）
 > - **模型转换环境**：WSL2 Ubuntu + Python 3.10（复用 BM1684 TPU-MLIR 已验证环境）
 > - **媒体后端**：初期复用 CPU/FFmpeg 软解 + AXERA NPU 推理；AXERA 硬件媒体（IVPS/VDEC）列为后续技术债
+> - **Pulsar2**：v6.0 独立包（lite）已通过 Magnetar 安装脚本从 ModelScope 下载，本地可用
 > ⚠️ **真机状态**：AX650N 真机/开发板暂未确认在身边——Phase 0 实测、Phase 5 真机联调
 > 阻塞；无真机可推进项（构建冒烟、资源集、模型转换、纯代码、文档）优先执行。
 

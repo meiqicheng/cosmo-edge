@@ -1,0 +1,41 @@
+{
+  "model_type": "ocr",
+  "chip_type": "BM1684",
+  "algorithm_code": "",
+  "version": "V1.0.0",
+  "reduce": "",
+  "models": [
+    {
+      "name": "OCR",
+      "file_name": "",
+      "file_md5": "",
+      "max_batch": 1,
+      "inputs": [
+        {
+          "name": "images",
+          "shape": [-1, 3, 32, 320],
+          "data_type": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "output",
+          "shape": [-1, -1, -1],
+          "data_type": 0
+        }
+      ],
+      "params": {
+        "input_size": [32, 320],
+        "normalize_mean": [127.5, 127.5, 127.5],
+        "normalize_scale": 0.00784314,
+        "is_bgr": true,
+        "character_table_file": "character_table.txt",
+        "ctc_blank_index": 0,
+        "ctc_prepend_tokens": [],
+        "ctc_append_tokens": [],
+        "ctc_class_count": 0
+      }
+    }
+  ],
+  "labels": []
+}
