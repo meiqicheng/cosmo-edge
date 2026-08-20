@@ -19,6 +19,8 @@ next:
 | --- | --- |
 | `data/resource/aiboxresource_bm1688` | Sophon BM1688 发布包资源 |
 | `data/resource/aiboxresource_cv186x` | Sophon CV186X 发布包资源 |
+| `data/resource/aiboxresource_bm1684` | Sophon BM1684 发布包资源 |
+| `data/resource/aiboxresource_bm1684x` | Sophon BM1684X 发布包资源 |
 | `data/resource/aiboxresource_x86` | x86 Docker/CPU 后端资源 |
 
 构建时通过 `RESOURCE_DIR` 选择资源目录。

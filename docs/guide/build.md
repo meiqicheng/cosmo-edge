@@ -94,6 +94,8 @@ Linux / Bash：
 # 显式选择型号
 ./scripts/docker-compose.sh -f docker-compose.sophon.yml run --rm cosmo-sophon-package --chip bm1688
 ./scripts/docker-compose.sh -f docker-compose.sophon.yml run --rm cosmo-sophon-package --chip cv186x
+./scripts/docker-compose.sh -f docker-compose.sophon.yml run --rm cosmo-sophon-package --chip bm1684
+./scripts/docker-compose.sh -f docker-compose.sophon.yml run --rm cosmo-sophon-package --chip bm1684x
 ```
 
 Windows PowerShell：
@@ -105,6 +107,8 @@ Windows PowerShell：
 # 显式选择型号
 .\scripts\build_sophon_package.ps1 -Chip bm1688
 .\scripts\build_sophon_package.ps1 -Chip cv186x
+.\scripts\build_sophon_package.ps1 -Chip bm1684
+.\scripts\build_sophon_package.ps1 -Chip bm1684x
 ```
 
 两个支持的配置使用相互隔离的输出目录：

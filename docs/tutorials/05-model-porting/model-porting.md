@@ -38,7 +38,7 @@ next: false
 | 目标后端 | “添加模型”接受的文件 | 模型包导入时的主文件 | 当前运行方式 | 设备条件 |
 | --- | --- | --- | --- | --- |
 | x86 CPU | `.onnx` | `model.onnx` | ONNX Runtime CPU | x86_64 主机和对应 CosmoEdge 构建 |
-| Sophon | `.bmodel` | `model.nn` | Sophon BMRT | BM1688 或 CV186X，转换产物必须匹配芯片 |
+| Sophon | `.bmodel` | `model.nn` | Sophon BMRT | BM1688、CV186X、BM1684 或 BM1684X，转换产物必须匹配芯片 |
 | Rockchip RKNN | `.rknn` | `model.rknn` | RKNN Runtime | RK3576 或 RV1126B，转换产物必须匹配实际芯片 |
 
 `model.nn` 是 CosmoEdge 模型包中的内部文件名，封装的是设备侧模型；通过页面单独添加

@@ -74,9 +74,12 @@ ${INSTALLPATH}/scripts/run_start.sh start /data/cwaiuserdata/log/logs/INTE_RUN_c
 
 | 参数 | 支持值 | 默认值 |
 | --- | --- | --- |
-| `--chip` | `bm1688`、`cv186x` | `bm1688` |
+| `--chip` | `bm1688`、`cv186x`、`bm1684`、`bm1684x` | `bm1688` |
 
-`docker-compose.sophon.yml` 向构建容器传入：
+芯片型号通过 Compose 服务后的 `--chip <型号>` 参数传入，支持 `bm1688`、`cv186x`、`bm1684` 与 `bm1684x`；
+省略 `--chip` 时默认为 `bm1688`。构建脚本会自动选择匹配的资源目录。
+其中 `bm1684` 与 `bm1684x` 使用 libsophon 0.5.x SDK（BM1684/BM1684X 家族），
+其余 Sophon 芯片使用 0.4.x SDK。
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
@@ -111,6 +114,8 @@ ${INSTALLPATH}/scripts/run_start.sh start /data/cwaiuserdata/log/logs/INTE_RUN_c
 | x86 Docker | `data/resource/aiboxresource_x86` |
 | Sophon BM1688 | `data/resource/aiboxresource_bm1688` |
 | Sophon CV186X | `data/resource/aiboxresource_cv186x` |
+| Sophon BM1684 | `data/resource/aiboxresource_bm1684` |
+| Sophon BM1684X | `data/resource/aiboxresource_bm1684x` |
 | Rockchip RK3576 | `data/resource/aiboxresource_rknn` |
 | Rockchip RV1126B | `data/resource/aiboxresource_rknn` + ignored 目标 overlay |
 
