@@ -2,6 +2,7 @@
 
 #include "nn/device/axera/axera_node_creator.h"
 
+#include "nn/device/axera/axera_net_node.h"
 #include "nn/device/host/host_node_factory.h"
 
 namespace cosmo::nn {
@@ -9,10 +10,8 @@ namespace cosmo::nn {
 AxeraNodeCreator::AxeraNodeCreator(DeviceType device_type) : NodeCreator(device_type) {}
 
 std::unique_ptr<Node> AxeraNodeCreator::CreateNode(NodeType type) {
-    // Phase 1: route all nodes through the host factory so an AXERA build can
-    // link and run with the software pipeline. Phase 3 adds AxeraNetNode
-    // (AX_ENGINE_*) and AXERA preprocess nodes here.
-    (void)type;
+    if (type == NODE_NET)
+        return std::make_unique<AxeraNetNode>();
     return CreateHostNode(type);
 }
 
