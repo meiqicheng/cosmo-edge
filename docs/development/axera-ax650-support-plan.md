@@ -4,12 +4,13 @@
 > 基线：`feature/multi-chip-support`（0a1e7ba9，含 BM1684 + RK3588 支持）
 > 目标：在现有 Sophon（BM1688/CV186X/BM1684）与 Rockchip（RK3576/RK3588）基础上，
 > 新增爱芯元智（AXERA）**AX650N**（SoC 模块）支持。
-> 状态：**实施中**（Phase 0/1/3/5 已完成；Phase 2/6/7 待办）
+> 状态：**实施中**（Phase 0/1/2/3/5 已完成；Phase 6/7 待办）
 > 已确认决策（2026-08-20）：
 > - **AXCL SDK**：暂无现成 SDK，需从爱芯官方渠道获取（HuggingFace/官网/axcl-runtime 仓库）
 > - **模型转换环境**：WSL2 Ubuntu + Python 3.10（复用 BM1684 TPU-MLIR 已验证环境）
-> - **媒体后端**：初期复用 CPU/FFmpeg 软解 + AXERA NPU 推理；AXERA 硬件媒体（IVPS/VDEC）列为后续技术债
-> - **Pulsar2**：v6.0 独立包（lite）已通过 Magnetar 安装脚本从 ModelScope 下载，本地可用
+> - **媒体后端**：`COSMO_MEDIA_USE_AXERA_BACKEND` 已启用——AX650 VDEC/VENC/IVPS 硬件媒体（MPP 风格，失败自动回退 CPU/FFmpeg）
+> - **Pulsar2**：v6.0 独立包（lite）已通过 Magnetar 安装脚本从 ModelScope 下载，
+>   安装于 WSL `~/.cache/magnetar/pulsar2/6.0/`（详见第 9 节）
 > ⚠️ **真机状态**：AX650N 真机/开发板暂未确认在身边——Phase 0 实测、Phase 5 真机联调
 > 阻塞；无真机可推进项（构建冒烟、资源集、模型转换、纯代码、文档）优先执行。
 
@@ -31,7 +32,7 @@
 | 开发板 | Sipeed **AXera-Pi Pro**（基于 AX650N）；另有 AX650_emmc_ubuntu_rootfs 镜像 | `hardware/Axera爱芯元智/AX650_emmc_ubuntu_rootfs_desktop_V3.10.2_*.axp` |
 | **设备 SDK** | **AX650 SDK V3.10.2**（SoC 模式 = `package/msp/out`：`ax_engine_api.h`/`ax_engine_type.h`/`ax_sys_api.h` + `libax_engine.so`/`libax_sys.so`） | `hardware/Axera爱芯元智/AXERA-TECH/AX650-Community-Hub/AX650_SDK_V3.10.2_20260513151335` |
 | 模型格式 | `.axmodel`（Pulsar2 从 ONNX 转换，INT8 量化；**原生格式，无需封装**） | — |
-| 模型转换工具 | **Pulsar2**（自包含：`bin/pulsar2`，无需额外装 Python） | `hardware/Axera爱芯元智/AXERA-TECH/Pulsar2/ax_pulsar2_*_package` |
+| 模型转换工具 | **Pulsar2 v6.0**（独立包 lite，自包含 `bin/pulsar2`，无需额外装 Python） | WSL `~/.cache/magnetar/pulsar2/6.0/`（安装位置见第 9 节） |
 | 推理 API | SoC 模式：`AX_ENGINE_Init` → `AX_ENGINE_CreateHandle`（从内存加载）→ `AX_ENGINE_CreateContext` → `AX_ENGINE_GetIOInfo` → `AX_SYS_MemAlloc`（物理内存）→ `AX_ENGINE_RunSync` → `AX_ENGINE_DestroyHandle`/`Deinit` | `ax_engine_api.h` + `ax_sys_api.h`（SDK 内） |
 | 官方示例 | `ax-samples`（BSD-3-Clause）`examples/ax650/ax_yolov8_steps.cc` 等 | `hardware/Axera爱芯元智/AXERA-TECH/ax-samples` |
 | 媒体 API | `ax_ivps_api.h`（图像处理）、`ax_adec/ax_venc`（编解码）、`ax_isp_api.h` | SDK `msp/out/include/` |
@@ -141,18 +142,47 @@ AX650N 需要新增**第四后端**（`COSMO_NN_USE_AXERA_BACKEND`），以下�
 
 ---
 
-## 6. 阶段 2 —— 构建矩阵与运行时库
+## 6. 阶段 2 —— 构建矩阵与运行时库（已完成 ✅）
 
-### 改动点
+### 改动点（已落地）
 
-1. `cmake/axera.cmake`（新）：`COSMO_AXERA_ROOT` 定位 `axcl.h`/`libaxcl.so`（或 `ax_engine_api.h`/`libax_engine.so`）→ IMPORTED target `axcl`/`axengine`
-2. `src/nn/CMakeLists.txt`：收集 `device/axera/*`、定义 `COSMO_NN_USE_AXERA_BACKEND`（+ `COSMO_NN_USE_HOST_BACKEND` 若适用）、链接 axcl
-3. 运行时库随包拷贝（参照 `device.cmake` 的 `install(DIRECTORY .../lib/)`）
+1. `toolchains/aarch64-axera.toolchain.cmake`（新）：ARM GNU gcc-arm-9.2 交叉工具链
+   （`/opt/axera/toolchain/gcc-arm-9.2`，WSL 内避免中文路径）；`CMAKE_SYSROOT` 锁定
+   `aarch64-none-linux-gnu/libc` 自包含 sysroot，宿主 `/usr/include` 永不进入编译
+2. `cmake/axera.cmake`（Phase 1 新增）：`COSMO_AXERA_ROOT` → `ax_engine`/`ax_sys` IMPORTED
+3. `cmake/axera_media.cmake`（新）：`ax_comm`/`ax_vdec`/`ax_venc`/`ax_ivps` IMPORTED
+4. `cmake/curl.cmake` + `cmake/curl_build_wrapper.sh`（新）：curl 交叉构建修复——
+   `CMAKE_IGNORE_PATH` 排除宿主头、`ENABLE_THREADED_RESOLVER=OFF`、禁用 brotli/zstd、
+   链接 zlib；wrapper 在构建前清洗 flags.make 的 `-I/usr/include` 并 patch
+   `curl_config.h` 补交叉 sysroot 能力宏（HAVE_UNISTD_H/HAVE_SOCKLEN_T/...）
+5. 顶层 `CMakeLists.txt`：媒体后端四选一（含 `COSMO_MEDIA_USE_AXERA_BACKEND`）；
+   AXERA 分支追加 `COMMON_LIBS`（ax_engine/ax_sys/ax_comm/ax_vdec/ax_venc/ax_ivps）、
+   `BUILD_RPATH`+`INSTALL_RPATH="$ORIGIN/../lib"`、
+   `-Wl,-rpath-link,<SDK>/lib` + `-Wl,--allow-shlib-undefined`（容忍 SDK 内部依赖
+   spdlog/axcl 与板载 libexif、vendor ffmpeg 的 GLIBC_2.33+ 符号）
+6. 第三方库全部交叉编译成功：cryptopp/curl/event/fmt/glog/mp4v2/mqtt/openssl/
+   sqlitecpp/srs/tokenizers/uSockets/uuid/zlib
 
-### 验收标准
+### 交叉编译踩坑记录（Windows 宿主 + WSL）
 
-- 交叉编译产物含 AXERA 运行时库与 `target-chip.txt` 芯片标签（`ax650n`）
-- 既有平台回归通过（Sophon bm1688/bm1684 + RKNN）
+- **中文路径**：`hardware/Axera爱芯元智/` 含非 ASCII，srs configure 参数被截断 →
+  复制 SDK/工具链到 `/opt/axera/sdk`、`/opt/axera/toolchain`（无中文）
+- **CRLF 脚本**：Windows 检出使 mp4v2/openssl/srs 内嵌脚本与 curl 头文件变 CRLF →
+  `tr -d '\r'` 批量修复（含 srs `objs/Makefile`，否则 `-Wall` 变 `-W\ll`）
+- **curl 宿主 include 污染**：curl configure 把宿主 `/usr/include` 写入 flags.make
+  （宿主 glibc 2.36 的 `__attr_dealloc` 破坏 gcc 9.2）→ wrapper 构建前清理
+- **openssl armcap.d.tmp 并行竞争**：`-j2` 串行化解决
+- **prebuild symlink 被文本化**：Windows 检出把 git symlink（如 `libavcodec.so`）
+  变成文本文件 → WSL 内重建符号链接（`tmp_fix_symlinks.sh`）
+- **link-time SDK 依赖**：`libax_comm.so` 依赖 `libspdlog.so`/`libaxclrt_worker.so`
+  （SDK 自带，`-rpath-link` 解析）；`libax_venc.so` 依赖 libexif、vendor ffmpeg
+  需 GLIBC_2.33+（板载系统库，`--allow-shlib-undefined` 容忍）
+
+### 验收标准（已达成）
+
+- ✅ 交叉编译产物含 AXERA 运行时库与 `target-chip.txt` 芯片标签（`ax650n`）
+- ✅ `install/bin/cosmo-engine` 为 aarch64 ELF（RPATH `$ORIGIN/../lib`）
+- ✅ `install/lib/` 含全套 libax_* 与第三方运行时（124 个库文件）
 
 ---
 
@@ -210,43 +240,153 @@ AX_ENGINE_Deinit();
 
 ---
 
-## 8. 阶段 4 —— 媒体后端决策
+## 8. 阶段 4 —— 媒体后端决策（已定案并落地 ✅）
 
-**已定案（2026-08-20）**：初期复用 `COSMO_MEDIA_USE_CPU_BACKEND`（FFmpeg 软解 + 软处理），
-推理走 AXERA NPU——与 RKNN 初期模式一致，最快打通端到端。
+**已实现（2026-08-21）**：`COSMO_MEDIA_USE_AXERA_BACKEND` 启用 AX650 专用硬件媒体：
 
-**后续**：AX650 原生媒体栈（`axcl_vdec`/`axcl_venc`/`axcl_ivps`）作为独立技术债，
-需 AArch64 设备验证，列入后续里程碑。
+- `VideoDecoderAxera`：AX_VDEC 组/通道（H264/H265 流模式、SDK 自动帧池），
+  NV12→I420 拷贝出帧；MPP 初始化失败自动回退 `VideoDecoderCpu`（FFmpeg 软解）
+- `VideoEncoderAxera`：AX_VENC 通道（H264 编码），失败回退 CPU 编码
+- `VideoFrameProcAxera`：Phase-1 委托 CPU 实现（IVPS 硬件路径待真机验证后启用）
+- `src/media/CMakeLists.txt`：`MEDIA_AXERA_SRC`（含 CPU 解码/编码/帧处理作为回退，
+  `VideoFrameProcCpu.cc` 同时承载 STB_IMAGE_IMPLEMENTATION）
+- `src/service/.../AcceleratorMetricsProviderAxera.cc`：AXERA 版 NPU 指标查询
+  （当前返回中立值，待 runtime 暴露 npu_perf 计数器）
 
 ### 决策记录
 
 - 初期：CPU 媒体 + AXERA 推理（无硬件媒体依赖，真机验证门槛最低）✅ 已确认
-- 后续：AXERA 硬件媒体（需 SDK 媒体模块 + 真机）
+- 落地：AXERA 硬件媒体（VDEC/VENC 已实现 + CPU 回退兜底）✅ 2026-08-21
+- 后续：IVPS 硬件帧处理路径（需真机验证）
 
 ---
 
 ## 9. 阶段 5 —— 模型转换与资源
 
-### 转换流程（已由 Pulsar2 官方文档 `quick_start_ax650` 确认）
+### 9.1 工具链安装位置（已确认，WSL 内）
+
+Pulsar2 是 AXERA 官方模型转换工具（ONNX → `.axmodel`，INT8 量化）；Magnetar 是
+Pulsar2 的 AI Agent 自动化流水线（非编译器本体），其 `scripts/install_pulsar2.sh`
+揭示了官方独立包的正确下载地址（ModelScope 国内镜像，无需 NDA）。
+
+| 组件 | 位置（WSL 路径） | 说明 |
+| --- | --- | --- |
+| **Magnetar 仓库** | `/opt/axera/Magnetar` | git clone（gh-proxy 代理），HEAD `0a2160d`，仅脚本/流水线 |
+| **Pulsar2 6.0 工具链**（解压后） | `~/.cache/magnetar/pulsar2/6.0/` | `bin/pulsar2` 可用，`version: 6.0 commit: 48520c11` |
+| Pulsar2 下载缓存（tar.gz） | `~/.cache/magnetar/ax_pulsar2_6.0.tar.gz` | 716MB 源包（lite） |
+
+Windows 侧没有工具链；本地 `hardware/Axera爱芯元智/AXERA-TECH/Pulsar2/ax_pulsar2_*_package`
+为**不完整包**（缺 python3 运行时与 yamain 源码），不可用，以 WSL 内安装为准。
+
+**常驻使用方式**：
 
 ```bash
-# Pulsar2 为自包含工具（bin/pulsar2，自带 python3 与依赖库）
-export PATH=$PATH:/path/to/ax_pulsar2_*_package/bin
+export PULSAR2_HOME=/root/.cache/magnetar/pulsar2/6.0
+/root/.cache/magnetar/pulsar2/6.0/bin/pulsar2 build --target_hardware AX650 ...
+```
 
-# 0) 模型优化（官方要求 onnxslim，或用 --onnx_opt.enable_onnxsim true）
-# pulsar2 build --onnx_opt.enable_onnxsim true ...
+### 9.2 后续如何转换模型（可复现流程）
 
-# 1) 转换 ONNX -> .axmodel（目标 AX650）
-pulsar2 build --target_hardware AX650 \
-    --input model/yolov8n.onnx \
-    --output_dir output \
-    --config config/yolov8n_build_config.json
+#### 步骤 1：获取 Pulsar2 工具链
+
+Pulsar2 官方以 Docker 镜像（~3 GB，NDA 渠道）或**独立安装包（lite，~700 MB）**分发。
+独立包从国内 ModelScope 镜像直接下载，无需 NDA：
+
+```bash
+# 下载并解压（示例 v6.0，约 716 MB）
+mkdir -p ~/.cache/magnetar/pulsar2/6.0
+curl -L -o /tmp/pulsar2.tar.gz \
+  "https://modelscope.cn/models/AXERA-TECH/Pulsar2/resolve/master/6.0/ax_pulsar2_6.0_lite_package.tar.gz"
+tar -xzf /tmp/pulsar2.tar.gz -C ~/.cache/magnetar/pulsar2/6.0 --strip-components=1
+
+# 验证
+~/.cache/magnetar/pulsar2/6.0/bin/pulsar2 version
+# version: 6.0
+```
+
+> 参考：开源仓库 `AXERA-TECH/Magnetar`（MIT）的 `scripts/install_pulsar2.sh` 提供一键
+> 安装（ModelScope 优先、hf-mirror 回退）；`pulsar2_reference_config.json` 是 build
+> config 的权威参考。本仓库不内置 Pulsar2。
+
+#### 步骤 2：准备校准数据
+
+Pulsar2 量化需要 Numpy 校准集：`tar.gz` 内含 `{0000..NNNN}.npy`，**float32、带
+batch 维、shape 与模型输入完全一致**（NCHW `[1,C,H,W]`）。可用真实图片（推荐 ≥ 8 张）
+或合成样本（渐变/纹理/棋盘），合成样本足以跑通流程但真实数据量化精度更稳：
+
+```python
+import numpy as np, tarfile, os
+
+np.random.seed(2026)
+samples = [np.random.rand(640, 640, 3).astype(np.float32) * 0.4 for _ in range(8)]
+npy = []
+for i, img in enumerate(samples):
+    arr = np.transpose(img, (2, 0, 1))[None, :, :, :].astype(np.float32)  # [1,3,640,640]
+    p = f"images_{i:04d}.npy"; np.save(p, arr); npy.append(p)
+with tarfile.open("images.tar.gz", "w:gz") as tar:
+    for p in npy: tar.add(p, arcname=p)
+```
+
+#### 步骤 3：编写 build config 并转换
+
+参考配置（`compiler.check=3` 会在编译期做 ONNX vs AXMODEL 余弦验证）：
+
+```json
+{
+  "model_type": "ONNX",
+  "target_hardware": "AX650",
+  "npu_mode": "NPU3",
+  "input_shapes": "images:1x3x640x640",
+  "onnx_opt": { "enable_onnxsim": true, "model_check": true },
+  "quant": {
+    "calibration_method": "MinMax",
+    "input_configs": [{
+      "tensor_name": "images",
+      "calibration_dataset": "/abs/path/to/images.tar.gz",
+      "calibration_format": "Numpy",
+      "calibration_size": 8,
+      "calibration_mean": [0, 0, 0],
+      "calibration_std": [255, 255, 255]
+    }],
+    "highest_mix_precision": false,
+    "precision_analysis": false
+  },
+  "compiler": { "check": 3 }
+}
+```
+
+执行转换（**`calibration_dataset` 必须使用绝对路径**，勿用 Docker 风格 `/workspace/...`）：
+
+```bash
+PULSAR2=~/.cache/magnetar/pulsar2/6.0/bin/pulsar2
+"$PULSAR2" build \
+  --target_hardware AX650 \
+  --input model/yolov8n.onnx \
+  --output_dir output \
+  --config build_config.json
 # 产物：output/compiled.axmodel
 ```
 
-**build_config.json 要点**（官方样例）：`model_type: ONNX`、`npu_mode: NPU1`、
-`quant.input_configs[]`（calibration_dataset/calibration_size/mean/std、MinMax）、
-`input_processors[]`（BGR/U8/NHWC、csc_mode NoCSC）。
+#### 步骤 4：转换后校验与入库
+
+- 转换日志关注 `cosin simularity is X`，低于阈值（如 0.99）说明量化掉点，需换
+  校准数据或 `calibration_method`（KL/Percentile/MSE）。
+- `.axmodel` 原生入库，无需 CENN 封装；目录约定 `prod_AXERA_<alg>_<name>_<ver>/`，
+  `config.json` 的 `chip_type` 写 `AX650N`、`file_name` 写 `model.axmodel`。
+- 资源集放 `data/resource/aiboxresource_ax650n/`（模型 + 共享 algorithm/i18n/layout）。
+- 转换通过 ≠ 设备验收：必须在 AX650N 板端验证 Runtime/驱动、数值、图片与视频链路、
+  5 FPS 目标与稳定性，结果绑定产物 SHA-256。
+
+### 9.3 实际执行记录（2026-08-20，已完成）
+
+| 项 | 值 |
+| --- | --- |
+| Pulsar2 版本 | **v6.0**（独立包 lite，ModelScope 下载 716MB，commit `48520c11`） |
+| 校准数据 | Numpy 格式 `tar.gz` 内含 `{0000..NNNN}.npy`（float32、带 batch 维、shape 与模型输入一致）；本次用 8 张合成样本（渐变/纹理/棋盘） |
+| build config | `onnx_opt.enable_onnxsim: true`、`calibration_method: MinMax`、`npu_mode: NPU3`、`compiler.check: 3`（余弦验证）；`calibration_dataset` 用绝对路径 |
+| YOLOV8n 产物 | `compiled.axmodel` 3.64MB（NPU 1 subgraph，4.37 GMACs），**cos 0.9999999956** |
+| helmet 产物 | `compiled.axmodel` 1.60MB（NPU 1 subgraph），**cos 0.9999999987** |
+| 源 ONNX | `aiboxresource_x86/models/`（YOLOV8n 12.3MB、helmet 5.5MB，与 BM1684 转换同一批） |
 
 ### 产物
 
@@ -288,7 +428,7 @@ pulsar2 build --target_hardware AX650 \
 ## 11. 阶段 0 之后的第一批行动项（无真机可做）
 
 1. ✅ SDK 定位（已确认：AX650 SDK V3.10.2，SoC 模式 `msp/out`，`ax_engine_api.h` + `libax_engine.so`）
-2. 编写 `cmake/axera.cmake` + `scripts/build_axera.sh` + 白名单/常量扩展（Phase 1）
-3. 用 Pulsar2 转换 YOLOV8n + 安全帽 `.axmodel`（`pulsar2 build --target_hardware AX650`）
-4. 创建 `aiboxresource_ax650n/` 资源集
-5. 文档
+2. ✅ 编写 `cmake/axera.cmake` + `scripts/build_axera.sh` + 白名单/常量扩展（Phase 1，已提交）
+3. ✅ 用 Pulsar2 转换 YOLOV8n + 安全帽 `.axmodel`（`pulsar2 build --target_hardware AX650`，Phase 5，已提交）
+4. ✅ 创建 `aiboxresource_ax650n/` 资源集（Phase 5，已提交）
+5. 文档（model-porting AXERA 章节等）

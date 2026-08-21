@@ -64,12 +64,32 @@ set(MEDIA_ROCKCHIP_SRC
     VideoFrameProcRockchip.cc    VideoFrameProcRockchip.h
 )
 
+# AX650 hardware backend: libax_vdec/venc/ivps (MPP style). The CPU frame
+# proc remains the trusted path until the IVPS hardware path is validated
+# (VideoFrameProcAxera delegates to VideoFrameProcCpu, which also owns the
+# STB_IMAGE_IMPLEMENTATION translation unit used by EncodedImageInfo).
+# The CPU decoder/encoder are compiled in as fault-tolerance fallbacks used
+# when MPP group/channel creation fails on the target.
+set(MEDIA_AXERA_SRC
+    VideoDecoderCreateAxera.cc
+    VideoDecoderAxera.cc          VideoDecoderAxera.h
+    VideoDecoderCpu.cc            VideoDecoderCpu.h
+    VideoEncoderCreateAxera.cc
+    VideoEncoderAxera.cc          VideoEncoderAxera.h
+    VideoEncoderCpu.cc            VideoEncoderCpu.h
+    VideoFrameProcCpu.cc          VideoFrameProcCpu.h
+    VideoFrameProcFactoryAxera.cc
+    VideoFrameProcAxera.cc        VideoFrameProcAxera.h
+)
+
 if(COSMO_MEDIA_USE_SOPHON_BACKEND)
     add_library(cosmo_media OBJECT ${MEDIA_COMMON_SRC} ${MEDIA_SOPHON_SRC})
 elseif(COSMO_MEDIA_USE_CPU_BACKEND)
     add_library(cosmo_media OBJECT ${MEDIA_COMMON_SRC} ${MEDIA_CPU_SRC})
 elseif(COSMO_MEDIA_USE_ROCKCHIP_BACKEND)
     add_library(cosmo_media OBJECT ${MEDIA_COMMON_SRC} ${MEDIA_ROCKCHIP_SRC})
+elseif(COSMO_MEDIA_USE_AXERA_BACKEND)
+    add_library(cosmo_media OBJECT ${MEDIA_COMMON_SRC} ${MEDIA_AXERA_SRC})
 else()
     message(FATAL_ERROR "No media backend selected")
 endif()
@@ -83,6 +103,10 @@ target_link_libraries(cosmo_media PRIVATE cosmo_common
     ffmpeg_avcodec ffmpeg_avdevice ffmpeg_avformat ffmpeg_avutil ffmpeg_swscale
     stb mp4v2
 )
+
+if(COSMO_MEDIA_USE_AXERA_BACKEND)
+    target_link_libraries(cosmo_media PRIVATE ax_sys ax_comm ax_vdec ax_venc ax_ivps)
+endif()
 if(COSMO_MEDIA_USE_SOPHON_BACKEND)
     target_link_libraries(cosmo_media PRIVATE bmlib bmcv bmvd bmvenc)
 elseif(COSMO_MEDIA_USE_ROCKCHIP_BACKEND)

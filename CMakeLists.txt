@@ -195,11 +195,14 @@ endif()
 set(_cosmo_media_sophon_default OFF)
 set(_cosmo_media_cpu_default OFF)
 set(_cosmo_media_rockchip_default OFF)
+set(_cosmo_media_axera_default OFF)
 if(COSMO_NN_USE_SOPHON_BACKEND)
     set(_cosmo_media_sophon_default ON)
 elseif(COSMO_NN_USE_RKNN_BACKEND AND
        (COSMO_ROCKCHIP_MEDIA_ROOT OR DEFINED ENV{ROCKCHIP_MEDIA_ROOT}))
     set(_cosmo_media_rockchip_default ON)
+elseif(COSMO_NN_USE_AXERA_BACKEND)
+    set(_cosmo_media_axera_default ON)
 else()
     set(_cosmo_media_cpu_default ON)
 endif()
@@ -210,18 +213,21 @@ option(COSMO_MEDIA_USE_CPU_BACKEND "Enable FFmpeg software media backend"
        ${_cosmo_media_cpu_default})
 option(COSMO_MEDIA_USE_ROCKCHIP_BACKEND "Enable Rockchip MPP/RGA hardware media backend"
        ${_cosmo_media_rockchip_default})
+option(COSMO_MEDIA_USE_AXERA_BACKEND "Enable Axera AX650 hardware media backend"
+       ${_cosmo_media_axera_default})
 
 set(_cosmo_media_backend_count 0)
 foreach(_media_backend_option
         COSMO_MEDIA_USE_SOPHON_BACKEND
         COSMO_MEDIA_USE_CPU_BACKEND
-        COSMO_MEDIA_USE_ROCKCHIP_BACKEND)
+        COSMO_MEDIA_USE_ROCKCHIP_BACKEND
+        COSMO_MEDIA_USE_AXERA_BACKEND)
     if(${_media_backend_option})
         math(EXPR _cosmo_media_backend_count "${_cosmo_media_backend_count} + 1")
     endif()
 endforeach()
 if(NOT _cosmo_media_backend_count EQUAL 1)
-    message(FATAL_ERROR "Exactly one media backend must be enabled: Sophon, CPU, or Rockchip")
+    message(FATAL_ERROR "Exactly one media backend must be enabled: Sophon, CPU, Rockchip, or AXERA")
 endif()
 if(COSMO_MEDIA_USE_SOPHON_BACKEND AND NOT COSMO_NN_USE_SOPHON_BACKEND)
     message(FATAL_ERROR "Sophon media requires the Sophon device runtime")
@@ -229,11 +235,19 @@ endif()
 if(COSMO_MEDIA_USE_ROCKCHIP_BACKEND AND NOT COSMO_TARGET_ARCH STREQUAL "aarch64")
     message(FATAL_ERROR "Rockchip media requires an aarch64 target")
 endif()
+if(COSMO_MEDIA_USE_AXERA_BACKEND AND NOT COSMO_TARGET_ARCH STREQUAL "aarch64")
+    message(FATAL_ERROR "AXERA media requires an aarch64 target")
+endif()
+if(COSMO_MEDIA_USE_AXERA_BACKEND AND NOT COSMO_NN_USE_AXERA_BACKEND)
+    message(FATAL_ERROR "AXERA media requires the AXERA inference backend")
+endif()
 
 if(COSMO_MEDIA_USE_SOPHON_BACKEND)
     add_compile_definitions(COSMO_MEDIA_USE_SOPHON_BACKEND)
 elseif(COSMO_MEDIA_USE_ROCKCHIP_BACKEND)
     add_compile_definitions(COSMO_MEDIA_USE_ROCKCHIP_BACKEND)
+elseif(COSMO_MEDIA_USE_AXERA_BACKEND)
+    add_compile_definitions(COSMO_MEDIA_USE_AXERA_BACKEND)
 else()
     add_compile_definitions(COSMO_MEDIA_USE_CPU_BACKEND)
 endif()
@@ -439,6 +453,9 @@ endif()
 if(COSMO_MEDIA_USE_ROCKCHIP_BACKEND)
     include(cmake/rockchip_media.cmake)
 endif()
+if(COSMO_MEDIA_USE_AXERA_BACKEND)
+    include(cmake/axera_media.cmake)
+endif()
 include(cmake/pcap.cmake)
 include(cmake/srs.cmake)
 #Header - only third - party libraries
@@ -556,8 +573,14 @@ endif()
 if(COSMO_NN_USE_RKLLM_BACKEND)
     list(APPEND COMMON_LIBS rkllmrt)
 endif()
+if(COSMO_NN_USE_AXERA_BACKEND)
+    list(APPEND COMMON_LIBS ax_engine ax_sys)
+endif()
 if(COSMO_MEDIA_USE_ROCKCHIP_BACKEND)
     list(APPEND COMMON_LIBS rockchip_mpp rockchip_rga)
+endif()
+if(COSMO_MEDIA_USE_AXERA_BACKEND)
+    list(APPEND COMMON_LIBS ax_comm ax_vdec ax_venc ax_ivps)
 endif()
 
 ##########################################################
@@ -598,6 +621,19 @@ if(COSMO_MEDIA_USE_ROCKCHIP_BACKEND)
         BUILD_RPATH "${COSMO_ROCKCHIP_MEDIA_ROOT}/lib")
     set_target_properties(${EXECUTABLE_NAME} PROPERTIES
         INSTALL_RPATH "$ORIGIN/../lib")
+endif()
+if(COSMO_NN_USE_AXERA_BACKEND OR COSMO_MEDIA_USE_AXERA_BACKEND)
+    set_property(TARGET ${EXECUTABLE_NAME} APPEND PROPERTY
+        BUILD_RPATH "${COSMO_AXERA_ROOT}/lib")
+    set_target_properties(${EXECUTABLE_NAME} PROPERTIES
+        INSTALL_RPATH "$ORIGIN/../lib")
+    # Resolve SDK-internal deps (libspdlog.so, libaxclrt_worker.so, ...) at
+    # link time via -rpath-link; tolerate board-only system libs (libexif,
+    # GLIBC_2.33+ symbols in the vendor prebuilt ffmpeg) with
+    # --allow-shlib-undefined so a host toolchain never blocks the target link.
+    target_link_options(${EXECUTABLE_NAME} PRIVATE
+        "-Wl,-rpath-link,${COSMO_AXERA_ROOT}/lib"
+        "-Wl,--allow-shlib-undefined")
 endif()
 #Build order: OBJECT libs 鈫?third_build (explicit, see foreach above)
 target_link_libraries(${EXECUTABLE_NAME} PRIVATE ${COMMON_LIBS})

@@ -561,3 +561,6 @@ test/video/demo.mp4
 .omo/
 .specstory/
 data/resource/aiboxresource_rk3588/models/prod_RK3588_7000001_qwen3_5_V1.0.0/
+
+# for build_cpu/build_rknn/build_axera ...
+build_*/
