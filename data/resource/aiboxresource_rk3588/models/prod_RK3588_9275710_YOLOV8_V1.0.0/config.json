@@ -1,0 +1,703 @@
+{
+    "algorithm_code": "9275710",
+    "chip_type": "RK3588",
+    "labels": [
+        {
+            "id": "0",
+            "name": "Pedestrian",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "1",
+            "name": "category1",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "2",
+            "name": "category2",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "3",
+            "name": "category3",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "4",
+            "name": "category4",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "5",
+            "name": "category5",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "6",
+            "name": "category6",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "7",
+            "name": "category7",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "8",
+            "name": "category8",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "9",
+            "name": "category9",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "10",
+            "name": "category10",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "11",
+            "name": "category11",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "12",
+            "name": "category12",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "13",
+            "name": "category13",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "14",
+            "name": "category14",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "15",
+            "name": "category15",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "16",
+            "name": "category16",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "17",
+            "name": "category17",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "18",
+            "name": "category18",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "19",
+            "name": "category19",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "20",
+            "name": "category20",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "21",
+            "name": "category21",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "22",
+            "name": "category22",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "23",
+            "name": "category23",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "24",
+            "name": "category24",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "25",
+            "name": "category25",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "26",
+            "name": "category26",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "27",
+            "name": "category27",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "28",
+            "name": "category28",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "29",
+            "name": "category29",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "30",
+            "name": "category30",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "31",
+            "name": "category31",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "32",
+            "name": "category32",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "33",
+            "name": "category33",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "34",
+            "name": "category34",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "35",
+            "name": "category35",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "36",
+            "name": "category36",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "37",
+            "name": "category37",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "38",
+            "name": "category38",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "39",
+            "name": "category39",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "40",
+            "name": "category40",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "41",
+            "name": "category41",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "42",
+            "name": "category42",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "43",
+            "name": "category43",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "44",
+            "name": "category44",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "45",
+            "name": "category45",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "46",
+            "name": "category46",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "47",
+            "name": "category47",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "48",
+            "name": "category48",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "49",
+            "name": "category49",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "50",
+            "name": "category50",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "51",
+            "name": "category51",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "52",
+            "name": "category52",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "53",
+            "name": "category53",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "54",
+            "name": "category54",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "55",
+            "name": "category55",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "56",
+            "name": "category56",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "57",
+            "name": "category57",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "58",
+            "name": "category58",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "59",
+            "name": "category59",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "60",
+            "name": "category60",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "61",
+            "name": "category61",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "62",
+            "name": "category62",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "63",
+            "name": "category63",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "64",
+            "name": "category64",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "65",
+            "name": "category65",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "66",
+            "name": "category66",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "67",
+            "name": "category67",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "68",
+            "name": "category68",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "69",
+            "name": "category69",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "70",
+            "name": "category70",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "71",
+            "name": "category71",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "72",
+            "name": "category72",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "73",
+            "name": "category73",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "74",
+            "name": "category74",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "75",
+            "name": "category75",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "76",
+            "name": "category76",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "77",
+            "name": "category77",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "78",
+            "name": "category78",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        },
+        {
+            "id": "79",
+            "name": "category79",
+            "threshold": [
+                0.25,
+                0.25
+            ]
+        }
+    ],
+    "model_type": "yolov8_det",
+    "models": [
+        {
+            "description": "YOLOV8检测",
+            "file_md5": "",
+            "file_name": "",
+            "inputs": [
+                {
+                    "data_type": 0,
+                    "name": "images",
+                    "shape": [
+                        1,
+                        3,
+                        640,
+                        640
+                    ]
+                }
+            ],
+            "max_batch": 1,
+            "name": "YOLOV8",
+            "outputs": [
+                {
+                    "data_type": 0,
+                    "name": "output0",
+                    "shape": [
+                        1,
+                        84,
+                        8400
+                    ]
+                }
+            ],
+            "params": {
+                "confidence_threshold": 0.25,
+                "gravity": 1,
+                "input_size": [
+                    640,
+                    640
+                ],
+                "is_bgr": false,
+                "nms_threshold": 0.7,
+                "normalize_mean": [
+                    0,
+                    0,
+                    0
+                ],
+                "normalize_scale": 0.00392157,
+                "padding_color": [
+                    114,
+                    114,
+                    114
+                ],
+                "top_k": 1000
+            }
+        }
+    ],
+    "reduce": "",
+    "version": "V1.0.0"
+}

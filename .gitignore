@@ -33,6 +33,15 @@ build-*
 examples/build*
 
 
+# ── RK3588 device bring-up: local debug/diagnostic tools (do not commit) ─────
+# adb toolchain for device access
+/adb
+# local agent/AI scratch dirs
+/.omo/
+/.specstory/
+# DTB / boot-image / device analysis scripts (one-off diagnostics)
+
+
 ### https://raw.github.com/github/gitignore/eee21bf0c397cddc39ff1c94615d135e0ad36f8c/Global/JetBrains.gitignore
 
 # Covers JetBrains IDEs: IntelliJ, RubyMine, PhpStorm, AppCode, PyCharm, CLion, Android Studio, WebStorm and Rider
@@ -112,13 +121,13 @@ fabric.properties
 
 # -*- mode: gitignore; -*-
 *~
-\#*\#
+/#*/#
 /.emacs.desktop
 /.emacs.desktop.lock
 *.elc
 auto-save-list
 tramp
-.\#*
+./#*
 
 # Org-mode
 .org-id-locations
@@ -208,7 +217,7 @@ tags
 .AppleDouble
 .LSOverride
 
-# Icon must end with two \r
+# Icon must end with two /r
 Icon
 
 
@@ -547,3 +556,6 @@ test/video/demo.mp4
 
 # Sanitized logs are part of the versioned v1.1 public benchmark evidence pack.
 !docs/benchmarks/scenario-bench/v1.1/**/*.log
+
+
+data/resource/aiboxresource_rk3588/models/prod_RK3588_7000001_qwen3_5_V1.0.0/
