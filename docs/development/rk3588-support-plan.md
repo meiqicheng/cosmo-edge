@@ -138,7 +138,9 @@ python3 tools/rknn/convert_model.py --target-platform rk3588 \
   文件**（预置 aarch64 配置），清理时勿删除。
 - `devlibs/rkllm` 已补 LICENSE（从 `rknn-llm-release-v1.3.0.zip` 提取，3310 字节），
   满足打包校验。
-- 验证脚本：`scripts/verify_rk3588_build.sh`（configure + 串行 OpenSSL + cosmo_nn）。
+> 历史记录：本阶段曾用一次性验证脚本完成 configure + 串行 OpenSSL + cosmo_nn 验证；
+> 该脚本未入库（已丢失），验证步骤已由 `scripts/build_rknn.sh` 与
+> `scripts/build_rockchip_package.sh` 的常规流程覆盖。
 
 ### 风险清单
 
@@ -557,7 +559,8 @@ build_rockchip_package.sh --chip rk3588
 PACKAGE-BUILD-OK
 target-chip.txt: rk3588
 cosmo-engine: ELF 64-bit LSB pie executable, ARM aarch64
-cosmo-V1.1.0-3e982955...tar.gz (1.2G)
+cosmo-V1.1.0-&lt;commit&gt;...tar.gz (1.2G)（产物名中的提交号来自一次未推送、
+现已丢失的本地提交，不可复现；以本仓库当前构建流程重新出包为准）
 Build finished for rk3588.
 ```
 
@@ -572,7 +575,7 @@ Build finished for rk3588.
 | 问题 | 原因 | 处理 |
 | --- | --- | --- |
 | OpenSSL 交叉编译竞态 | `cmake/openssl.cmake` aarch64 就地构建 + 顶层 `-jN` 穿透并行 | `openssl_external` 必须 `-j1` 串行 |
-| 9p/drvfs 挂载 I/O 错误 | Windows Docker Desktop `msize=64KB`，perlasm 写大 .S 失败 | 构建目录用容器原生 `/build`（`verify_rk3588_package.sh` 思路） |
+| 9p/drvfs 挂载 I/O 错误 | Windows Docker Desktop `msize=64KB`，perlasm 写大 .S 失败 | 构建目录用容器原生 `/build`（历史一次性脚本思路；现 `docker-compose.rk3588.yml` 挂载源码、构建在容器内进行） |
 | `opensslconf.h`/`test/build.info` 误删 | 误判为构建生成物 | 实际是仓库跟踪文件（预置 aarch64 配置），`git checkout --` 恢复 |
 | cosmo-engine 无法启动（完整部署） | **glibc 基线不匹配**：设备 Debian 11（glibc 2.31）vs 构建基线 Ubuntu 22.04（glibc 2.35）；`prebuild/ffmpeg/aarch64` 需 GLIBC_2.35 | **项目级决策**：见阶段 5 实测记录（第 8 节） |
 
@@ -584,8 +587,8 @@ Build finished for rk3588.
 | `scripts/build_rockchip_package.sh` | 统一打包 + 校验脚本 |
 | `scripts/build_rknn.sh` | 底层构建（`-C <chip>`，选资源目录） |
 | `scripts/build_rknn_wsl.sh` | WSL 交叉编译（同步 `-C`） |
-| `scripts/verify_rk3588_package.sh` | 容器原生 fs 完整打包验证 |
-| `scripts/verify_rk3588_build.sh` | configure + 串行 OpenSSL + cosmo_nn 验证 |
+| `config/rockchip-build/builder-lock-rk3588.json` | RK3588 专用 builder 锁（Debian 11 / glibc 2.31 基线） |
+| `Dockerfile.rk3588-bullseye` + `docker-compose.rk3588.yml` | RK3588 Debian 11 构建镜像与入口 |
 | `config/rknn/toolchain-lock.json` | 工具链锁（`target_platforms` 双芯片） |
 | `docs/guide/build.md` | 用户构建文档（Rockchip 节） |
 

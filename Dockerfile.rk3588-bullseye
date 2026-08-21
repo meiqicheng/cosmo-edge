@@ -6,15 +6,23 @@
 # missing). This image rebuilds the toolchain + third-party deps on the
 # bullseye glibc baseline so the produced cosmo-engine runs on the device.
 #
-# SDK layout mirrors cosmo_edge-build-env_rk3576:
-#   /opt/rknn             RKNN Runtime (devlibs/rknpu2, cross-chip)
-#   /opt/rkllm            RKLLM Runtime + LICENSE (devlibs/rkllm)
-#   /opt/rockchip-media   MPP/RGA (use the newer image-bundled headers;
-#                         devlibs' MPP is too old - missing mpp_buffer_sync_*)
-#   /usr/lib/aarch64-linux-gnu  Debian 11 arm64 ffmpeg (glibc 2.31 compatible)
+# Frozen inputs (do not bump casually; update builder-lock-rk3588.json in
+# lockstep and record identities in /opt/cosmo/builder-versions.json):
+#   - Base image: debian:bullseye pinned by digest.
+#   - RKNN runtime 2.3.2 headers/lib copied from the digest-pinned rk3576
+#     build image and verified by sha256 at build time.
+#   - Debian 11 arm64 FFmpeg dev packages assembled into a self-contained
+#     COSMO_FFMPEG_ROOT (/opt/ffmpeg-debian11) with their non-glibc
+#     dependency closure, so cross builds link against a glibc-2.31
+#     compatible media stack without touching prebuild/ffmpeg.
 #
-# The image must be built with the SDK directories mounted or copied in.
-FROM debian:bullseye
+# SDK layout:
+#   /opt/rknn               RKNN Runtime 2.3.2 (include/rknn_api.h, lib/librknnrt.so)
+#   /opt/ffmpeg-debian11    {include,lib} Debian 11 arm64 FFmpeg + dep closure
+#   /opt/cosmo/rockchip-builder-lock-rk3588.json   builder lock consumed by
+#                           scripts/build_rockchip_package.sh --chip rk3588
+#                           (via COSMO_ROCKCHIP_BUILDER_LOCK)
+FROM debian:bullseye@sha256:99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704ebc3ead2015675
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -29,7 +37,7 @@ RUN sed -i 's|http://deb.debian.org/debian-security|http://mirrors.ustc.edu.cn/d
 
 # Step 1: host build tools (amd64)
 RUN apt-get install -y --no-install-recommends \
-        ca-certificates curl gnupg wget git make cmake pkg-config \
+        ca-certificates curl gnupg wget git make pkg-config \
         autoconf automake libtool bison flex nasm yasm \
         python3 python3-pip patch file
 
@@ -47,8 +55,7 @@ RUN python3 -m pip install --no-cache-dir cmake==3.22.1 \
 RUN apt-get install -y --no-install-recommends --fix-missing \
         libavcodec-dev:arm64 libavdevice-dev:arm64 libavfilter-dev:arm64 \
         libavformat-dev:arm64 libavutil-dev:arm64 \
-        libswresample-dev:arm64 libswscale-dev:arm64 \
-    && rm -rf /var/lib/apt/lists/*
+        libswresample-dev:arm64 libswscale-dev:arm64
 
 # Node.js 20 for the Vue3/Vite web frontend build (bullseye's node 12 is too
 # old for Vite 6). Copy node from the existing rk3576 build image (it already
@@ -69,7 +76,87 @@ ENV RUSTUP_HOME=/usr/local/rustup \
     PATH=/usr/local/cargo/bin:$PATH
 RUN rustc --version && cargo --version
 
-# Placeholders for SDK mounts (created so later layers can reference them)
-RUN mkdir -p /opt/rknn /opt/rkllm /opt/rockchip-media
+# Step 4: RKNN Runtime 2.3.2 from the digest-pinned rk3576 image. The runtime
+# is cross-chip (RK3588 uses the same rknn_api.h / librknnrt.so); its sha256
+# must match config/rknn/toolchain-lock.json (runtime.librknnrt_sha256).
+COPY --from=ghcr.io/cosmo-wander-ai/cosmo_edge-build-env_rk3576@sha256:135d25d0baf14e7918726f7efb040a0627926aedd5825f52fab6c1cd208da348 /opt/rknn /opt/rknn
+RUN echo "d31fc19c85b85f6091b2bd0f6af9d962d5264a4e410bfb536402ec92bac738e8  /opt/rknn/lib/librknnrt.so" | sha256sum -c - \
+    && test -f /opt/rknn/include/rknn_api.h
+
+# Step 5: assemble a self-contained FFmpeg root for cross builds.
+#
+# Headers come from the multiarch dev packages; libraries are collected with
+# their transitive dependency closure (resolved via arm64 readelf NEEDED),
+# excluding glibc core libs and libstdc++/libgcc_s which the target device
+# provides itself (the device is Debian 11 bullseye, same distro release as
+# this build base, so its own copies are ABI-compatible).
+RUN set -eux; \
+    root=/opt/ffmpeg-debian11; \
+    inc=/usr/include/aarch64-linux-gnu; \
+    libdir=/usr/lib/aarch64-linux-gnu; \
+    mkdir -p "$root/include" "$root/lib/pkgconfig"; \
+    for h in libavcodec libavdevice libavfilter libavformat libavutil libswresample libswscale; do \
+        cp -r "$inc/$h" "$root/include/"; \
+    done; \
+    cp "$inc"/libav*.h "$inc"/libsw*.h "$root/include/" 2>/dev/null || true; \
+    cp "$libdir"/pkgconfig/libav*.pc "$libdir"/pkgconfig/libsw*.pc "$root/lib/pkgconfig/"; \
+    copy_lib() { \
+        name="$1"; \
+        if [ -e "$root/lib/$name" ]; then return 0; fi; \
+        cp -L "$libdir/$name" "$root/lib/$name"; \
+        for dep in $(aarch64-linux-gnu-readelf -d "$root/lib/$name" | sed -n 's/.*Shared library: \[\(.*\)\]$/\1/p'); do \
+            case "$dep" in \
+                libc.so*|libm.so*|libdl.so*|libpthread.so*|librt.so*|libresolv.so*|libnsl.so*|libutil.so*|libanl.so*|libBrokenLocale.so*|libthread_db.so*|ld-linux-*|libgcc_s.so*|libstdc++.so*) ;; \
+                *) copy_lib "$dep" ;; \
+            esac; \
+        done; \
+    }; \
+    for s in libavcodec.so.58 libavdevice.so.58 libavfilter.so.7 libavformat.so.58 libavutil.so.56 libswresample.so.3 libswscale.so.5; do \
+        copy_lib "$s"; \
+    done; \
+    ln -sf libavcodec.so.58 "$root/lib/libavcodec.so"; \
+    ln -sf libavdevice.so.58 "$root/lib/libavdevice.so"; \
+    ln -sf libavfilter.so.7 "$root/lib/libavfilter.so"; \
+    ln -sf libavformat.so.58 "$root/lib/libavformat.so"; \
+    ln -sf libavutil.so.56 "$root/lib/libavutil.so"; \
+    ln -sf libswresample.so.3 "$root/lib/libswresample.so"; \
+    ln -sf libswscale.so.5 "$root/lib/libswscale.so"; \
+    test -f "$root/include/libavcodec/avcodec.h"; \
+    test -f "$root/lib/libavcodec.so.58"; \
+    echo "--- /opt/ffmpeg-debian11/lib ---"; ls -la "$root/lib"
+
+# Step 6: builder lock for the rk3588 package flow. The package script selects
+# config/rockchip-build/builder-lock-rk3588.json from the repo tree and
+# byte-compares it against the image-side copy resolved through this env var.
+COPY config/rockchip-build/builder-lock-rk3588.json /opt/cosmo/rockchip-builder-lock-rk3588.json
+ENV COSMO_ROCKCHIP_BUILDER_LOCK=/opt/cosmo/rockchip-builder-lock-rk3588.json
+
+# Step 7: record frozen tool identities for evidence/reproducibility.
+RUN set -eux; \
+    python3 - <<'PYEOF'
+import json, subprocess
+
+def out(cmd):
+    return subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout.strip()
+
+ffmpeg_ver = out("dpkg-query -W -f='${Version}' libavcodec58:arm64")
+record = {
+    "base_image": "debian:bullseye@sha256:99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704ebc3ead2015675",
+    "sdk_source_image": "ghcr.io/cosmo-wander-ai/cosmo_edge-build-env_rk3576@sha256:135d25d0baf14e7918726f7efb040a0627926aedd5825f52fab6c1cd208da348",
+    "rknn_runtime_sha256": "d31fc19c85b85f6091b2bd0f6af9d962d5264a4e410bfb536402ec92bac738e8",
+    "rknn_include_header": "/opt/rknn/include/rknn_api.h",
+    "ffmpeg_root": "/opt/ffmpeg-debian11",
+    "ffmpeg_deb_version_arm64": ffmpeg_ver,
+    "cmake": out("cmake --version | head -1"),
+    "cross_gcc": out("aarch64-linux-gnu-gcc --version | head -1"),
+    "node": out("node --version"),
+    "rustc": out("rustc --version"),
+    "cargo": out("cargo --version"),
+    "glibc_baseline": "2.31",
+}
+with open("/opt/cosmo/builder-versions-rk3588.json", "w") as f:
+    json.dump(record, f, indent=2)
+print(json.dumps(record, indent=2))
+PYEOF
 
 WORKDIR /workspace

@@ -12,10 +12,11 @@
     "default_core_mode": "auto"
   },
   "media": {
-    "default_backend": "rockchip",
+    "default_backend": "cpu",
     "cpu_fallback": true,
+    "runtime_profile": "cpu-ffmpeg-debian11-v1",
     "runtime_lock": "../../rockchip-media/runtime-lock.json",
-    "runtime_profile": "rk3576-build-env-v1",
+    "runtime_profile_rockchip": "rk3576-build-env-v1",
     "require_sealed_sysroot": false
   },
   "packaging": {

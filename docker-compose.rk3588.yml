@@ -1,0 +1,44 @@
+# RK3588 Debian 11 (bullseye) package build entry point.
+#
+# Consumes the locally built Dockerfile.rk3588-bullseye image (digest-frozen
+# debian:bullseye base, RKNN 2.3.2 from the pinned rk3576 image, Debian 11
+# arm64 FFmpeg assembled at /opt/ffmpeg-debian11) and runs the standard
+# rockchip packaging flow with --chip rk3588:
+#
+#   docker compose -f docker-compose.rk3588.yml build
+#   COSMO_TARGET_CHIP=rk3588 docker compose -f docker-compose.rk3588.yml run \
+#     --rm cosmo-rk3588-package
+#
+# The produced tar.gz lands in ./build_output/ and must pass the in-flow
+# glibc gate (GLIBC <= 2.31) before verification succeeds.
+services:
+  cosmo-rk3588-package:
+    build:
+      context: .
+      dockerfile: Dockerfile.rk3588-bullseye
+      platform: linux/amd64
+    image: ${COSMO_RK3588_BUILDER_IMAGE:-cosmo-edge-build-env-rk3588-bullseye:v1}
+    platform: linux/amd64
+    network_mode: host
+    volumes:
+      - .:/workspace
+      - ./build_output:/build_output
+      - cosmo-npm-cache:/root/.npm
+    working_dir: /workspace
+    environment:
+      COSMO_BUILD_JOBS: "${COSMO_BUILD_JOBS:-4}"
+      NPM_CONFIG_MAXSOCKETS: "${NPM_CONFIG_MAXSOCKETS:-1}"
+      NPM_CONFIG_PROGRESS: "${NPM_CONFIG_PROGRESS:-false}"
+      NPM_CONFIG_FETCH_RETRIES: "${NPM_CONFIG_FETCH_RETRIES:-3}"
+      NPM_CONFIG_FETCH_TIMEOUT: "${NPM_CONFIG_FETCH_TIMEOUT:-120000}"
+      NPM_CONFIG_PREFER_OFFLINE: "${NPM_CONFIG_PREFER_OFFLINE:-true}"
+      NPM_CONFIG_UPDATE_NOTIFIER: "${NPM_CONFIG_UPDATE_NOTIFIER:-false}"
+    entrypoint: ["/workspace/scripts/build_rockchip_package.sh"]
+    command:
+      - --chip
+      - ${COSMO_TARGET_CHIP:-rk3588}
+      - --models
+      - ${COSMO_PACKAGE_MODELS:-include}
+
+volumes:
+  cosmo-npm-cache:

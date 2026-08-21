@@ -141,7 +141,7 @@ endif()
 set(COSMO_TARGET_CHIP "" CACHE STRING "Target accelerator chip recorded in release packages")
 if(COSMO_TARGET_CHIP)
     string(TOLOWER "${COSMO_TARGET_CHIP}" COSMO_TARGET_CHIP_NORMALIZED)
-    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(bm1688|cv186x|rk3576|rv1126b|unspecified)$")
+    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(bm1688|cv186x|rk3576|rk3588|rv1126b|unspecified)$")
         message(FATAL_ERROR "Unsupported COSMO_TARGET_CHIP: ${COSMO_TARGET_CHIP}")
     endif()
 endif()
@@ -153,9 +153,9 @@ cosmo_configure_runtime_paths(
 message(STATUS "Cosmo mutable data root: ${COSMO_DEFAULT_DATA_DIR}")
 
 if(COSMO_NN_USE_RKNN_BACKEND)
-    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(rk3576|rv1126b)$")
+    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(rk3576|rk3588|rv1126b)$")
         message(FATAL_ERROR
-            "RKNN builds require COSMO_TARGET_CHIP=rk3576 or rv1126b")
+            "RKNN builds require COSMO_TARGET_CHIP=rk3576, rk3588, or rv1126b")
     endif()
     string(TOUPPER "${COSMO_TARGET_CHIP_NORMALIZED}" COSMO_TARGET_CHIP_LABEL)
     set(COSMO_PLATFORM_PROFILE
