@@ -218,7 +218,7 @@ def verify_package(
         raise PackageAuditError("runtime data directory is unsupported")
 
     if target_chip is not None:
-        if target_chip in ("rk3576", "rv1126b"):
+        if target_chip in ("rk3576", "rk3588", "rv1126b"):
             platform_name = "share/cosmo/platform-profile.json"
             platform_entry = entries.get(platform_name)
             if platform_entry is None or not platform_entry.isreg():

@@ -11,6 +11,7 @@ import os
 import pathlib
 import re
 import shutil
+import struct
 import subprocess
 import tarfile
 import tempfile
@@ -24,6 +25,13 @@ spec = importlib.util.spec_from_file_location(
 assert spec and spec.loader
 verifier = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(verifier)
+
+gate_spec = importlib.util.spec_from_file_location(
+    "glibc_gate", REPOSITORY / "tools/package/glibc_gate.py"
+)
+assert gate_spec and gate_spec.loader
+glibc_gate = importlib.util.module_from_spec(gate_spec)
+gate_spec.loader.exec_module(glibc_gate)
 
 
 def write_text_lf(path: pathlib.Path, value: str) -> None:
@@ -661,7 +669,7 @@ class PackageProfileTests(unittest.TestCase):
         self.assertIn("/opt/rockchip-media/rk3576", dockerfile)
         self.assertIn("/opt/rockchip-media/rv1126b", dockerfile)
         self.assertIn("-ffile-prefix-map=", dockerfile)
-        self.assertIn("--chip <rk3576|rv1126b>", entrypoint)
+        self.assertIn("--chip <rk3576|rk3588|rv1126b>", entrypoint)
         self.assertIn("--target-chip", entrypoint)
         self.assertIn("/build_rknn", dockerignore.splitlines())
         self.assertIn("/3rd/srs-*/trunk/objs", dockerignore.splitlines())
@@ -687,7 +695,7 @@ class PackageProfileTests(unittest.TestCase):
         )
         self.assertIn('lib/librkllmrt.so LICENSE', build)
         self.assertIn('-DCOSMO_TARGET_CHIP="${TARGET_CHIP}"', build)
-        self.assertIn('[-c rk3576|rv1126b]', build)
+        self.assertIn('[-c rk3576|rk3588|rv1126b]', build)
         self.assertIn('-DCOSMO_RKLLM_REQUIRED="${RKLLM_REQUIRED}"', build)
         self.assertIn('set(RKLLM_RUNTIME_LICENSE "${COSMO_RKLLM_ROOT}/LICENSE")', cmake)
         self.assertIn("media_sysroot_lock.py", build)
@@ -756,6 +764,155 @@ class PackageProfileTests(unittest.TestCase):
             rv_runtime["artifacts"]["lib/librockchip_mpp.so.0"]["sha256"],
             "b3f15d57a7516bab1e6167b8244afaff8f27b0b7d34813328db8420a7019820b",
         )
+
+    def test_rk3588_preview_binds_cpu_media_to_frozen_bullseye_builder(self) -> None:
+        profile = json.loads(
+            (REPOSITORY / "config/rknn/platforms/rk3588.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        builder_lock = json.loads(
+            (REPOSITORY / "config/rockchip-build/builder-lock-rk3588.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        shared_lock = json.loads(
+            (REPOSITORY / "config/rockchip-build/builder-lock.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        dockerfile = (REPOSITORY / "Dockerfile.rk3588-bullseye").read_text(
+            encoding="utf-8"
+        )
+        compose = (REPOSITORY / "docker-compose.rk3588.yml").read_text(
+            encoding="utf-8"
+        )
+        entrypoint = (REPOSITORY / "scripts/build_rockchip_package.sh").read_text(
+            encoding="utf-8"
+        )
+
+        # Platform profile: RKNN inference with CPU/FFmpeg media, no RKLLM.
+        self.assertEqual(profile["backend"], "rknn")
+        self.assertEqual(profile["chip"], "rk3588")
+        self.assertEqual(profile["conversion"]["target_platform"], "rk3588")
+        self.assertEqual(profile["media"]["default_backend"], "cpu")
+        self.assertEqual(profile["media"]["runtime_profile"], "cpu-ffmpeg-debian11-v1")
+        self.assertTrue(profile["qualification"]["requires_target_bound_evidence"])
+
+        # Dedicated lock: rk3588 only, glibc 2.31 policy, ffmpeg root set,
+        # and the shared rk3576/rv1126b lock stays untouched.
+        self.assertNotIn("rk3588", shared_lock["targets"])
+        target = builder_lock["targets"]["rk3588"]
+        self.assertEqual(list(builder_lock["targets"]), ["rk3588"])
+        self.assertEqual(
+            target["media_runtime_profile"], profile["media"]["runtime_profile"]
+        )
+        self.assertFalse(target["rkllm_required"])
+        self.assertEqual(target["media_root"], "")
+        self.assertEqual(builder_lock["common"]["glibc_max"], "2.31")
+        self.assertEqual(builder_lock["common"]["ffmpeg_root"], "/opt/ffmpeg-debian11")
+        self.assertIsNone(builder_lock["common"]["rkllm"])
+        self.assertIn("lib/libavcodec.so.58", target["required_package_paths"])
+        self.assertIn("lib/librkllmrt.so", target["forbidden_package_paths"])
+        self.assertIn("lib/librockchip_mpp.so", target["forbidden_package_paths"])
+
+        # Builder image freezes the bullseye base by digest, verifies the
+        # RKNN runtime sha256, assembles the FFmpeg root, and bakes in the
+        # dedicated builder lock behind the package-script env override.
+        self.assertIn(
+            "debian:bullseye@sha256:"
+            "99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704ebc3ead2015675",
+            dockerfile,
+        )
+        self.assertIn(
+            "ghcr.io/cosmo-wander-ai/cosmo_edge-build-env_rk3576@sha256:"
+            "135d25d0baf14e7918726f7efb040a0627926aedd5825f52fab6c1cd208da348",
+            dockerfile,
+        )
+        self.assertIn(
+            "d31fc19c85b85f6091b2bd0f6af9d962d5264a4e410bfb536402ec92bac738e8",
+            dockerfile,
+        )
+        self.assertIn("/opt/ffmpeg-debian11", dockerfile)
+        self.assertIn("COPY config/rockchip-build/builder-lock-rk3588.json", dockerfile)
+        self.assertIn(
+            "COSMO_ROCKCHIP_BUILDER_LOCK=/opt/cosmo/"
+            "rockchip-builder-lock-rk3588.json",
+            dockerfile,
+        )
+        self.assertIn("builder-versions-rk3588.json", dockerfile)
+
+        # Package entry point selects the chip-specific lock and enforces
+        # the glibc gate for rk3588.
+        self.assertIn("builder-lock-rk3588.json", entrypoint)
+        self.assertIn("glibc_gate.py", entrypoint)
+        self.assertIn('command:\n      - --chip', compose)
+        self.assertIn("${COSMO_TARGET_CHIP:-rk3588}", compose)
+        self.assertIn("Dockerfile.rk3588-bullseye", compose)
+
+    def test_glibc_gate_scans_verneed_and_enforces_policy(self) -> None:
+        def elf64_verneed(version_names: list[bytes]) -> bytes:
+            """Build a minimal ELF64 little-endian image with a verneed section."""
+            dynstr = b"\x00" + b"\x00".join(version_names) + b"\x00"
+            name_offsets = []
+            cursor = 1
+            for name in version_names:
+                name_offsets.append(cursor)
+                cursor += len(name) + 1
+            verneed = struct.pack("<HHIII", 1, len(name_offsets), 0, 16, 0)
+            for index, offset in enumerate(name_offsets):
+                is_last = index == len(name_offsets) - 1
+                verneed += struct.pack(
+                    "<IHHII", 0, 0, index + 1, offset, 0 if is_last else 16
+                )
+            blob = bytearray(b"\x7fELF" + bytes([2, 1, 1]) + bytes(9))
+            blob += bytes(48)  # pad e_ident to 64-byte ELF header
+            dynstr_offset = len(blob)
+            blob += dynstr
+            verneed_offset = len(blob)
+            blob += verneed
+            shstrtab = b"\x00.dynstr\x00.gnu.version_r\x00"
+            shstrtab_offset = len(blob)
+            blob += shstrtab
+            sections = [
+                (0, 0, 0, 0),  # SHT_NULL
+                (3, dynstr_offset, len(dynstr), 0),  # SHT_STRTAB .dynstr
+                (0x6FFFFFFE, verneed_offset, len(verneed), 1),  # verneed -> dynstr
+                (3, shstrtab_offset, len(shstrtab), 0),  # section names
+            ]
+            (shoff_holder,) = [len(blob)]
+            blob += bytes(len(sections) * 64)
+            e_shoff = shoff_holder
+            struct.pack_into("<Q", blob, 0x28, e_shoff)
+            struct.pack_into("<HH", blob, 0x3A, 64, len(sections))
+            for index, (sh_type, sh_offset, sh_size, sh_link) in enumerate(sections):
+                base = e_shoff + index * 64
+                struct.pack_into("<II", blob, base, 0, sh_type)
+                struct.pack_into("<QQ", blob, base + 16, 0, sh_offset)
+                struct.pack_into("<QQ", blob, base + 32, sh_size, 0)
+                struct.pack_into("<II", blob, base + 40, sh_link, 0)
+            return bytes(blob)
+
+        good = elf64_verneed([b"GLIBC_2.17"])
+        bad = elf64_verneed([b"GLIBC_2.17", b"GLIBC_2.34"])
+        self.assertEqual(glibc_gate.glibc_requirements(good), {"GLIBC_2.17"})
+        self.assertEqual(
+            glibc_gate.glibc_requirements(bad), {"GLIBC_2.17", "GLIBC_2.34"}
+        )
+        self.assertEqual(glibc_gate.scan_bytes("good.so", good, "2.31"), [])
+        violations = glibc_gate.scan_bytes("bad.so", bad, "2.31")
+        self.assertEqual(len(violations), 1)
+        self.assertIn("GLIBC_2.34 > 2.31", violations[0])
+        with self.assertRaises(glibc_gate.GlibcGateError):
+            glibc_gate.scan_bytes("text.txt", b"definitely not an elf", "2.31")
+
+        report = glibc_gate.run_scan(
+            [("lib/good.so", good), ("etc/config.json", b"{}")], "2.31"
+        )
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(report["elf_files"], 1)
+        failing = glibc_gate.run_scan([("lib/bad.so", bad)], "2.31")
+        self.assertEqual(failing["status"], "FAIL")
 
     def test_shared_rknn_and_rockchip_sources_do_not_fork_by_chip(self) -> None:
         source_roots = (
