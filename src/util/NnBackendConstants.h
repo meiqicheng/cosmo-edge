@@ -85,7 +85,9 @@ static constexpr const char* kSupportedChips[] = {COSMO_RKNN_TARGET_CHIP_LABEL};
 #endif
 
 /// Legacy target-labelled directories remain readable. Newly imported models
-/// use a vendor-level token; config.json chip_type is the compatibility gate.
+/// use a vendor-level token (AXERA is the brand; AX650N is one model — the
+/// token must stay vendor-level so future models share one prefix);
+/// config.json chip_type is the compatibility gate.
 static constexpr const char* kPlatformDirPrefix    = "prod_" COSMO_AXERA_TARGET_CHIP_LABEL "_";
 static constexpr const char* kNewDirPrefix         = "prod_AXERA_";
 static constexpr const char* kPlatformDirRegex     = "prod_[A-Z0-9]+_([0-9]+)_.*";

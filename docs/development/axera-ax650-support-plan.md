@@ -59,7 +59,7 @@ AX650N 需要新增**第四后端**（`COSMO_NN_USE_AXERA_BACKEND`），以下�
 | # | 文件 | 现状（Sophon / RKNN） | AX650N 影响 |
 | --- | --- | --- | --- |
 | 1 | `src/nn/core/common.h` | `DeviceType` 枚举：`DEVICE_NAIVE=0x0000`、`DEVICE_SOPHON_TPU=0x0007`、`DEVICE_CPU=0x0010`、`DEVICE_RKNN=0x0011`；`UsesHostMemory()` 含 NAIVE/CPU/RKNN | 新增 `DEVICE_AXERA=0x0012`；`UsesHostMemory` 是否含 AXERA 取决于 SDK 内存模型（AXCL 有设备内存，需核实） |
-| 2 | `src/util/NnBackendConstants.h` | 三后端分支（SOPHON/RKNN/CPU），`kBackendType`/`kEngineType`/`kModelFileExt`/`kSupportedChips[]`/`kNewDirPrefix` | 新增 `COSMO_NN_USE_AXERA_BACKEND` 分支：`kBackendType="AXERA"`、`kEngineType="AX650N"`、`kModelFileExt=".axmodel"`、`kSupportedChips={"AX650N"}`、`kNewDirPrefix="prod_AXERA_"` |
+| 2 | `src/util/NnBackendConstants.h` | 三后端分支（SOPHON/RKNN/CPU），`kBackendType`/`kEngineType`/`kModelFileExt`/`kSupportedChips[]`/`kNewDirPrefix` | 新增 `COSMO_NN_USE_AXERA_BACKEND` 分支：`kBackendType="AXERA"`、`kEngineType="AX650N"`、`kModelFileExt=".axmodel"`、`kSupportedChips={"AX650N"}`、`kNewDirPrefix="prod_AXERA_"`（厂商级，同 SOPHON 的 `prod_SOPHGO_`/ROCKCHIP 的 `prod_ROCKCHIP_`） |
 | 3 | `CMakeLists.txt` | 芯片白名单 `^(bm1688\|cv186x\|bm1684\|bm1684x\|rk3576\|rk3588\|rv1126b\|unspecified)$`；NN 后端三选一互斥 | 白名单加 `ax650n`；后端互斥改四选一 |
 | 4 | `cmake/device.cmake` | Sophon 专用（libsophon SDK 选择） | 不适用于 AXERA；需新 `cmake/axera.cmake`（参照 `cmake/rknn.cmake`：`COSMO_AXERA_ROOT` 定位头文件/库） |
 | 5 | `cmake/rknn.cmake` | 参照样板：`COSMO_RKNN_ROOT` → `rknn_api.h`/`librknnrt.so` → IMPORTED target | 仿此写 `cmake/axera.cmake`：`axcl.h`（或 `ax_engine_api.h`）/`libaxcl.so`（或 `libax_engine.so`） |
@@ -79,7 +79,7 @@ AX650N 需要新增**第四后端**（`COSMO_NN_USE_AXERA_BACKEND`），以下�
 | --- | --- | --- | --- | --- |
 | Sophon | `.bmodel` | CENN 头 → `model.nn` | `prod_BM1688_`/`prod_SOPHGO_` | `BM1688`/`CV186X`/`BM1684` |
 | RKNN | `.rknn` | 原生 | `prod_ROCKCHIP_` | `RK3576`/`RK3588` |
-| **AXERA** | **`.axmodel`** | **原生（同 RKNN）** | `prod_AXERA_` | `AX650N` |
+| **AXERA** | **`.axmodel`** | **原生（同 RKNN）** | 型号级 `prod_AX650N_`（内置）；厂商级 `prod_AXERA_`（web 新增） | `AX650N` |
 
 ---
 
@@ -183,6 +183,34 @@ AX650N 需要新增**第四后端**（`COSMO_NN_USE_AXERA_BACKEND`），以下�
 - ✅ 交叉编译产物含 AXERA 运行时库与 `target-chip.txt` 芯片标签（`ax650n`）
 - ✅ `install/bin/cosmo-engine` 为 aarch64 ELF（RPATH `$ORIGIN/../lib`）
 - ✅ `install/lib/` 含全套 libax_* 与第三方运行时（124 个库文件）
+
+### 构建镜像（参考 rk3576/sophon 的 Docker 打包体系）
+
+AX650 SDK 为 NDA 许可，不能推送到公开 registry，因此 builder 镜像**本地构建**，
+SDK/工具链通过 build context 注入（`sdk/axera/`，git-ignored，由 ps1 从 WSL 暂存）：
+
+| 文件 | 作用 |
+| --- | --- |
+| `Dockerfile.axera` | ubuntu 22.04 + cmake/gcc/rustup(cargo+aarch64)/node/npm + `sdk/axera/msp-out`→`/opt/axera/sdk/msp-out` + `sdk/axera/gcc-arm-9.2`→`/opt/axera/toolchain/gcc-arm-9.2` |
+| `docker-compose.axera.yml` | `cosmo-axera-package` 服务：挂载工作区 + build_output + npm cache，entrypoint=`build_axera_package.sh --chip ax650n` |
+| `scripts/build_axera_package.sh` | 锁校验（`config/axera-build/builder-lock.json` vs 镜像内锁）→ symlink/CRLF 修复 → `build_axera.sh` → `verify_package_contents.py` → 输出 `build_output/ax650n/` |
+| `scripts/build_axera_package.ps1` | Windows 入口：从 WSL `/opt/axera/...` 暂存 SDK/工具链 → 源码卷同步（ext4）→ restore-symlinks → compose build + run |
+| `config/axera-build/builder-lock.json` | SDK/工具链路径与 `required_package_paths` 锁 |
+| `config/axera/toolchain-lock.json` | SDK V3.10.2 / gcc-arm-9.2 / Pulsar2 6.0 版本锁 |
+
+使用方式（Windows + Docker Desktop）：
+
+```powershell
+.\scripts\build_axera_package.ps1 ax650n
+# 产物：build_output\ax650n\cosmo-V1.1.0.<md5>.tar.gz
+```
+
+纯 Linux 环境（WSL/Docker in WSL）：
+
+```bash
+docker compose -f docker-compose.axera.yml build
+docker compose -f docker-compose.axera.yml run --rm cosmo-axera-package --chip ax650n
+```
 
 ---
 
@@ -371,7 +399,11 @@ PULSAR2=~/.cache/magnetar/pulsar2/6.0/bin/pulsar2
 
 - 转换日志关注 `cosin simularity is X`，低于阈值（如 0.99）说明量化掉点，需换
   校准数据或 `calibration_method`（KL/Percentile/MSE）。
-- `.axmodel` 原生入库，无需 CENN 封装；目录约定 `prod_AXERA_<alg>_<name>_<ver>/`，
+- `.axmodel` 原生入库，无需 CENN 封装；目录约定 `prod_<TOKEN>_<alg>_<name>_<ver>/`，
+  其中内置模型用**型号级** token（`prod_AX650N_`，同 Sophon 的 `prod_BM1688_`/Rockchip 的 `prod_RK3576_`），
+  web 新增模型用**厂商级** token（`prod_AXERA_`，同 Sophon 的 `prod_SOPHGO_`/Rockchip 的 `prod_ROCKCHIP_`）——
+  AXERA 是品牌、AX650N 是型号，厂商级前缀保证后续新型号复用同一命名空间，
+  实际芯片以 `config.json` 的 `chip_type` 为准；
   `config.json` 的 `chip_type` 写 `AX650N`、`file_name` 写 `model.axmodel`。
 - 资源集放 `data/resource/aiboxresource_ax650n/`（模型 + 共享 algorithm/i18n/layout）。
 - 转换通过 ≠ 设备验收：必须在 AX650N 板端验证 Runtime/驱动、数值、图片与视频链路、
@@ -393,7 +425,7 @@ PULSAR2=~/.cache/magnetar/pulsar2/6.0/bin/pulsar2
 - **YOLOV8n + 安全帽检测 `.axmodel`**（首发范围，参照 BM1684；模型文件体积/量化信息记录）
 - 资源集 `data/resource/aiboxresource_ax650n/`：
   - `model_template/`（yolov8_det.json 等，参照 bm1684 资源集）
-  - `models/prod_AXERA_<alg>_<name>_<ver>/config.json`（`chip_type: "AX650N"`）+ `model.axmodel`
+  - `models/prod_AX650N_<alg>_<name>_<ver>/config.json`（`chip_type: "AX650N"`）+ `model.axmodel`
   - `algorithm/`、`i18n/`、`layout/`（参照 bm1684 资源集结构）
 
 ### 验收标准
