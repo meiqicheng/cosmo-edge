@@ -279,6 +279,26 @@ class PackageProfileTests(unittest.TestCase):
             )
             verifier.verify_package(package, "public-runtime", target_chip)
 
+        # rk3588 preview keeps the default data root (CosmoRuntimePaths.cmake
+        # only routes rk3576/rv1126b to /userdata) and binds a platform profile.
+        rk3588 = self.make_package(
+            "public-runtime",
+            target_chip="rk3588",
+            platform_chip="rk3588",
+        )
+        verifier.verify_package(rk3588, "public-runtime", "rk3588")
+
+        rk3588_wrong_root = self.make_package(
+            "public-runtime",
+            target_chip="rk3588",
+            platform_chip="rk3588",
+            runtime_data_dir="/userdata/cwaiuserdata",
+        )
+        with self.assertRaisesRegex(
+            verifier.PackageAuditError, "runtime data directory does not match"
+        ):
+            verifier.verify_package(rk3588_wrong_root, "public-runtime", "rk3588")
+
         sophon = self.make_package("public-runtime", target_chip="bm1688")
         verifier.verify_package(sophon, "public-runtime", "bm1688")
 

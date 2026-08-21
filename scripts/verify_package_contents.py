@@ -17,7 +17,7 @@ class PackageAuditError(RuntimeError):
 
 
 PROFILES = ("public-runtime", "production-release")
-TARGET_CHIPS = ("bm1688", "cv186x", "rk3576", "rv1126b", "unspecified")
+TARGET_CHIPS = ("bm1688", "cv186x", "rk3576", "rk3588", "rv1126b", "unspecified")
 REQUIRED_DIRS = {"bin", "files", "font", "lib", "resource", "scripts", "web"}
 REQUIRED_EXECUTABLES = {
     "bin/cosmo-engine",
