@@ -71,7 +71,9 @@ if ! cmp -s "${builder_lock}" "${image_lock}"; then
     exit 1
 fi
 
-IFS=$'\t' read -r rknn_root rkllm_root media_root media_runtime rkllm_required ffmpeg_root glibc_max < <(
+# Delimiter must be non-whitespace: bash collapses runs of IFS whitespace,
+# which would drop empty fields (rk3588 has media_root="").
+IFS='|' read -r rknn_root rkllm_root media_root media_runtime rkllm_required ffmpeg_root glibc_max < <(
     python3 - "${builder_lock}" "${chip}" <<'PY'
 import json
 import pathlib
@@ -90,9 +92,9 @@ values = (
     common.get("ffmpeg_root", ""),
     common.get("glibc_max", ""),
 )
-if any("\t" in str(value) or "\n" in str(value) for value in values):
+if any("|" in str(value) or "\n" in str(value) for value in values):
     raise SystemExit("builder lock values must be single-line fields")
-print("\t".join(str(value) for value in values))
+print("|".join(str(value) for value in values))
 PY
 )
 
@@ -113,12 +115,14 @@ else
 fi
 
 rm -rf "${PROJECT_ROOT_PATH}/build_rknn"
-COSMO_PACKAGE_MODELS="${package_models}" \
-COSMO_RKLLM_REQUIRED="${rkllm_required}" \
-RKNN_ROOT="${rknn_root}" \
-RKLLM_ROOT="${rkllm_root}" \
-ROCKCHIP_MEDIA_ROOT="${media_root}" \
-${ffmpeg_root:+COSMO_FFMPEG_ROOT="${ffmpeg_root}"} \
+# env (not a ${var:+ASSIGN=val} command prefix): word expansion there does
+# not re-parse into an assignment, so the whole token becomes the command name.
+env COSMO_PACKAGE_MODELS="${package_models}" \
+    COSMO_RKLLM_REQUIRED="${rkllm_required}" \
+    RKNN_ROOT="${rknn_root}" \
+    RKLLM_ROOT="${rkllm_root}" \
+    ROCKCHIP_MEDIA_ROOT="${media_root}" \
+    ${ffmpeg_root:+COSMO_FFMPEG_ROOT="${ffmpeg_root}"} \
     "${PROJECT_ROOT_PATH}/scripts/build_rknn.sh" -c "${chip}" -T
 
 shopt -s nullglob
