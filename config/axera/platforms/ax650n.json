@@ -14,9 +14,9 @@
     "model_file_ext": ".axmodel"
   },
   "media": {
-    "default_backend": "cpu",
+    "default_backend": "axera",
     "cpu_fallback": true,
-    "note": "Phase-1 AX650N uses the FFmpeg software media backend; native AX650 IVPS/VDEC/VENC is follow-up work"
+    "note": "Phase-2 AX650N uses the native AX650 VDEC/VENC media backend with CPU/FFmpeg fault-tolerance fallbacks; IVPS frame-proc path still delegates to CPU pending board validation"
   },
   "packaging": {
     "directory_token": "AX650N",

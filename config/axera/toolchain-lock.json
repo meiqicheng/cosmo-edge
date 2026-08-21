@@ -1,0 +1,53 @@
+{
+  "schema_version": 2,
+  "family": "axera-ax650",
+  "sdk": {
+    "name": "AX650 SDK",
+    "version": "V3.10.2",
+    "package": "AX650_SDK_V3.10.2_20260513151335",
+    "runtime_mode": "soc",
+    "msp_out": "package/msp/out",
+    "runtime_family": "ax_engine_soc",
+    "model_file_ext": ".axmodel",
+    "source_dir": "hardware/Axera爱芯元智/AXERA-TECH/AX650-Community-Hub/AX650_SDK_V3.10.2_20260513151335",
+    "wsl_stage": "/opt/axera/sdk/msp-out"
+  },
+  "toolchain": {
+    "name": "ARM GNU gcc-arm-9.2",
+    "version": "9.2.1",
+    "triplet": "aarch64-none-linux-gnu",
+    "release": "gcc-arm-9.2-2022.12",
+    "archive": "gcc-arm-9.2-2022.12-x86_64-aarch64-none-linux-gnu.tar.xz",
+    "upstream": "https://developer.arm.com/-/media/Files/downloads/gnu/9.2-2022.12/binrel/gcc-arm-9.2-2022.12-x86_64-aarch64-none-linux-gnu.tar.xz",
+    "wsl_stage": "/opt/axera/toolchain/gcc-arm-9.2"
+  },
+  "converter": {
+    "name": "Pulsar2",
+    "version": "6.0",
+    "commit": "48520c11",
+    "target_hardware": "AX650",
+    "install": "~/.cache/magnetar/pulsar2/6.0",
+    "source_agent": "https://github.com/AXERA-TECH/Magnetar",
+    "download": "ModelScope mirror via Magnetar scripts/install_pulsar2.sh"
+  },
+  "models": {
+    "yolov8n": {
+      "input": [1, 3, 640, 640],
+      "axmodel": "prod_AX650N_6047042_YOLOV8n_V1.0.0/model.axmodel",
+      "axmodel_size_bytes": 3816784,
+      "cosine_similarity": 0.9999999956
+    },
+    "helmet": {
+      "input": [1, 3, 224, 224],
+      "axmodel": "prod_AX650N_7486163_helmet_V1.0.0/model.axmodel",
+      "axmodel_size_bytes": 1675072,
+      "cosine_similarity": 0.9999999987
+    }
+  },
+  "qualification": {
+    "ax650n": {
+      "status": "UNVERIFIED",
+      "note": "Board-side baseline pending measurement on a real AX650N device (stage 6 of the AX650N support plan)"
+    }
+  }
+}

@@ -564,3 +564,7 @@ data/resource/aiboxresource_rk3588/models/prod_RK3588_7000001_qwen3_5_V1.0.0/
 
 # for build_cpu/build_rknn/build_axera ...
 build_*/
+
+# AX650 SDK (NDA) + ARM GNU toolchain staged for local builder-image builds
+# by scripts/build_axera_package.ps1 (see Dockerfile.axera).
+sdk/

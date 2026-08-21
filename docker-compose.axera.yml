@@ -1,0 +1,51 @@
+# CosmoEdge AX650N package build.
+#
+# The AX650 SDK is NDA-licensed and cannot ship in a public registry image;
+# the builder image carries only generic tooling, while the SDK and the ARM
+# GNU toolchain are bind-mounted from the host WSL checkout:
+#   ${AXERA_SDK_WSL_ROOT:-/opt/axera/sdk/msp-out}
+#   ${AXERA_TOOLCHAIN_WSL_ROOT:-/opt/axera/toolchain/gcc-arm-9.2}
+# On Windows Docker Desktop set these to \\wsl$\<distro>\opt\axera\...
+# (scripts/build_axera_package.ps1 resolves them automatically).
+#
+# Usage:
+#   docker compose -f docker-compose.axera.yml build
+#   docker compose -f docker-compose.axera.yml run --rm cosmo-axera-package --chip ax650n
+# Output lands in ./build_output/ax650n/.
+
+services:
+  cosmo-axera-package:
+    image: ${COSMO_AXERA_BUILDER_IMAGE:-cosmo_edge-build-env_axera:local}
+    build:
+      context: .
+      dockerfile: Dockerfile.axera
+    platform: linux/amd64
+    network_mode: host
+    volumes:
+      - .:/workspace
+      - ./build_output:/build_output
+      - ${AXERA_SDK_WSL_ROOT:-/opt/axera/sdk/msp-out}:/opt/axera/sdk/msp-out:ro
+      - ${AXERA_TOOLCHAIN_WSL_ROOT:-/opt/axera/toolchain/gcc-arm-9.2}:/opt/axera/toolchain/gcc-arm-9.2:ro
+      - cosmo-axera-build:/opt/axera/build
+      - cosmo-npm-cache:/root/.npm
+    working_dir: /workspace
+    environment:
+      COSMO_BUILD_JOBS: "${COSMO_BUILD_JOBS:-4}"
+      COSMO_PACKAGE_MODELS: "${COSMO_PACKAGE_MODELS:-include}"
+      COSMO_AXERA_BUILD_DIR: "/opt/axera/build"
+      NPM_CONFIG_MAXSOCKETS: "${NPM_CONFIG_MAXSOCKETS:-1}"
+      NPM_CONFIG_PROGRESS: "${NPM_CONFIG_PROGRESS:-false}"
+      NPM_CONFIG_FETCH_RETRIES: "${NPM_CONFIG_FETCH_RETRIES:-3}"
+      NPM_CONFIG_FETCH_TIMEOUT: "${NPM_CONFIG_FETCH_TIMEOUT:-120000}"
+      NPM_CONFIG_PREFER_OFFLINE: "${NPM_CONFIG_PREFER_OFFLINE:-true}"
+      NPM_CONFIG_UPDATE_NOTIFIER: "${NPM_CONFIG_UPDATE_NOTIFIER:-false}"
+    entrypoint: ["/workspace/scripts/build_axera_package.sh"]
+    command:
+      - --chip
+      - ${COSMO_TARGET_CHIP:-ax650n}
+      - --models
+      - ${COSMO_PACKAGE_MODELS:-include}
+
+volumes:
+  cosmo-axera-build:
+  cosmo-npm-cache:

@@ -2,6 +2,7 @@
 .antigravitycli
 .vscode
 /build
+/build_axera
 /build_cpu
 /build_cpu_verify
 /build_cpu_windows

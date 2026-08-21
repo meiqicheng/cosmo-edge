@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "image_repository": "cosmo_edge-build-env_axera",
+  "common": {
+    "architecture": "linux/amd64",
+    "target_architecture": "aarch64",
+    "sdk_family": "ax_engine_soc",
+    "sdk_version": "V3.10.2",
+    "axera_root": "/opt/axera/sdk/msp-out",
+    "toolchain_root": "/opt/axera/toolchain/gcc-arm-9.2"
+  },
+  "targets": {
+    "ax650n": {
+      "media_runtime_profile": "axera-msp-v3.10.2",
+      "sdk_root": "/opt/axera/sdk/msp-out",
+      "toolchain_root": "/opt/axera/toolchain/gcc-arm-9.2",
+      "required_package_paths": [
+        "lib/libax_engine.so",
+        "lib/libax_sys.so",
+        "lib/libax_comm.so",
+        "lib/libax_vdec.so",
+        "lib/libax_venc.so",
+        "lib/libax_ivps.so"
+      ],
+      "forbidden_package_paths": []
+    }
+  }
+}

@@ -57,7 +57,11 @@ elif [ "${RESOURCE_DIR#/}" = "${RESOURCE_DIR}" ]; then
     RESOURCE_DIR="${PROJECT_ROOT_PATH}/${RESOURCE_DIR}"
 fi
 
-# Phase 1: CPU/FFmpeg software media backend paired with AXERA NPU inference.
+# Phase 2: AX650 hardware media backend (VDEC/VENC via libax_*) with the CPU
+# decoder/encoder/frame-proc compiled in as fault-tolerance fallbacks.
+if [ -z "${TOOLCHAIN_FILE}" ]; then
+    TOOLCHAIN_FILE="${PROJECT_ROOT_PATH}/toolchains/aarch64-axera.toolchain.cmake"
+fi
 RESOURCE_MODELS_DIR="${RESOURCE_DIR}/models"
 RESOURCE_OVERLAY_DIR="${RESOURCE_DIR}"
 if [ -n "${BUILD_DIR_ARG}" ]; then
@@ -82,8 +86,9 @@ cmake -S "${PROJECT_ROOT_PATH}" -B "${BUILD_DIR}" \
     -DCOSMO_NN_USE_RKNN_BACKEND=OFF \
     -DCOSMO_NN_USE_AXERA_BACKEND=ON \
     -DCOSMO_MEDIA_USE_SOPHON_BACKEND=OFF \
-    -DCOSMO_MEDIA_USE_CPU_BACKEND=ON \
+    -DCOSMO_MEDIA_USE_CPU_BACKEND=OFF \
     -DCOSMO_MEDIA_USE_ROCKCHIP_BACKEND=OFF \
+    -DCOSMO_MEDIA_USE_AXERA_BACKEND=ON \
     -DCOSMO_AXERA_ROOT="${AXERA_ROOT_PATH}" \
     -DCOSMO_DEV_MODE="${DEV_MODE}" \
     -DBUILD_TESTS="${BUILD_TESTS_FLAG}" \

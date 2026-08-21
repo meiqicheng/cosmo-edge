@@ -717,6 +717,13 @@ if(BUILD_TESTS)
         set_property(TARGET cosmo-tests APPEND PROPERTY
             BUILD_RPATH "${COSMO_ROCKCHIP_MEDIA_ROOT}/lib")
     endif()
+    if(COSMO_NN_USE_AXERA_BACKEND OR COSMO_MEDIA_USE_AXERA_BACKEND)
+        set_property(TARGET cosmo-tests APPEND PROPERTY
+            BUILD_RPATH "${COSMO_AXERA_ROOT}/lib")
+        target_link_options(cosmo-tests PRIVATE
+            "-Wl,-rpath-link,${COSMO_AXERA_ROOT}/lib"
+            "-Wl,--allow-shlib-undefined")
+    endif()
     target_link_libraries(cosmo-tests PRIVATE ${COMMON_LIBS})
     if(COSMO_ENABLE_COVERAGE)
         # gcov runtime is only needed when the test binary was instrumented.
