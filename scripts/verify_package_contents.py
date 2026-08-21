@@ -105,6 +105,17 @@ def parse_runtime_paths(data: bytes) -> dict[str, str]:
     return values
 
 
+def assert_no_private_key_material(relative: str, data: bytes) -> None:
+    # PEM markers are scanned in non-ELF members only: the intent is to catch
+    # accidentally packaged key/cert files, which are ASCII. Upstream shared
+    # libraries (e.g. GLib's libgio) legitimately embed marker constants for
+    # certificate-format detection.
+    if data.startswith(b"\x7fELF"):
+        return
+    if any(marker in data for marker in PRIVATE_MARKERS):
+        raise PackageAuditError(f"private key material is forbidden: {relative}")
+
+
 def verify_package(
     path: pathlib.Path,
     profile: str,
@@ -137,8 +148,7 @@ def verify_package(
                     raise PackageAuditError(f"cannot read member: {relative}")
                 data = stream.read()
                 contents[relative] = data
-                if any(marker in data for marker in PRIVATE_MARKERS):
-                    raise PackageAuditError(f"private key material is forbidden: {relative}")
+                assert_no_private_key_material(relative, data)
 
     for directory in REQUIRED_DIRS:
         if directory not in entries or not entries[directory].isdir():
