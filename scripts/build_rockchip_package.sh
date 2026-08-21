@@ -8,7 +8,7 @@ while (($#)); do
     case "$1" in
         --chip)
             if (($# < 2)); then
-                echo "ERROR: --chip requires rk3576 or rv1126b" >&2
+                echo "ERROR: --chip requires rk3576, rk3588, or rv1126b" >&2
                 exit 2
             fi
             chip="$2"
@@ -23,7 +23,7 @@ while (($#)); do
             shift 2
             ;;
         -h|--help)
-            echo "Usage: $0 [--chip <rk3576|rv1126b>] [--models <include|preserve>]"
+            echo "Usage: $0 [--chip <rk3576|rk3588|rv1126b>] [--models <include|preserve>]"
             exit 0
             ;;
         *)
@@ -34,9 +34,9 @@ while (($#)); do
 done
 
 case "${chip}" in
-    rk3576|rv1126b) ;;
+    rk3576|rv1126b|rk3588) ;;
     *)
-        echo "ERROR: unsupported Rockchip target '${chip}'; expected rk3576 or rv1126b" >&2
+        echo "ERROR: unsupported Rockchip target '${chip}'; expected rk3576, rk3588, or rv1126b" >&2
         exit 2
         ;;
 esac
@@ -51,7 +51,12 @@ esac
 if [ -z "${PROJECT_ROOT_PATH:-}" ]; then
     PROJECT_ROOT_PATH=$(cd "$(dirname "$0")/.." && pwd -P)
 fi
-builder_lock="${PROJECT_ROOT_PATH}/config/rockchip-build/builder-lock.json"
+# rk3588 uses the Debian 11 (bullseye) builder with its own lock file so the
+# published Ubuntu 22.04 builder images for rk3576/rv1126b stay compatible.
+case "${chip}" in
+    rk3588) builder_lock="${PROJECT_ROOT_PATH}/config/rockchip-build/builder-lock-rk3588.json" ;;
+    *)      builder_lock="${PROJECT_ROOT_PATH}/config/rockchip-build/builder-lock.json" ;;
+esac
 image_lock="${COSMO_ROCKCHIP_BUILDER_LOCK:-/opt/cosmo/rockchip-builder-lock.json}"
 if [ ! -f "${builder_lock}" ]; then
     echo "ERROR: Rockchip builder lock is missing: ${builder_lock}" >&2
@@ -66,7 +71,7 @@ if ! cmp -s "${builder_lock}" "${image_lock}"; then
     exit 1
 fi
 
-IFS=$'\t' read -r rknn_root rkllm_root media_root media_runtime rkllm_required < <(
+IFS=$'\t' read -r rknn_root rkllm_root media_root media_runtime rkllm_required ffmpeg_root glibc_max < <(
     python3 - "${builder_lock}" "${chip}" <<'PY'
 import json
 import pathlib
@@ -78,10 +83,12 @@ common = lock["common"]
 target = lock["targets"][chip]
 values = (
     common["rknn_root"],
-    common["rkllm_root"],
+    common.get("rkllm_root") or common["rknn_root"],
     target["media_root"],
     target["media_runtime_profile"],
     "ON" if target["rkllm_required"] else "OFF",
+    common.get("ffmpeg_root", ""),
+    common.get("glibc_max", ""),
 )
 if any("\t" in str(value) or "\n" in str(value) for value in values):
     raise SystemExit("builder lock values must be single-line fields")
@@ -91,10 +98,12 @@ PY
 
 test -f "${rknn_root}/include/rknn_api.h"
 test -f "${rknn_root}/lib/librknnrt.so"
-test -f "${media_root}/include/rockchip/rk_mpi.h"
-test -f "${media_root}/include/rga/im2d.h"
-test -f "${media_root}/lib/librockchip_mpp.so"
-test -f "${media_root}/lib/librga.so"
+if [ -n "${media_root}" ]; then
+    test -f "${media_root}/include/rockchip/rk_mpi.h"
+    test -f "${media_root}/include/rga/im2d.h"
+    test -f "${media_root}/lib/librockchip_mpp.so"
+    test -f "${media_root}/lib/librga.so"
+fi
 if [ "${rkllm_required}" = "ON" ]; then
     test -f "${rkllm_root}/include/rkllm.h"
     test -f "${rkllm_root}/lib/librkllmrt.so"
@@ -109,6 +118,7 @@ COSMO_RKLLM_REQUIRED="${rkllm_required}" \
 RKNN_ROOT="${rknn_root}" \
 RKLLM_ROOT="${rkllm_root}" \
 ROCKCHIP_MEDIA_ROOT="${media_root}" \
+${ffmpeg_root:+COSMO_FFMPEG_ROOT="${ffmpeg_root}"} \
     "${PROJECT_ROOT_PATH}/scripts/build_rknn.sh" -c "${chip}" -T
 
 shopt -s nullglob
@@ -119,6 +129,12 @@ if ((${#packages[@]} != 1)) || [ ! -f "${packages[0]:-}" ] || [ -L "${packages[0
 fi
 
 package="${packages[0]}"
+if [ -n "${glibc_max}" ]; then
+    python3 "${PROJECT_ROOT_PATH}/tools/package/glibc_gate.py" \
+        --archive "${package}" \
+        --max "${glibc_max}" \
+        --json "$(dirname "${package}")/glibc-gate.json"
+fi
 python3 "${PROJECT_ROOT_PATH}/scripts/verify_package_contents.py" \
     --archive "$(cd "$(dirname "${package}")" && pwd -P)/$(basename "${package}")" \
     --build-profile public-runtime \
