@@ -3,6 +3,12 @@
 # Instead of compiling FFmpeg from source via ExternalProject_Add, we use
 # prebuilt shared libraries placed under prebuild/ffmpeg/<arch>/.
 #
+# The library root may be overridden with -DCOSMO_FFMPEG_ROOT=<dir>. The root
+# must contain include/ and lib/ with the FFmpeg shared libraries and their
+# soname symlinks. This is how non-prebuild sysroots (e.g. the Debian 11
+# bullseye cross builder for RK3588, which assembles /opt/ffmpeg-debian11)
+# supply a glibc-compatible FFmpeg without touching prebuild/.
+#
 # Prerequisites:
 #   - prebuild/ffmpeg/aarch64/{include/,lib/} for the Sophon/aarch64 target
 #   - prebuild/ffmpeg/x86_64/{include/,lib/}  for the CPU/x86_64 target
@@ -14,7 +20,17 @@
 # components) eliminates the risk of accidentally enabling GPL-only encoders or
 # decoders during a developer's local source build.
 
-if(COSMO_TARGET_ARCH STREQUAL "aarch64")
+if(COSMO_FFMPEG_ROOT)
+    get_filename_component(COSMO_FFMPEG_ROOT "${COSMO_FFMPEG_ROOT}" ABSOLUTE)
+    if(NOT IS_DIRECTORY "${COSMO_FFMPEG_ROOT}/include")
+        message(FATAL_ERROR "COSMO_FFMPEG_ROOT has no include/ directory: ${COSMO_FFMPEG_ROOT}")
+    endif()
+    if(NOT EXISTS "${COSMO_FFMPEG_ROOT}/lib/libavcodec.so")
+        message(FATAL_ERROR "COSMO_FFMPEG_ROOT has no lib/libavcodec.so: ${COSMO_FFMPEG_ROOT}")
+    endif()
+    set(FFMPEG_PREBUILD_DIR ${COSMO_FFMPEG_ROOT})
+    message(STATUS "FFmpeg: using override root COSMO_FFMPEG_ROOT=${COSMO_FFMPEG_ROOT}")
+elseif(COSMO_TARGET_ARCH STREQUAL "aarch64")
     set(FFMPEG_PREBUILD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/prebuild/ffmpeg/aarch64)
 elseif(COSMO_TARGET_ARCH STREQUAL "x86_64")
     set(FFMPEG_PREBUILD_DIR ${CMAKE_CURRENT_SOURCE_DIR}/prebuild/ffmpeg/x86_64)
