@@ -53,6 +53,10 @@
         "system_runtime_sha256": "0f1c5db6c649c8705759308aa56ecffc3295c7eb465f9ec9170882f44004aa8d"
       }
     },
+    "rk3588": {
+      "status": "UNVERIFIED",
+      "note": "Board-side baseline pending measurement on a real RK3588 device (stage 5 of the RK3588 support plan)"
+    },
     "rv1126b": {
       "status": "candidate-validated",
       "requires_target_bound_evidence": true

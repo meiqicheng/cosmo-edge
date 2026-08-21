@@ -1,0 +1,29 @@
+{
+  "algorithmCategory": 2,
+  "algorithmCode": 7463001,
+  "algorithmId": "7463001",
+  "algorithmMetadata": "{\"params\":[],\"region\":{\"heads\":[]},\"regionType\":\"0\",\"scheduleSupport\":false,\"defaultFullScreen\":true,\"maxAreaCount\":4,\"shieldedRegion\":{}}",
+  "algorithmName": "RK3588 Helmet Image Analysis",
+  "algorithmProcessdata": "[{\"actionId\":\"PA_00001\",\"actionName\":\"Person Detection\",\"flowActionId\":\"rk3588-det\",\"preFlowActionId\":\"-1\",\"configObject\":{\"params\":[{\"key\":\"atomicCode\",\"value\":\"9275710\"}]}},{\"actionId\":\"PA_00002\",\"actionName\":\"Helmet Classification\",\"flowActionId\":\"rk3588-cls\",\"preFlowActionId\":\"rk3588-det\",\"configObject\":{\"params\":[{\"key\":\"atomicCode\",\"value\":\"7982161\"}]}}]",
+  "algorithmUsage": 2,
+  "atomicList": "[{\"atomicCode\":\"9275710\",\"atomicName\":\"YOLOV8\",\"position\":\"rk3588-det\",\"labelList\":[{\"class_name\":\"Pedestrian\",\"label\":\"0\",\"nameCN\":\"Pedestrian\",\"threshold\":[0.25],\"used\":true,\"position\":\"rk3588-det\",\"atomicCode\":\"9275710\"}],\"categoriesLabelList\":[]},{\"atomicCode\":\"7982161\",\"atomicName\":\"helmet\",\"position\":\"rk3588-cls\",\"labelList\":[{\"class_name\":\"helmet\",\"label\":\"0\",\"nameCN\":\"helmet\",\"threshold\":[0.5],\"used\":true,\"position\":\"rk3588-cls\",\"atomicCode\":\"7982161\"},{\"class_name\":\"nohelmet\",\"label\":\"1\",\"nameCN\":\"nohelmet\",\"threshold\":[0.5],\"used\":true,\"position\":\"rk3588-cls\",\"atomicCode\":\"7982161\"}],\"categoriesLabelList\":[]}]",
+  "checkType": 0,
+  "confVersionId": "rk3588-helmet-image-v1",
+  "confVersionName": "V1",
+  "configVersionList": [
+    {
+      "algorithmCode": "7463001",
+      "algorithmMetadata": "{\"params\":[],\"region\":{\"heads\":[]},\"regionType\":\"0\",\"scheduleSupport\":false,\"defaultFullScreen\":true,\"maxAreaCount\":4,\"shieldedRegion\":{}}",
+      "algorithmProcessdata": "[{\"actionId\":\"PA_00001\",\"actionName\":\"Person Detection\",\"flowActionId\":\"rk3588-det\",\"preFlowActionId\":\"-1\",\"configObject\":{\"params\":[{\"key\":\"atomicCode\",\"value\":\"9275710\"}]}},{\"actionId\":\"PA_00002\",\"actionName\":\"Helmet Classification\",\"flowActionId\":\"rk3588-cls\",\"preFlowActionId\":\"rk3588-det\",\"configObject\":{\"params\":[{\"key\":\"atomicCode\",\"value\":\"7982161\"}]}}]",
+      "algorithmUpdateTime": 1785830400000,
+      "atomicList": "[{\"atomicCode\":\"9275710\",\"atomicName\":\"YOLOV8\",\"position\":\"rk3588-det\",\"labelList\":[{\"class_name\":\"Pedestrian\",\"label\":\"0\",\"nameCN\":\"Pedestrian\",\"threshold\":[0.25],\"used\":true,\"position\":\"rk3588-det\",\"atomicCode\":\"9275710\"}],\"categoriesLabelList\":[]},{\"atomicCode\":\"7982161\",\"atomicName\":\"helmet\",\"position\":\"rk3588-cls\",\"labelList\":[{\"class_name\":\"helmet\",\"label\":\"0\",\"nameCN\":\"helmet\",\"threshold\":[0.5],\"used\":true,\"position\":\"rk3588-cls\",\"atomicCode\":\"7982161\"},{\"class_name\":\"nohelmet\",\"label\":\"1\",\"nameCN\":\"nohelmet\",\"threshold\":[0.5],\"used\":true,\"position\":\"rk3588-cls\",\"atomicCode\":\"7982161\"}],\"categoriesLabelList\":[]}]",
+      "id": "rk3588-helmet-image-v1",
+      "name": "V1"
+    }
+  ],
+  "createTime": 1785830400000,
+  "description": "RK3588 picture pipeline for person detection followed by helmet classification",
+  "remark": "RK3588 picture pipeline for person detection followed by helmet classification",
+  "supplier": "CWAI",
+  "updateTime": 1785830400000
+}

@@ -39,7 +39,7 @@ output layout, and postprocessing are compatible with CosmoEdge.
 | --- | --- | --- | --- | --- |
 | x86 CPU | `.onnx` | `model.onnx` | ONNX Runtime CPU | x86_64 host and matching CosmoEdge build |
 | Sophon | `.bmodel` | `model.nn` | Sophon BMRT | BM1688 or CV186X; the artifact must target the actual chip |
-| Rockchip RKNN | `.rknn` | `model.rknn` | RKNN Runtime | RK3576 or RV1126B; the artifact must target the actual chip |
+| Rockchip RKNN | `.rknn` | `model.rknn` | RKNN Runtime | RK3576, RK3588, or RV1126B; the artifact must target the actual chip |
 
 `model.nn` is the internal file name in a CosmoEdge model package. It wraps the device model. When adding
 an individual Sophon model in the UI, select its `.bmodel`; do not rename an extension to `.nn`.

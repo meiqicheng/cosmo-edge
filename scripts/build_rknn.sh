@@ -29,7 +29,7 @@ while getopts "c:m:r:p:tTE" opt; do
         t) DEV_MODE=ON ;;
         T) BUILD_TESTS_FLAG=ON ;;
         E) BUILD_VLM_EVAL_FLAG=ON; RKLLM_REQUIRED=ON ;;
-        *) echo "Usage: $0 -r <rknn-runtime-root> [-c rk3576|rv1126b] [-p <rockchip-media-root>] [-m <resource-dir>] [-t] [-T] [-E]"; exit 1 ;;
+        *) echo "Usage: $0 -r <rknn-runtime-root> [-c rk3576|rk3588|rv1126b] [-p <rockchip-media-root>] [-m <resource-dir>] [-t] [-T] [-E]"; exit 1 ;;
     esac
 done
 
