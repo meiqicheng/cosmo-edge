@@ -1186,6 +1186,14 @@ class PackageProfileTests(unittest.TestCase):
         failing = glibc_gate.run_scan([("lib/bad.so", bad)], "2.31")
         self.assertEqual(failing["status"], "FAIL")
 
+    def test_private_key_scan_skips_elf_but_flags_text_members(self) -> None:
+        marker = b"-----BEGIN ENCRYPTED PRIVATE KEY-----"
+        verifier.assert_no_private_key_material("lib/libgio-2.0.so.0", b"\x7fELF" + marker)
+        with self.assertRaises(verifier.PackageAuditError) as caught:
+            verifier.assert_no_private_key_material("etc/leaked.pem", marker)
+        self.assertIn("leaked.pem", str(caught.exception))
+        verifier.assert_no_private_key_material("lib/libclean.so", b"\x7fELF\x02\x01")
+
     def test_shared_rknn_and_rockchip_sources_do_not_fork_by_chip(self) -> None:
         source_roots = (
             REPOSITORY / "src/nn/device/rknn",
