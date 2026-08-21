@@ -14,6 +14,10 @@ set(MP4V2_CONFIGURE_ARGS
 )
 
 if(COSMO_TARGET_ARCH STREQUAL "aarch64")
+    # mp4v2 2.0.0's bundled config.sub predates the "aarch64-none-linux-gnu"
+    # (ARM GNU Toolchain) triple and rejects it. CC/CXX above already point at
+    # the absolute cross-compiler paths, so --host is only autotools metadata;
+    # keep the canonical "aarch64-linux-gnu" triple that config.sub accepts.
     list(APPEND MP4V2_CONFIGURE_ARGS --host=aarch64-linux-gnu)
 endif()
 
@@ -27,7 +31,13 @@ ExternalProject_Add(
     # 构建上下文中 aclocal.m4/configure 的 mtime 若新于 GNUmakefile.in,
     # 该规则就会触发, 导致 "automake-1.11: command not found"。
     # 此处 touch 生成的 autotools 文件, 使再生成规则永不触发。
-    PATCH_COMMAND touch <SOURCE_DIR>/GNUmakefile.in <SOURCE_DIR>/aclocal.m4 <SOURCE_DIR>/configure
+    # 注意 touch 顺序: 必须先 touch 依赖 (configure.ac/project.m4sugar/
+    # GNUmakefile.am), 再 touch aclocal.m4 (它是 GNUmakefile.in 的依赖,
+    # 自身也有再生成规则), 最后 touch 目标 GNUmakefile.in。否则依赖反而
+    # 比目标新 (drvfs 纳秒级时间戳会暴露此问题), 规则仍会触发。
+    PATCH_COMMAND touch <SOURCE_DIR>/configure <SOURCE_DIR>/configure.ac <SOURCE_DIR>/project/project.m4sugar <SOURCE_DIR>/GNUmakefile.am
+    COMMAND touch <SOURCE_DIR>/aclocal.m4
+    COMMAND touch <SOURCE_DIR>/GNUmakefile.in
 
     CONFIGURE_COMMAND <SOURCE_DIR>/configure
         ${MP4V2_CONFIGURE_ARGS}

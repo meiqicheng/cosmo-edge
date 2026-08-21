@@ -47,10 +47,23 @@ set(OPENSSL_COMMON_CONFIGURE_ARGS
 )
 
 if(COSMO_TARGET_ARCH STREQUAL "aarch64")
+    # Derive the OpenSSL cross-compile prefix from the active CMake compiler
+    # instead of hardcoding a distro package name. Example:
+    #   /path/to/bin/aarch64-none-linux-gnu-gcc
+    #     -> /path/to/bin/aarch64-none-linux-gnu-
+    # This keeps OpenSSL building with the same toolchain selected by the
+    # CMAKE_TOOLCHAIN_FILE (ARM GNU Toolchain, apt cross packages, etc.).
+    get_filename_component(OPENSSL_TOOLCHAIN_BIN_DIR ${CMAKE_C_COMPILER} DIRECTORY)
+    get_filename_component(OPENSSL_TOOLCHAIN_COMPILER_NAME ${CMAKE_C_COMPILER} NAME)
+    string(REGEX REPLACE "-gcc$" "-" OPENSSL_TOOLCHAIN_PREFIX_NAME ${OPENSSL_TOOLCHAIN_COMPILER_NAME})
+    set(OPENSSL_CROSS_COMPILE_PREFIX "${OPENSSL_TOOLCHAIN_BIN_DIR}/${OPENSSL_TOOLCHAIN_PREFIX_NAME}")
+
     set(OPENSSL_CONFIGURE_COMMAND
         <SOURCE_DIR>/config linux-aarch64
         ${OPENSSL_COMMON_CONFIGURE_ARGS}
-        --cross-compile-prefix=aarch64-linux-gnu-
+        --cross-compile-prefix=${OPENSSL_CROSS_COMPILE_PREFIX}
+        --with-zlib-include=${THIRDPARTY_INSTALL_PREFIX}/zlib/include
+        --with-zlib-lib=${THIRDPARTY_INSTALL_PREFIX}/zlib/lib
     )
 elseif(COSMO_TARGET_ARCH STREQUAL "x86_64")
     set(OPENSSL_CONFIGURE_COMMAND
@@ -85,6 +98,7 @@ ExternalProject_Add(
     LOG_OUTPUT_ON_FAILURE ON
 )
 add_dependencies(third_build openssl_external)
+add_dependencies(openssl_external z_external)
 
 add_library(openssl_ssl SHARED IMPORTED)
 set_target_properties(openssl_ssl PROPERTIES
