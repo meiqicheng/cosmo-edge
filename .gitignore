@@ -558,4 +558,4 @@ test/video/demo.mp4
 !docs/benchmarks/scenario-bench/v1.1/**/*.log
 
 
-data/resource/aiboxresource_rk3588/models/prod_RK3588_7000001_qwen3_5_V1.0.0/
+build_*/
