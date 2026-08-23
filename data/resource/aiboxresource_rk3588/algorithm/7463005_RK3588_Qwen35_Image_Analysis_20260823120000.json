@@ -1,0 +1,29 @@
+{
+  "algorithmCategory": 2,
+  "algorithmCode": 7463005,
+  "algorithmId": "7463005",
+  "algorithmMetadata": "{\"params\":[],\"region\":{\"heads\":[]},\"regionType\":\"0\",\"scheduleSupport\":false,\"defaultFullScreen\":true,\"maxAreaCount\":4,\"shieldedRegion\":{}}",
+  "algorithmName": "RK3588 Qwen3.5 Image Analysis",
+  "algorithmProcessdata": "[{\"actionId\":\"PDA_00003\",\"actionName\":\"Qwen3.5 VLM Analysis\",\"flowActionId\":\"qwen35-vlm\",\"preFlowActionId\":\"-1\",\"configObject\":{\"params\":[{\"key\":\"atomicCode\",\"value\":\"7000001\"}]}}]",
+  "algorithmUsage": 2,
+  "atomicList": "[{\"atomicCode\":\"7000001\",\"atomicName\":\"Qwen3_5\",\"position\":\"qwen35-vlm\",\"labelList\":[],\"categoriesLabelList\":[]}]",
+  "checkType": 0,
+  "confVersionId": "rk3588-qwen35-image-v1",
+  "confVersionName": "V1",
+  "configVersionList": [
+    {
+      "algorithmCode": "7463005",
+      "algorithmMetadata": "{\"params\":[],\"region\":{\"heads\":[]},\"regionType\":\"0\",\"scheduleSupport\":false,\"defaultFullScreen\":true,\"maxAreaCount\":4,\"shieldedRegion\":{}}",
+      "algorithmProcessdata": "[{\"actionId\":\"PDA_00003\",\"actionName\":\"Qwen3.5 VLM Analysis\",\"flowActionId\":\"qwen35-vlm\",\"preFlowActionId\":\"-1\",\"configObject\":{\"params\":[{\"key\":\"atomicCode\",\"value\":\"7000001\"}]}}]",
+      "algorithmUpdateTime": 1787459000000,
+      "atomicList": "[{\"atomicCode\":\"7000001\",\"atomicName\":\"Qwen3_5\",\"position\":\"qwen35-vlm\",\"labelList\":[],\"categoriesLabelList\":[]}]",
+      "id": "rk3588-qwen35-image-v1",
+      "name": "V1"
+    }
+  ],
+  "createTime": 1787459000000,
+  "description": "RK3588 picture pipeline running the Qwen3.5 multimodal model (RKLLM backend) for image analysis",
+  "remark": "RK3588 picture pipeline running the Qwen3.5 multimodal model (RKLLM backend) for image analysis",
+  "supplier": "CWAI",
+  "updateTime": 1787459000000
+}
