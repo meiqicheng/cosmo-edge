@@ -212,8 +212,11 @@ util::ErrorEnum PQwen3VLWorker::HandPic(AlgDataPtr alg_data) {
     }
 
     auto frame = alg_data->chanDataDec.frame;
+    // 改动说明：CPU 侧图片帧的像素存放在 GetData() 中，只有经过设备到主机拷贝的帧
+    // 才会填充 GetHostData()。此处放宽校验：GetHostData() 为空但 GetData() 有效时
+    // 同样放行，下游（Qwen3VLUnify/RkllmVlmBackend）已兼容两种数据来源。
     if (!service::ServiceRegistry::Instance().Get<service::IVideoFrameTransform>().EnsureHostData(frame) ||
-        !frame->GetHostData()) {
+        (!frame->GetHostData() && !frame->GetData())) {
         LOG_WARN("[{} {}] Qwen3VL EnsureHostData failed on picture frame", GetTaskId(), GetFlowActionId());
         return util::ErrorEnum::InvalidParam;
     }
