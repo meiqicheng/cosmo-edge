@@ -27,35 +27,39 @@ FROM debian:bullseye@sha256:99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704eb
 ENV DEBIAN_FRONTEND=noninteractive
 
 # amd64 host + arm64 cross targets (multiarch for arm64 ffmpeg dev packages).
-# Use a China mirror (mirrors.ustc.edu.cn) for reliable downloads; the upstream
+# Use a China mirror (mirrors.tuna.tsinghua.edu.cn) for reliable downloads; the upstream
 # deb.debian.org frequently returns 502 on this network. HTTP (not HTTPS) is
 # used here because the base image has no ca-certificates yet; they are
 # installed in Step 1. Retries + longer timeout cope with flaky mirror links.
-RUN sed -i 's|http://deb.debian.org/debian-security|http://mirrors.ustc.edu.cn/debian-security|g; s|http://deb.debian.org/debian|http://mirrors.ustc.edu.cn/debian|g' /etc/apt/sources.list \
+# Slimming: merge every apt step into ONE layer and purge apt list/archive
+# caches inside the same RUN, so they are never baked into the image.
+# Step 1: host build tools (amd64). Step 2: aarch64 cross toolchain.
+# Step 3: Debian 11 arm64 FFmpeg dev packages (glibc 2.31 compatible).
+# liblzma5/libbz2 are linked by libavformat/libavcodec but, as required-
+# priority packages, apt does not pull their arm64 variants automatically
+# under multiarch; install them explicitly.
+RUN sed -i 's|http://deb.debian.org/debian-security|http://mirrors.tuna.tsinghua.edu.cn/debian-security|g; s|http://deb.debian.org/debian|http://mirrors.tuna.tsinghua.edu.cn/debian|g' /etc/apt/sources.list \
     && printf 'Acquire::Retries "10";\nAcquire::http::Timeout "120";\nAcquire::http::ConnectionTimeout "60";\nAcquire::ftp::Timeout "120";\n' > /etc/apt/apt.conf.d/99-retries \
-    && dpkg --add-architecture arm64 && apt-get update
-
-# Step 1: host build tools (amd64)
-RUN apt-get install -y --no-install-recommends \
+    && printf 'path-exclude /usr/share/doc/*\npath-include /usr/share/doc/*/copyright\npath-exclude /usr/share/man/*\npath-exclude /usr/share/locale/*\npath-exclude /usr/share/info/*\n' > /etc/dpkg/dpkg.cfg.d/01-nodoc \
+    && dpkg --add-architecture arm64 \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg wget git make pkg-config \
         autoconf automake libtool bison flex nasm yasm \
-        python3 python3-pip patch file
-
-# Step 2: aarch64 cross toolchain
-RUN apt-get install -y --no-install-recommends \
+        python3 python3-pip patch file \
         gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-        binutils-aarch64-linux-gnu libc6-dev-arm64-cross
+        binutils-aarch64-linux-gnu libc6-dev-arm64-cross \
+    && apt-get install -y --no-install-recommends --fix-missing \
+        libavcodec-dev:arm64 libavdevice-dev:arm64 libavfilter-dev:arm64 \
+        libavformat-dev:arm64 libavutil-dev:arm64 \
+        libswresample-dev:arm64 libswscale-dev:arm64 \
+        liblzma5:arm64 libbz2-1.0:arm64 \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 # CMake: bullseye's 3.18.4 is too old for cryptopp (needs >= 3.20). Install a
 # newer CMake via pip (lands in /usr/local/bin, ahead of /usr/bin in PATH).
 RUN python3 -m pip install --no-cache-dir cmake==3.22.1 \
     && cmake --version | head -1
-
-# Step 3: Debian 11 arm64 FFmpeg dev packages (glibc 2.31 compatible)
-RUN apt-get install -y --no-install-recommends --fix-missing \
-        libavcodec-dev:arm64 libavdevice-dev:arm64 libavfilter-dev:arm64 \
-        libavformat-dev:arm64 libavutil-dev:arm64 \
-        libswresample-dev:arm64 libswscale-dev:arm64
 
 # Node.js 20 for the Vue3/Vite web frontend build (bullseye's node 12 is too
 # old for Vite 6). Copy node from the existing rk3576 build image (it already
@@ -83,6 +87,15 @@ COPY --from=ghcr.io/cosmo-wander-ai/cosmo_edge-build-env_rk3576@sha256:135d25d0b
 RUN echo "d31fc19c85b85f6091b2bd0f6af9d962d5264a4e410bfb536402ec92bac738e8  /opt/rknn/lib/librknnrt.so" | sha256sum -c - \
     && test -f /opt/rknn/include/rknn_api.h
 
+# Step 4b: stage RKLLM Runtime v1.3.0 (aarch64) so cmake/rkllm.cmake auto-enables
+# the Qwen3.5 VLM backend for this image. Files come from .rk3588-build-cache
+# (host-staged from the pinned rknn-llm-release-v1.3.0 runtime drop).
+COPY .rk3588-build-cache/rkllm-runtime/include/rkllm.h /opt/rknn/include/rkllm.h
+COPY .rk3588-build-cache/rkllm-runtime/lib/librkllmrt.so /opt/rknn/lib/librkllmrt.so
+COPY .rk3588-build-cache/rkllm-runtime/LICENSE /opt/rknn/LICENSE
+RUN test -f /opt/rknn/include/rkllm.h && test -f /opt/rknn/lib/librkllmrt.so \
+    && test -f /opt/rknn/LICENSE
+
 # Step 5: assemble a self-contained FFmpeg root for cross builds.
 #
 # Headers come from the multiarch dev packages; libraries are collected with
@@ -103,7 +116,12 @@ RUN set -eux; \
     copy_lib() { \
         name="$1"; \
         if [ -e "$root/lib/$name" ]; then return 0; fi; \
-        cp -L "$libdir/$name" "$root/lib/$name"; \
+        src=""; \
+        for d in "$libdir" /lib/aarch64-linux-gnu "$libdir/pulseaudio"; do \
+            if [ -e "$d/$name" ]; then src="$d/$name"; break; fi; \
+        done; \
+        if [ -z "$src" ]; then echo "FATAL: arm64 library not found: $name" >&2; return 1; fi; \
+        cp -L "$src" "$root/lib/$name"; \
         for dep in $(aarch64-linux-gnu-readelf -d "$root/lib/$name" | sed -n 's/.*Shared library: \[\(.*\)\]$/\1/p'); do \
             case "$dep" in \
                 libc.so*|libm.so*|libdl.so*|libpthread.so*|librt.so*|libresolv.so*|libnsl.so*|libutil.so*|libanl.so*|libBrokenLocale.so*|libthread_db.so*|ld-linux-*|libgcc_s.so*|libstdc++.so*) ;; \
@@ -125,13 +143,68 @@ RUN set -eux; \
     test -f "$root/lib/libavcodec.so.58"; \
     echo "--- /opt/ffmpeg-debian11/lib ---"; ls -la "$root/lib"
 
-# Step 6: builder lock for the rk3588 package flow. The package script selects
+# Step 6: Rockchip MPP + RGA media sysroot (glibc 2.31 baseline).
+#
+# Versions are pinned by config/rockchip-media/runtime-lock.json profile
+# "rk3588-mpp-1.1.0-rga-1.10.6-bullseye-v1":
+#   - MPP  tag 1.1.0, commit c08762ebfadeb4e986d2fed993bc7a54862d3ebe
+#     (same commit the RK3576 repro-v1 profile builds from; plain C++,
+#     builds cleanly against bullseye g++-aarch64).
+#   - librga official aarch64 prebuilt, commit 2b32edcb97b601b25683e2941d888c8515da6d55,
+#     api_version 1.10.6_[3] — byte-identical to the file used on RK3576.
+# Layout matches the rk3576 media root convention: {include,lib,share/licenses}.
+# Media sources are pre-fetched on the host into .rk3588-build-cache/ and
+# verified against the pinned commits there; the image build performs no
+# network access for media artifacts (GitHub reachability is not assumed).
+COPY .rk3588-build-cache/mpp-src /tmp/src/mpp
+COPY .rk3588-build-cache/librga.so /tmp/assets/librga.so
+COPY .rk3588-build-cache/librga-src/include/ /tmp/assets/rga-include/
+COPY .rk3588-build-cache/librga-src/COPYING /tmp/assets/librga-COPYING
+
+RUN set -eux; \
+    root=/opt/rockchip-media/rk3588; \
+    mkdir -p "$root/include/rockchip" "$root/include/rga" "$root/lib" "$root/share/licenses/rockchip-media/mpp" "$root/share/licenses/rockchip-media/librga"; \
+    test "$(git -C /tmp/src/mpp rev-parse HEAD)" = "c08762ebfadeb4e986d2fed993bc7a54862d3ebe"; \
+    cmake -S /tmp/src/mpp -B /tmp/src/mpp/build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_SYSTEM_NAME=Linux \
+        -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+        -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
+        -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
+        -DBUILD_SHARED_LIBS=ON \
+        -DBUILD_TEST=OFF; \
+    cmake --build /tmp/src/mpp/build -j"$(nproc)"; \
+    cp /tmp/src/mpp/build/mpp/librockchip_mpp.so* "$root/lib/"; \
+    cd "$root/lib"; \
+    real="$(readlink -f librockchip_mpp.so.1)"; \
+    mv -f "$real" librockchip_mpp.so.0; \
+    rm -f librockchip_mpp.so.1 librockchip_mpp.so; \
+    ln -sf librockchip_mpp.so.0 librockchip_mpp.so.1; \
+    ln -sf librockchip_mpp.so.1 librockchip_mpp.so; \
+    echo "e150bda757fb5e8a649c429ec7cabaf851aa2a3be554ed494d5519e8790d943b  /tmp/assets/librga.so" | sha256sum -c -; \
+    cp /tmp/assets/librga.so "$root/lib/librga.so"; \
+    cp /tmp/assets/rga-include/*.h "$root/include/rga/"; \
+    mkdir -p /tmp/src/mpp-headers && cp /tmp/src/mpp/inc/*.h /tmp/src/mpp-headers/; \
+    cp /tmp/src/mpp/inc/*.h "$root/include/rockchip/"; \
+    find /tmp/src/mpp/osal -name '*.h' | while read -r h; do rel="${h#/tmp/src/mpp/osal/}"; mkdir -p "$root/include/rockchip/$(dirname "$rel")"; cp "$h" "$root/include/rockchip/$rel"; done; \
+    test -f "$root/include/rockchip/rk_mpi.h"; \
+    test -f "$root/include/rga/im2d.h"; \
+    test -f "$root/include/rga/im2d_type.h"; \
+    test -L "$root/lib/librockchip_mpp.so.1"; \
+    test -f "$root/lib/librockchip_mpp.so.0"; \
+    aarch64-linux-gnu-readelf -d "$root/lib/librockchip_mpp.so.0" | grep -q 'soname.*librockchip_mpp\.so\.1'; \
+    cp -r /tmp/src/mpp/LICENSES/. "$root/share/licenses/rockchip-media/mpp/"; \
+    cp /tmp/assets/librga-COPYING "$root/share/licenses/rockchip-media/librga/COPYING"; \
+    test -s "$root/share/licenses/rockchip-media/librga/COPYING"; \
+    ls -la "$root/lib"
+
+# Step 7: builder lock for the rk3588 package flow. The package script selects
 # config/rockchip-build/builder-lock-rk3588.json from the repo tree and
 # byte-compares it against the image-side copy resolved through this env var.
 COPY config/rockchip-build/builder-lock-rk3588.json /opt/cosmo/rockchip-builder-lock-rk3588.json
 ENV COSMO_ROCKCHIP_BUILDER_LOCK=/opt/cosmo/rockchip-builder-lock-rk3588.json
 
-# Step 7: record frozen tool identities for evidence/reproducibility.
+# Step 8: record frozen tool identities for evidence/reproducibility.
 RUN set -eux; \
     python3 - <<'PYEOF'
 import json, subprocess
@@ -160,3 +233,4 @@ print(json.dumps(record, indent=2))
 PYEOF
 
 WORKDIR /workspace
+
