@@ -9,24 +9,28 @@
     "rknn_root": "/opt/rknn",
     "rkllm_root": "/opt/rknn",
     "ffmpeg_root": "/opt/ffmpeg-debian11",
+    "rockchip_media_root": "/opt/rockchip-media/rk3588",
     "glibc_max": "2.31",
-    "rkllm": null
+    "rkllm": {
+      "version": "1.3.0",
+      "source": "rknn-llm-release-v1.3.0 (user-supplied runtime drop)",
+      "librkllmrt_sha256": "6a9e4fc5324c68921c3a900340361e107af7599fe34dc8fa7759b2c5ae22a6e6"
+    }
   },
   "targets": {
     "rk3588": {
-      "media_runtime_profile": "cpu-ffmpeg-debian11-v1",
-      "media_root": "",
-      "rkllm_required": false,
+      "media_runtime_profile": "rk3588-mpp-1.1.0-rga-1.10.6-bullseye-v1",
+      "media_root": "/opt/rockchip-media/rk3588",
+      "rkllm_required": true,
       "required_package_paths": [
         "share/cosmo/platform-profile.json",
-        "lib/libavcodec.so.58"
-      ],
-      "forbidden_package_paths": [
+        "lib/libavcodec.so.58",
+        "lib/librockchip_mpp.so.1",
+        "lib/librga.so",
         "lib/librkllmrt.so",
-        "share/licenses/rkllm/LICENSE",
-        "lib/librockchip_mpp.so",
-        "lib/librga.so"
-      ]
+        "share/licenses/rkllm/LICENSE"
+      ],
+      "forbidden_package_paths": []
     }
   }
 }

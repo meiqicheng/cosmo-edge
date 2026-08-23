@@ -129,6 +129,62 @@
         "lib/librockchip_mpp.so": "librockchip_mpp.so.1",
         "lib/librockchip_mpp.so.1": "librockchip_mpp.so.0"
       }
+    },
+    "rk3588-mpp-1.1.0-rga-1.10.6-bullseye-v1": {
+      "architecture": "aarch64",
+      "provenance": "source-and-official-prebuilt-debian11-sysroot",
+      "sources": {
+        "mpp": {
+          "repository": "https://github.com/rockchip-linux/mpp",
+          "revision": "c08762ebfadeb4e986d2fed993bc7a54862d3ebe",
+          "tag": "1.1.0"
+        },
+        "rga": {
+          "repository": "https://github.com/airockchip/librga",
+          "revision": "2b32edcb97b601b25683e2941d888c8515da6d55",
+          "api_version": "1.10.6_[3]",
+          "artifact": "libs/Linux/gcc-aarch64/librga.so"
+        }
+      },
+      "artifacts": {
+        "include/rockchip/rk_mpi.h": {
+          "sha256": "82deb198603ead5f7298a31d9b5594875805045bf7e1641fdfca3bd183400386"
+        },
+        "include/rga/im2d.h": {
+          "sha256": "10a4e72c1133ef7510d392d17d79e73193f9eba8fe1dac9b4371ff02106ecc03"
+        },
+        "include/rga/im2d_version.h": {
+          "sha256": "6dd951eb604ac49d6d280f012aac29830e009ffe04fd177331a3bdc5881d75e3"
+        },
+        "lib/librockchip_mpp.so.0": {
+          "elf": {
+            "machine": "AArch64",
+            "soname": "librockchip_mpp.so.1",
+            "glibcMax": "2.31"
+          }
+        },
+        "lib/librga.so": {
+          "sha256": "e150bda757fb5e8a649c429ec7cabaf851aa2a3be554ed494d5519e8790d943b",
+          "elf": {
+            "machine": "AArch64",
+            "soname": "librga.so",
+            "glibcMax": "2.31"
+          }
+        },
+        "share/licenses/rockchip-media/mpp/Apache-2.0": {
+          "sha256": "5c0d639ce87a81b77a20b20b0a36b8bc50caf71fa8ae2679b1d42363b6058f11"
+        },
+        "share/licenses/rockchip-media/mpp/MIT": {
+          "sha256": "a1179eae4e8b0ef06cbad6b6a2e324bb1c1cd9281cf40b42c0b15b0e34df2683"
+        },
+        "share/licenses/rockchip-media/librga/COPYING": {
+          "sha256": "e3bfc912b93d2508c44f5f00b167dbd251ddcc6376a3b3e9a300323b4107a630"
+        }
+      },
+      "links": {
+        "lib/librockchip_mpp.so": "librockchip_mpp.so.1",
+        "lib/librockchip_mpp.so.1": "librockchip_mpp.so.0"
+      }
     }
   }
 }
