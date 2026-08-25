@@ -16,7 +16,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.rk3588-bullseye
-      platform: linux/amd64
     image: ${COSMO_RK3588_BUILDER_IMAGE:-cosmo-edge-build-env-rk3588-bullseye:v1}
     platform: linux/amd64
     network_mode: host

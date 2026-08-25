@@ -427,8 +427,9 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
     auto bottom_desc     = mutable_bottom.GetBlobDesc();
     auto bottom_handle   = mutable_bottom.GetHandle();
     auto top_handle      = top.GetHandle();
-    if (!bottom_handle.base || !top_handle.base || bottom_desc.dims.size() != 4 || bottom_desc.dims[0] != 1 ||
-        bottom_desc.dims[3] != 3 ||
+    const bool bottom_has_native = bottom_handle.native_image.Valid();
+    if ((!bottom_handle.base && !bottom_has_native) || bottom_desc.dims.size() != 4 ||
+        bottom_desc.dims[0] != 1 || bottom_desc.dims[3] != 3 ||
         (bottom_desc.image_format != IMAGE_BGR && bottom_desc.image_format != IMAGE_RGB)) {
         GetInferencePipelineMetrics().RecordRknnRgaFailure();
         return false;
@@ -442,6 +443,10 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
     uint32_t target_handle  = 0;
     const bool bound_target = allow_bound_target && AcquireRgaBoundTarget(target_handle);
     if (!bound_target) {
+        if (!top_handle.base) {
+            GetInferencePipelineMetrics().RecordRknnRgaFailure();
+            return false;
+        }
         host_target_handle.ImportVirtual(top_handle.base, target_size);
         target_handle = host_target_handle.Get();
     }
