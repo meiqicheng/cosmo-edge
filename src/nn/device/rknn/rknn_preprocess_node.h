@@ -41,6 +41,7 @@ private:
     bool AcquireRgaBoundTarget(uint32_t& handle);
     void ReleaseRgaBoundTarget();
     void ResizeWithCpu(const Blob& bottom, Blob& top, bool output_rgb) const;
+    void ResizeNativeWithCpu(const Blob& bottom, Blob& top) const;
 
     int out_height_{0};
     int out_width_{0};
