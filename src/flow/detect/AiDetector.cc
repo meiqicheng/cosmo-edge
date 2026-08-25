@@ -286,7 +286,10 @@ void AiDetector::HandFrames(std::vector<AlgDataPtr> alg_datas) {
     std::vector<media::NativeVideoBufferPtr> native_buffers;
     std::vector<AlgDataPtr> activeAlgDatas;
     for (auto algData : alg_datas) {
-        if (algData && algData->chanDataDec.frame && algData->chanDataDec.frame->Active()) {
+        const bool has_frame  = algData && algData->chanDataDec.frame && algData->chanDataDec.frame->Active();
+        const bool has_native = algData && algData->chanDataDec.native_buffer &&
+                                algData->chanDataDec.native_buffer->Valid();
+        if (has_frame || has_native) {
             images.push_back(algData->chanDataDec.frame);
             native_buffers.push_back(algData->chanDataDec.native_buffer);
             activeAlgDatas.push_back(algData);

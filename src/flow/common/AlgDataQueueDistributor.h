@@ -67,6 +67,12 @@ public:
     int DistributorPreparedFrame(const AlgFrameDistributionPlan& plan, AlgDataPtr frame, VideoFramePtr data,
                                  std::function<AlgDataPtr(AlgDataPtr, VideoFramePtr)> func);
 
+    /// Native-only distribution: enqueue a pre-built AlgDataPtr (with
+    /// chanDataDec.native_buffer set, no host VideoFrame) directly to the
+    /// prepared plan's queues.  Used when all tasks support native inference
+    /// and the expensive Materialize() + ColorConvert() path can be skipped.
+    int DistributorNativeOnlyFrame(const AlgFrameDistributionPlan& plan, AlgDataPtr data);
+
     // Distribute data to specific registered queues
     // Only send to the channel registered by the task. Used for detection data distribution.
     // When the detector is multiplexed to multiple channels, those of the same channel are distributed

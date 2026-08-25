@@ -314,6 +314,24 @@ int AlgDataQueueDistributor::DistributorPreparedFrame(
     return message_count;
 }
 
+int AlgDataQueueDistributor::DistributorNativeOnlyFrame(
+    const AlgFrameDistributionPlan& plan, AlgDataPtr data) {
+    if (!data || plan.Empty()) {
+        return 0;
+    }
+    int message_count = 0;
+    for (const auto& queue : plan.queues) {
+        auto queued = data;
+        if (plan.queues.size() > 1 && data->chanDataDec.native_buffer) {
+            queued = AlgDataCopy(data);
+        }
+        if (queue && queue->Insert(std::move(queued))) {
+            message_count += 1;
+        }
+    }
+    return message_count;
+}
+
 // Only send to the channel registered by the task. Used for detection data distribution.
 // When the detector is multiplexed to multiple channels, those of the same channel are distributed through
 // channelId.
