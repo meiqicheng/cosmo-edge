@@ -136,7 +136,7 @@ TEST_CASE("ConvertImagesToBlobs accepts null image with valid native buffer",
     using cosmo::media::NativeVideoBufferPtr;
 
     // Empty images vector should still work when native_buffers is provided
-    std::vector<cosmo::VideoFramePtr> images;
+    std::vector<cosmo::media::VideoFramePtr> images;
     images.push_back(nullptr);  // null VideoFramePtr (simulates skip_materialize)
 
     NativeVideoBufferPtr native = MakeValidNativeBuffer(640, 640);
@@ -170,7 +170,7 @@ TEST_CASE("ConvertImagesToBlobs accepts null image with valid native buffer",
 
 TEST_CASE("ConvertImagesToBlobs skips entry when both image and native are null",
           "[flow][native-inference]") {
-    std::vector<cosmo::VideoFramePtr> images;
+    std::vector<cosmo::media::VideoFramePtr> images;
     images.push_back(nullptr);
 
     std::vector<cosmo::media::NativeVideoBufferPtr> native_buffers;
@@ -192,7 +192,7 @@ TEST_CASE("ConvertImagesToBlobs copies all NativeVideoBuffer fields to BlobHandl
           "[flow][native-inference]") {
     auto native = MakeValidNativeBuffer(1920, 1080);
 
-    std::vector<cosmo::VideoFramePtr> images;
+    std::vector<cosmo::media::VideoFramePtr> images;
     images.push_back(nullptr);
 
     std::vector<cosmo::media::NativeVideoBufferPtr> native_buffers;
