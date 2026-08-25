@@ -11,8 +11,8 @@
     "optimization_level": 3,
     "preprocessing_owner": "host",
     "output_adapter": "yolo_dfl_6head_v1",
-    "input_sha256": "46adbf0d9e87213b6c8c6e3333025f2732fa1b876adbad773f200bb91287b1a1",
-    "input_provenance": "The originally pinned yolov8_6head_op19.onnx (17a2cd60...) was lost with its agent-run directory. Regenerated 2026-08-26: extracted 6-head from current x86 source (opset 22→19, ir_version 10→9 via manual metadata change) because onnx.version_converter only supports opset 1-21. SHA differs from prior aaf891b0 because the upstream x86 source ONNX has been updated."
+    "input_sha256": "aaf891b00193f29f78d555f4878a9d67cb174871e33a74cd74f41cf85bbcf6b3",
+    "input_provenance": "The originally pinned yolov8_6head_op19.onnx (17a2cd603576afd1b5dd86a485933b857534355d25f517f6e1f2acd2a2fe4563) was lost with its agent-run directory. The conversion input is deterministically regenerated from the tracked x86 source (source_sha256 above) via tools/rknn/extract_yolov8_heads.py then tools/rknn/convert_onnx_opset.py --opset 19 --ir-version 9; both steps emit provenance JSON."
   },
   "input": {
     "name": "images",
