@@ -147,7 +147,7 @@ TEST_CASE("ConvertImagesToBlobs accepts null image with valid native buffer",
     std::vector<std::shared_ptr<cosmo::nn::Blob>> blobs;
     auto result = cosmo::ConvertImagesToBlobs(images, native_buffers, blobs);
 
-    CHECK(result == util::ErrorEnum::Success);
+    CHECK(result == cosmo::util::ErrorEnum::Success);
     REQUIRE(blobs.size() == 1);
 
     const auto& blob    = blobs[0];
@@ -180,7 +180,7 @@ TEST_CASE("ConvertImagesToBlobs skips entry when both image and native are null"
     auto result = cosmo::ConvertImagesToBlobs(images, native_buffers, blobs);
 
     // Both null → entry skipped → blobs empty → InvalidParam
-    CHECK(result == util::ErrorEnum::InvalidParam);
+    CHECK(result == cosmo::util::ErrorEnum::InvalidParam);
     CHECK(blobs.empty());
 }
 
@@ -199,7 +199,7 @@ TEST_CASE("ConvertImagesToBlobs copies all NativeVideoBuffer fields to BlobHandl
     native_buffers.push_back(native);
 
     std::vector<std::shared_ptr<cosmo::nn::Blob>> blobs;
-    REQUIRE(cosmo::ConvertImagesToBlobs(images, native_buffers, blobs) == util::ErrorEnum::Success);
+    REQUIRE(cosmo::ConvertImagesToBlobs(images, native_buffers, blobs) == cosmo::util::ErrorEnum::Success);
     REQUIRE(blobs.size() == 1);
 
     const auto& ni = blobs[0]->GetHandle().native_image;
@@ -374,12 +374,9 @@ TEST_CASE("CheckNodeForwardParamNativeAware accepts null base with valid native"
     handle.native_image.height_stride = 640;
     blob->SetHandle(handle);
 
-    std::vector<std::shared_ptr<Blob>> inputs{blob};
-    std::vector<std::shared_ptr<Blob>> outputs{blob};
-
     // CheckNodeForwardParamNativeAware should succeed when base is null
     // but native_image is valid
-    auto result = cosmo::nn::CheckNodeForwardParamNativeAware(inputs, outputs);
+    auto result = cosmo::nn::CheckNodeForwardParamNativeAware(*blob, *blob, true);
     CHECK(result);
 }
 
@@ -398,10 +395,7 @@ TEST_CASE("CheckNodeForwardParamNativeAware rejects null base without native",
     // native_image left default (all zeros, fd=-1)
     blob->SetHandle(handle);
 
-    std::vector<std::shared_ptr<Blob>> inputs{blob};
-    std::vector<std::shared_ptr<Blob>> outputs{blob};
-
-    auto result = cosmo::nn::CheckNodeForwardParamNativeAware(inputs, outputs);
+    auto result = cosmo::nn::CheckNodeForwardParamNativeAware(*blob, *blob, true);
     CHECK_FALSE(result);
 }
 
