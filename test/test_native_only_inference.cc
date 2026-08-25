@@ -68,7 +68,7 @@ TEST_CASE("AlgFrameDistributionPlan::SupportsNativeInference",
 
     AlgFrameDistributionPlan empty;
     CHECK_FALSE(empty.SupportsNativeInference());
-    CHECK_FALSE(empty.Empty());  // empty() checks queues.empty()
+    CHECK(empty.Empty());  // no queues → Empty() true
 
     SECTION("non-empty queues with native_inference_eligible=true") {
         auto q = std::make_shared<cosmo::AlgDataQueue<cosmo::AlgDataPtr>>("q1");
@@ -372,6 +372,7 @@ TEST_CASE("CheckNodeForwardParamNativeAware accepts null base with valid native"
     handle.native_image.height = 640;
     handle.native_image.width_stride = 640;
     handle.native_image.height_stride = 640;
+    handle.native_image.format = cosmo::nn::ImageFormat::IMAGE_NV12;  // Valid() requires non-UNKNOWN
     blob->SetHandle(handle);
 
     // CheckNodeForwardParamNativeAware should succeed when base is null
