@@ -326,14 +326,17 @@ void AiDetector::HandFrames(std::vector<AlgDataPtr> alg_datas) {
         auto algData                        = activeAlgDatas[i];
         DataDetTrackClassifyPtr detTrackRst = std::make_shared<DataDetTrackClassify>();
         detTrackRst->targets                = detRsts[i];
-        detTrackRst->streamIndex            = images[i]->GetStreamIndex();
-        detTrackRst->frameIndex             = images[i]->GetFrameIndex();
-        detTrackRst->timestamp              = images[i]->GetTimestamp();
-        detTrackRst->picWidth               = images[i]->GetWidth();
-        detTrackRst->picHeight              = images[i]->GetHeight();
+        // Native-only frames push null VideoFramePtr; fall back to metadata
+        // already stored in the AlgData packet when the image is unavailable.
+        const bool has_image = images[i] && images[i]->Active();
+        detTrackRst->streamIndex = has_image ? images[i]->GetStreamIndex() : 0;
+        detTrackRst->frameIndex  = has_image ? images[i]->GetFrameIndex() : 0;
+        detTrackRst->timestamp   = has_image ? images[i]->GetTimestamp() : 0;
+        detTrackRst->picWidth    = has_image ? images[i]->GetWidth() : 0;
+        detTrackRst->picHeight   = has_image ? images[i]->GetHeight() : 0;
         for (auto& target : detTrackRst->targets) {
-            target.frameIndex  = images[i]->GetFrameIndex();
-            target.streamIndex = images[i]->GetStreamIndex();
+            target.frameIndex  = detTrackRst->frameIndex;
+            target.streamIndex = detTrackRst->streamIndex;
         }
         algData->legacyDetect = algData->chanDataDetect;
 
