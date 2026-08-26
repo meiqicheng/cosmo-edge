@@ -16,9 +16,11 @@
 #include "flow/common/AlgDataQueue.h"
 #include "flow/common/AlgDataQueueDistributor.h"
 #include "flow/common/AlgDataUnit.h"
+#include "flow/common/AlgTaskNativeCapability.h"
 #include "infer/AiComponment.h"
 #include "media/NativeVideoBuffer.h"
 #include "media/VideoFrame.h"
+#include "util/dto/ActionCodes.h"
 
 #if defined(COSMO_NN_USE_RKNN_BACKEND) || defined(COSMO_NN_USE_HOST_BACKEND) || \
     defined(COSMO_NN_USE_SOPHON_BACKEND)
@@ -401,3 +403,123 @@ TEST_CASE("CheckNodeForwardParamNativeAware rejects null base without native",
 }
 
 #endif  // COSMO_NN_USE_RKNN_BACKEND || COSMO_NN_USE_HOST_BACKEND || COSMO_NN_USE_SOPHON_BACKEND
+
+// ---------------------------------------------------------------------------
+// 10. Frame metadata contract (Phase 1 remediation)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("AlgFrameMeta defaults are invalid and zero-filled",
+          "[flow][native-inference][meta]") {
+    cosmo::AlgFrameMeta meta;
+    CHECK_FALSE(meta.valid);
+    CHECK(meta.streamIndex == 0);
+    CHECK(meta.frameIndex == 0);
+    CHECK(meta.timestamp == 0);
+    CHECK(meta.width == 0);
+    CHECK(meta.height == 0);
+    CHECK(meta.pixelFormat == cosmo::media::PixelFormat::PIXEL_UNKNOWN);
+}
+
+TEST_CASE("AlgChannelDataDec carries meta alongside frame and native buffer",
+          "[flow][native-inference][meta]") {
+    cosmo::AlgData data;
+    data.chanDataDec.meta.valid       = true;
+    data.chanDataDec.meta.streamIndex = 3;
+    data.chanDataDec.meta.frameIndex  = 42;
+    data.chanDataDec.meta.timestamp   = 123456;
+    data.chanDataDec.meta.width       = 1920;
+    data.chanDataDec.meta.height      = 1080;
+    data.chanDataDec.reportTimeStamp  = data.chanDataDec.meta.timestamp;
+
+    CHECK(data.chanDataDec.meta.valid);
+    CHECK(data.chanDataDec.reportTimeStamp == 123456);
+    CHECK_FALSE(data.chanDataDec.frame != nullptr);
+}
+
+// ---------------------------------------------------------------------------
+// 11. Native-only capability contract (fail-closed)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("ResolveAlgTaskNativeCapability is fail-closed for unknown codes",
+          "[flow][native-inference][capability]") {
+    using cosmo::ResolveAlgTaskNativeCapability;
+
+    const auto detect = ResolveAlgTaskNativeCapability(cosmo::AADetect_Code);
+    CHECK(detect.supports_native_input);
+    CHECK(detect.NativeOnlyEligible());
+
+    const auto unknown = ResolveAlgTaskNativeCapability("ZZ_99999");
+    CHECK_FALSE(unknown.supports_native_input);
+    CHECK(unknown.requires_host_frame);
+    CHECK(unknown.requires_alarm_media);
+    CHECK(unknown.requires_crop_or_classification);
+    CHECK_FALSE(unknown.NativeOnlyEligible());
+
+    for (const auto& code : {cosmo::AATrack_Code, cosmo::AAClassify_Code, cosmo::GADetectTrack_Code,
+                             cosmo::DAQwen3VL_Code}) {
+        const auto capability = ResolveAlgTaskNativeCapability(code);
+        INFO("actionId=" << code);
+        CHECK_FALSE(capability.NativeOnlyEligible());
+    }
+}
+
+TEST_CASE("AlgTasksNativeOnlyEligible requires every task to be eligible",
+          "[flow][native-inference][capability]") {
+    using cosmo::AlgTaskUnit;
+    using cosmo::AlgTasksNativeOnlyEligible;
+
+    AlgTaskUnit detector;
+    detector.actionId = std::string(cosmo::AADetect_Code);
+
+    AlgTaskUnit classifier;
+    classifier.actionId = std::string(cosmo::AAClassify_Code);
+
+    CHECK_FALSE(AlgTasksNativeOnlyEligible({}));
+    CHECK(AlgTasksNativeOnlyEligible({detector}));
+    CHECK_FALSE(AlgTasksNativeOnlyEligible({detector, classifier}));
+}
+
+TEST_CASE("DistributorNativeOnlyFrame preserves frame metadata on queued copies",
+          "[flow][native-inference][meta]") {
+    using cosmo::AlgDataQueue;
+    using cosmo::AlgDataQueueDistributor;
+    using cosmo::AlgFrameDistributionPlan;
+
+    AlgDataQueueDistributor distributor("meta_propagation_dist");
+    auto q1 = std::make_shared<AlgDataQueue<cosmo::AlgDataPtr>>("mq1");
+    auto q2 = std::make_shared<AlgDataQueue<cosmo::AlgDataPtr>>("mq2");
+
+    AlgFrameDistributionPlan plan;
+    plan.queues = {q1, q2};
+    plan.native_inference_eligible = true;
+
+    auto native = MakeValidNativeBuffer(1280, 720);
+    auto data   = MakeNativeOnlyData(native);
+    data->chanDataDec.meta.valid       = true;
+    data->chanDataDec.meta.streamIndex = 7;
+    data->chanDataDec.meta.frameIndex  = 99;
+    data->chanDataDec.meta.timestamp   = 555777;
+    data->chanDataDec.meta.width       = 1280;
+    data->chanDataDec.meta.height      = 720;
+    data->chanDataDec.meta.pixelFormat = cosmo::media::PixelFormat::PIXEL_NV12;
+    data->chanDataDec.reportTimeStamp  = data->chanDataDec.meta.timestamp;
+
+    REQUIRE(distributor.DistributorNativeOnlyFrame(plan, data) == 2);
+
+    const auto queued_a = q1->Pop();
+    const auto queued_b = q2->Pop();
+    REQUIRE(queued_a);
+    REQUIRE(queued_b);
+    for (const auto& queued : {queued_a, queued_b}) {
+        const auto& meta = queued->chanDataDec.meta;
+        CHECK(meta.valid);
+        CHECK(meta.streamIndex == 7);
+        CHECK(meta.frameIndex == 99);
+        CHECK(meta.timestamp == 555777);
+        CHECK(meta.width == 1280);
+        CHECK(meta.height == 720);
+        CHECK(meta.pixelFormat == cosmo::media::PixelFormat::PIXEL_NV12);
+        CHECK(queued->chanDataDec.reportTimeStamp == 555777);
+        CHECK(queued->chanDataDec.native_buffer == native);
+    }
+}

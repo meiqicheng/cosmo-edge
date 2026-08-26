@@ -316,6 +316,17 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
     const int64_t output_timestamp    = matched_frame_info ? frame_info.timestamp : util::GetMilliseconds();
     const int64_t output_stream_index = matched_frame_info ? frame_info.streamIndex : video_frame->stream_idx;
 
+    // Capture frame identity before any Materialize decision so the host-frame
+    // and native-only paths carry identical stream/frame/timestamp metadata.
+    AlgFrameMeta frame_meta;
+    frame_meta.valid       = true;
+    frame_meta.streamIndex = output_stream_index;
+    frame_meta.frameIndex  = static_cast<int64_t>(decoded_frame_index);
+    frame_meta.timestamp   = output_timestamp;
+    frame_meta.width       = static_cast<int>(decoded_frame.GetWidth());
+    frame_meta.height      = static_cast<int>(decoded_frame.GetHeight());
+    frame_meta.pixelFormat = decoded_frame.GetPixelFormat();
+
     AlgFrameDistributionPlan task_plan;
     const bool prepared_task_distribution = decoded_frame.IsDeferred();
     if (prepared_task_distribution) {
@@ -369,6 +380,27 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
         native_only_data->chanDataOrig.fps    = demux_data->chanDataOrig.fps;
         native_only_data->dataType            = AlgDataType::ChannelDataDec;
         native_only_data->chanDataDec.native_buffer = std::move(native_inference_buffer);
+        native_only_data->chanDataDec.meta          = frame_meta;
+        if (native_only_data->chanDataDec.native_buffer) {
+            const auto& native = *native_only_data->chanDataDec.native_buffer;
+            auto& meta         = native_only_data->chanDataDec.meta;
+            meta.width         = native.width;
+            meta.height        = native.height;
+            switch (native.format) {
+                case media::NativeVideoBufferFormat::NV12:
+                    meta.pixelFormat = media::PixelFormat::PIXEL_NV12;
+                    break;
+                case media::NativeVideoBufferFormat::I420:
+                    meta.pixelFormat = media::PixelFormat::PIXEL_I420;
+                    break;
+                case media::NativeVideoBufferFormat::NV21:
+                    meta.pixelFormat = media::PixelFormat::PIXEL_NV21;
+                    break;
+                default:
+                    break;
+            }
+        }
+        native_only_data->chanDataDec.reportTimeStamp = frame_meta.timestamp;
         native_only_data->channelId           = channel_id_;
         native_only_data->firstTimePoint      = demux_data->firstTimePoint;
         DistributorNativeOnlyFrame(task_plan, native_only_data);
@@ -421,8 +453,9 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
     }
     DoCaptureImage(output_frame);
     CaptureJpeg(output_frame);
-    const auto color_convert = [this, native_inference_buffer](AlgDataPtr frame, VideoFramePtr in_data) {
-        return ColorConvert(frame, in_data, native_inference_buffer);
+    const auto color_convert = [this, native_inference_buffer, frame_meta](AlgDataPtr frame,
+                                                                           VideoFramePtr in_data) {
+        return ColorConvert(frame, in_data, native_inference_buffer, frame_meta);
     };
     if (prepared_task_distribution) {
         DistributorPreparedFrame(task_plan, demux_data, output_frame, color_convert);
@@ -465,7 +498,8 @@ AlgFrameInfo AlgChannelDecode::FrameInfoGet(int64_t index) {
 // Image capture and viewer distribution — moved to AlgChannelDecodeCapture.cc
 
 AlgDataPtr AlgChannelDecode::ColorConvert(AlgDataPtr demux_data, VideoFramePtr in_data,
-                                          media::NativeVideoBufferPtr native_buffer) {
+                                          media::NativeVideoBufferPtr native_buffer,
+                                          const AlgFrameMeta& frame_meta) {
     if (!VideoFrameValid(in_data, true)) {
         return nullptr;
     }
@@ -508,6 +542,12 @@ AlgDataPtr AlgChannelDecode::ColorConvert(AlgDataPtr demux_data, VideoFramePtr i
     data->dataType                  = AlgDataType::ChannelDataDec;
     data->chanDataDec.frame         = ai_frame;
     data->chanDataDec.native_buffer = std::move(native_buffer);
+    data->chanDataDec.meta          = frame_meta;
+    auto& out_meta                  = data->chanDataDec.meta;
+    out_meta.width                  = static_cast<int>(ai_frame->GetWidth());
+    out_meta.height                 = static_cast<int>(ai_frame->GetHeight());
+    out_meta.pixelFormat            = ai_frame->GetPixelFormat();
+    data->chanDataDec.reportTimeStamp = frame_meta.timestamp;
     data->channelId                 = channel_id_;
 
     data->firstTimePoint = demux_data->firstTimePoint;
