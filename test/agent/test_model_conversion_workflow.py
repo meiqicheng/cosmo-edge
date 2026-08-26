@@ -217,10 +217,7 @@ class ModelConversionWorkflowTest(unittest.TestCase):
             environment["PATH"].split(os.pathsep)[0],
             str(Path(identity["pythonExecutable"]).parent),
         )
-        self.assertEqual(
-            environment["VIRTUAL_ENV"],
-            str(Path(identity["pythonExecutable"]).parent.parent),
-        )
+        self.assertEqual(environment["VIRTUAL_ENV"], identity["sysPrefix"])
 
     def test_direct_tool_entry_does_not_require_python_script_layout(self):
         identity = make_toolchain_identity()

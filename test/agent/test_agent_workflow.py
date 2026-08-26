@@ -445,8 +445,9 @@ class AgentWorkflowTest(unittest.TestCase):
             self.assertNotIn(str(source.parent), contract_path.read_text(encoding="utf-8"))
             copied = run_dir / "inputs" / source.name
             self.assertEqual(copied.read_bytes(), source.read_bytes())
-            self.assertEqual(stat.S_IMODE(run_dir.stat().st_mode), 0o700)
-            self.assertEqual(stat.S_IMODE(copied.stat().st_mode), 0o600)
+            if os.name == "posix":
+                self.assertEqual(stat.S_IMODE(run_dir.stat().st_mode), 0o700)
+                self.assertEqual(stat.S_IMODE(copied.stat().st_mode), 0o600)
             self.assertTrue((run_dir / "route-assessment.json").is_file())
 
     def test_start_selects_single_model_when_other_materials_are_present(self):
@@ -641,6 +642,7 @@ class AgentWorkflowTest(unittest.TestCase):
         self.assertEqual(agent_workflow.redact_data(nested)["authority"]["credentialReference"], "[REDACTED]")
         self.assertNotIn("example-pass", agent_workflow.redact_data(nested)["authority"]["note"])
 
+    @unittest.skipIf(os.name == "nt", "doctor.sh requires a POSIX shell")
     def test_baseline_is_inventory_not_task_readiness(self):
         process = subprocess.run(
             [str(ROOT / "scripts" / "agent" / "doctor.sh"), "--baseline", "--format", "json"],

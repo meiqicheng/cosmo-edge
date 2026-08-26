@@ -1,7 +1,7 @@
 {
   "artifact": {
     "bytes": 3511088,
-    "path": "/workspace/data/resource/aiboxresource_rknn/models/prod_RK3588_7982161_helmet_V1.0.0/model.rknn",
+    "path": "data/resource/aiboxresource_rk3588/models/prod_RK3588_7982161_helmet_V1.0.0/model.rknn",
     "sha256": "cf51f5254dc0db9942776667323845aae74ef0bd819c861ba6bdb63b2e643367"
   },
   "build": {
@@ -23,11 +23,11 @@
     "outputs": [
       "output0"
     ],
-    "path": "/workspace/data/resource/aiboxresource_x86/models/prod_X86_7982161_helmet_V1.0.0/model.onnx",
+    "path": "data/resource/aiboxresource_x86/models/prod_X86_7982161_helmet_V1.0.0/model.onnx",
     "sha256": "a0ea37d99416371c6ef073d5ac87b486b77bb822b1f8aa29f2f30a8a06c97cdd"
   },
   "spec": {
-    "path": "/workspace/config/rknn/models/helmet_rk3588.json",
+    "path": "config/rknn/models/helmet_rk3588.json",
     "sha256": "105618bedecd2ac5231bb9bf0b8718bfb8975559d240dbf6269a40a7853f3434"
   }
 }

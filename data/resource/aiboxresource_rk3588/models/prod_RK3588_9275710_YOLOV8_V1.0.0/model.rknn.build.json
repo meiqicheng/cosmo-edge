@@ -1,7 +1,7 @@
 {
   "artifact": {
     "bytes": 7562616,
-    "path": "/workspace/data/resource/aiboxresource_rknn/models/prod_RK3588_9275710_YOLOV8_V1.0.0/model.rknn",
+    "path": "data/resource/aiboxresource_rk3588/models/prod_RK3588_9275710_YOLOV8_V1.0.0/model.rknn",
     "sha256": "e82f67ca4fd72497ac835479e296a0aa6deac17f99fb25b575cd3cbf11075459"
   },
   "build": {
@@ -28,11 +28,11 @@
       "/model.22/cv2.2/cv2.2.2/Conv_output_0",
       "/model.22/cv3.2/cv3.2.2/Conv_output_0"
     ],
-    "path": "/workspace/output/agent-runs/rk3588-support-extension-20260817T105011Z-48636ef8/inputs/yolov8_6head_op19.onnx",
+    "path": "output/agent-runs/rk3588-support-extension-20260817T105011Z-48636ef8/inputs/yolov8_6head_op19.onnx",
     "sha256": "17a2cd603576afd1b5dd86a485933b857534355d25f517f6e1f2acd2a2fe4563"
   },
   "spec": {
-    "path": "/workspace/config/rknn/models/yolov8_rk3588.json",
+    "path": "config/rknn/models/yolov8_rk3588.json",
     "sha256": "64bb1847219a9decd708406611bdaaf196e12f138b4912ea1dc1591ac5caefc8"
   }
 }
