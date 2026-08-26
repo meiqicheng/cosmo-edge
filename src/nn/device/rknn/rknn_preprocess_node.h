@@ -41,7 +41,10 @@ private:
     bool AcquireRgaBoundTarget(uint32_t& handle);
     void ReleaseRgaBoundTarget();
     void ResizeWithCpu(const Blob& bottom, Blob& top, bool output_rgb) const;
-    void ResizeNativeWithCpu(const Blob& bottom, Blob& top) const;
+    // Contract: returns COSMO_NN_OK only after `top` is fully written; any
+    // failure (descriptor, format, plane bounds, mmap) returns non-OK so the
+    // caller never infers on stale or partial output.
+    Status ResizeNativeWithCpu(const Blob& bottom, Blob& top) const;
 
     int out_height_{0};
     int out_width_{0};

@@ -36,6 +36,37 @@ namespace {
     // conservative so the same implementation is valid on both RGA2 and RGA3.
     constexpr int kConservativeRgaScaleLimit = 8;
 
+    struct YuvToBgrCoeffs {
+        int y_offset;  // studio swing subtracts 16 from luma
+        int y_scale;   // <<8 fixed point
+        int ub;        // U contribution to B
+        int ug;        // U contribution to G
+        int vg;        // V contribution to G
+        int vr;        // V contribution to R
+    };
+
+    // Canonical studio-swing and full-swing matrices scaled by 256 (JFIF and
+    // ITU-R derivations); gray maps to gray for every row.
+    constexpr YuvToBgrCoeffs kYuv601Limited{16, 298, 516, -100, -208, 409};
+    constexpr YuvToBgrCoeffs kYuv601Full{0, 256, 454, -88, -183, 359};
+    constexpr YuvToBgrCoeffs kYuv709Limited{16, 298, 541, -54, -136, 459};
+    constexpr YuvToBgrCoeffs kYuv709Full{0, 256, 477, -34, -86, 405};
+
+    YuvToBgrCoeffs ResolveYuvToBgrCoeffs(NativeImageColorSpace color_space,
+                                         NativeImageColorRange color_range) {
+        const bool full = color_range == NativeImageColorRange::Full;
+        switch (color_space) {
+            case NativeImageColorSpace::Bt709:
+            case NativeImageColorSpace::Bt2020:  // co-sited with 709 in this fallback
+                return full ? kYuv709Full : kYuv709Limited;
+            case NativeImageColorSpace::Bt601:
+                return full ? kYuv601Full : kYuv601Limited;
+            case NativeImageColorSpace::Unspecified:
+            default:
+                return kYuv601Limited;  // legacy behavior of this fallback
+        }
+    }
+
     uint64_t ElapsedNanoseconds(MetricsClock::time_point started_at) {
         return static_cast<uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(MetricsClock::now() - started_at).count());
@@ -648,52 +679,68 @@ void RknnResizeNode::ResizeWithCpu(const Blob& bottom, Blob& top, bool output_rg
     }
 }
 
-void RknnResizeNode::ResizeNativeWithCpu(const Blob& bottom, Blob& top) const {
-    auto& mutable_bottom = const_cast<Blob&>(bottom);
-    const auto& native   = mutable_bottom.GetHandle().native_image;
-    if (native.fd < 0 || native.bytes == 0)
-        return;
+Status RknnResizeNode::ResizeNativeWithCpu(const Blob& bottom, Blob& top) const {
+    // Read-only use; accessors are non-const (same idiom as line ~1225).
+    const auto& native = const_cast<Blob&>(bottom).GetHandle().native_image;
+    if (native.fd < 0 || native.bytes == 0 || native.width <= 0 || native.height <= 0 ||
+        native.width_stride < native.width || native.height_stride < native.height)
+        return Status(COSMO_NN_ERR_INVALID_INPUT,
+                      "RKNN native CPU fallback received an invalid DMA-BUF descriptor");
+    if (native.format != IMAGE_NV12 && native.format != IMAGE_I420)
+        return Status(COSMO_NN_ERR_INVALID_INPUT, "RKNN native CPU fallback unsupported pixel format");
+
+    const bool nv12 = native.format == IMAGE_NV12;
+    const size_t luma_bytes =
+        static_cast<size_t>(native.width_stride) * static_cast<size_t>(native.height_stride);
+    const size_t chroma_rows = (static_cast<size_t>(native.height_stride) + 1) / 2;
+    const size_t chroma_plane_bytes = static_cast<size_t>(native.width_stride) * chroma_rows;
+    const size_t required_bytes = luma_bytes + chroma_plane_bytes * (nv12 ? 1 : 2);
+    if (required_bytes > native.bytes)
+        return Status(COSMO_NN_ERR_INVALID_INPUT,
+                      "RKNN native CPU fallback plane layout exceeds DMA-BUF bytes");
+
     void* mapped = mmap(nullptr, native.bytes, PROT_READ, MAP_SHARED, native.fd, 0);
-    if (mapped == MAP_FAILED) {
-        static std::atomic<bool> mmap_warned{false};
-        if (!mmap_warned.exchange(true))
-            LOG_WARN("RKNN native CPU fallback could not map DMA-BUF fd={} bytes={}", native.fd,
-                     native.bytes);
-        return;
-    }
+    if (mapped == MAP_FAILED)
+        return Status(COSMO_NN_ERR_NODE_FORWARD, "RKNN native CPU fallback could not map DMA-BUF fd");
+
+    const YuvToBgrCoeffs coeffs = ResolveYuvToBgrCoeffs(native.color_space, native.color_range);
     const int src_w = native.width;
     const int src_h = native.height;
     std::vector<uint8_t> bgr(static_cast<size_t>(src_w) * src_h * 3);
     const auto* luma = static_cast<const uint8_t*>(mapped);
-    const bool nv12  = native.format == IMAGE_NV12;
-    const auto* chroma =
-        luma + static_cast<size_t>(native.width_stride) * (nv12 ? native.height_stride : src_h);
+    const auto* chroma_base = luma + luma_bytes;
+    const size_t second_chroma_offset =
+        nv12 ? 0 : static_cast<size_t>(native.width_stride) * chroma_rows;
     for (int row = 0; row < src_h; ++row) {
         const auto* y_row = luma + static_cast<size_t>(row) * native.width_stride;
-        const auto* uv_row = chroma + static_cast<size_t>(row / 2) * native.width_stride;
+        const auto* uv_row = chroma_base + static_cast<size_t>(row / 2) * native.width_stride;
         auto* dst = bgr.data() + static_cast<size_t>(row) * src_w * 3;
         for (int col = 0; col < src_w; ++col) {
-            const int y = y_row[col] - 16;
+            const int y = y_row[col] - coeffs.y_offset;
             const int u = uv_row[(col & ~1)] - 128;
             const int v = nv12 ? uv_row[(col & ~1) + 1] - 128
-                               : chroma[static_cast<size_t>(src_h / 2 + row / 2) * native.width_stride +
-                                        col] -
+                               : chroma_base[second_chroma_offset +
+                                             static_cast<size_t>(row / 2) * native.width_stride +
+                                             col] -
                                      128;
-            dst[col * 3 + 0] = static_cast<uint8_t>(std::clamp((298 * y + 516 * u + 128) >> 8, 0, 255));
-            dst[col * 3 + 1] =
-                static_cast<uint8_t>(std::clamp((298 * y - 100 * u - 208 * v + 128) >> 8, 0, 255));
-            dst[col * 3 + 2] = static_cast<uint8_t>(std::clamp((298 * y + 409 * v + 128) >> 8, 0, 255));
+            dst[col * 3 + 0] =
+                static_cast<uint8_t>(std::clamp((coeffs.y_scale * y + coeffs.ub * u + 128) >> 8, 0, 255));
+            dst[col * 3 + 1] = static_cast<uint8_t>(
+                std::clamp((coeffs.y_scale * y + coeffs.ug * u + coeffs.vg * v + 128) >> 8, 0, 255));
+            dst[col * 3 + 2] =
+                static_cast<uint8_t>(std::clamp((coeffs.y_scale * y + coeffs.vr * v + 128) >> 8, 0, 255));
         }
     }
     munmap(mapped, native.bytes);
 
-    BlobDesc temp_desc     = mutable_bottom.GetBlobDesc();
+    BlobDesc temp_desc     = const_cast<Blob&>(bottom).GetBlobDesc();
     temp_desc.dims         = {1, src_h, src_w, 3};
     temp_desc.image_format = IMAGE_BGR;
     BlobHandle temp_handle;
     temp_handle.base     = bgr.data();
     Blob temp_bottom(temp_desc, temp_handle);
     ResizeWithCpu(temp_bottom, top, detector_contract_);
+    return COSMO_NN_OK;
 }
 
 Status RknnResizeNode::ResizeSingle(const std::shared_ptr<Blob>& bottom, const std::shared_ptr<Blob>& top,
@@ -730,11 +777,14 @@ Status RknnResizeNode::ResizeSingle(const std::shared_ptr<Blob>& bottom, const s
             GetInferencePipelineMetrics().RecordRknnCpuResizeFallback(ElapsedNanoseconds(cpu_started));
     } else if (!rga_success && bottom_has_native) {
         const auto cpu_started = MetricsClock::now();
+        Status native_status;
         try {
-            ResizeNativeWithCpu(*bottom, *top);
+            native_status = ResizeNativeWithCpu(*bottom, *top);
         } catch (const std::bad_alloc&) {
             return Status(COSMO_NN_ERR_OUT_OF_MEMORY, "RKNN native CPU resize fallback allocation failed");
         }
+        if (native_status != COSMO_NN_OK)
+            return native_status;
         GetInferencePipelineMetrics().RecordRknnMppDmaBufFallback();
     } else if (!rga_success) {
         return Status(COSMO_NN_ERR_NULL_PARAM, "RKNN resize requires a host or native source buffer");
