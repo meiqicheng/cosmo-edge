@@ -478,7 +478,26 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
     auto target = wrapbuffer_handle_t(static_cast<rga_buffer_handle_t>(target_handle), out_width_,
                                       out_height_, target_width_stride, out_height_, RK_FORMAT_RGB_888);
 
-    IM_STATUS last_status = IM_STATUS_FAILED;
+    // letterbox 底色填充。旧版 RGA 多核驱动会以内核级 "no core match" 拒绝独立的
+    // FILL 任务，而同一缓冲区上的普通拷贝/CSC/resize 任务可正常提交；因此只要目标
+    // 存在 host 映射就用 CPU 填充，imfill_t 仅保留给没有 host 映射的 DMA-BUF bound 目标。
+    const uint8_t padding_byte =
+        static_cast<uint8_t>(padding_color_.empty() ? 114 : padding_color_[0]);
+    IM_STATUS last_status  = IM_STATUS_FAILED;
+    const auto fill_started = MetricsClock::now();
+    bool fill_ok = true;
+    if (!bound_target && top_handle.base) {
+        std::memset(top_handle.base, padding_byte, target_size);
+    } else {
+        const im_rect full_target{0, 0, out_width_, out_height_};
+        const int fill_color = (padding_color_[0] << 16) | (padding_color_[1] << 8) | padding_color_[2];
+        last_status          = imfill_t(target, full_target, fill_color, 1);
+        fill_ok              = media::RockchipRgaSucceeded(last_status);
+    }
+    GetInferencePipelineMetrics().RecordRknnRgaFill(ElapsedNanoseconds(fill_started));
+    if (!fill_ok)
+        return false;
+
     const auto run_resize_once = [&](rga_buffer_handle_t source_handle, int visible_width,
                                      int visible_height, int width_stride, int height_stride,
                                      int source_format, IM_COLOR_SPACE_MODE yuv_color_space,
@@ -493,14 +512,6 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
             // improcess then performs CSC and resize in the same DMA-BUF job.
             media::SetRgaYuvToRgbColorSpace(source, target, yuv_color_space);
         }
-
-        const auto fill_started = MetricsClock::now();
-        const im_rect full_target{0, 0, out_width_, out_height_};
-        const int fill_color = (padding_color_[0] << 16) | (padding_color_[1] << 8) | padding_color_[2];
-        last_status          = imfill_t(target, full_target, fill_color, 1);
-        GetInferencePipelineMetrics().RecordRknnRgaFill(ElapsedNanoseconds(fill_started));
-        if (!media::RockchipRgaSucceeded(last_status))
-            return false;
 
         const float scale        = std::min(static_cast<float>(out_width_) / visible_width,
                                             static_cast<float>(out_height_) / visible_height);
@@ -974,10 +985,21 @@ bool RknnCropResizeNode::ForwardWithRga(std::vector<std::shared_ptr<Blob>>& imag
                     offset_y = (dst_height - resized_height) / 2;
                 }
                 const uint8_t padding = static_cast<uint8_t>(color.empty() ? 114 : color[0]);
-                const int fill_color  = (padding << 16) | (padding << 8) | padding;
-                const im_rect full_target{0, 0, dst_width, dst_height};
-                last_status = imfill_t(target, full_target, fill_color, 1);
-                if (!media::RockchipRgaSucceeded(last_status)) {
+                const auto fill_started = MetricsClock::now();
+                bool fill_ok            = true;
+                if (!bound_target) {
+                    // 与 RknnResizeNode 相同的旧驱动 FILL 限制：
+                    // host 目标用 CPU 填充替代 imfill_t。
+                    std::memset(top_data + static_cast<size_t>(processed) * slice_size, padding,
+                                slice_size);
+                } else {
+                    const int fill_color = (padding << 16) | (padding << 8) | padding;
+                    const im_rect full_target{0, 0, dst_width, dst_height};
+                    last_status = imfill_t(target, full_target, fill_color, 1);
+                    fill_ok     = media::RockchipRgaSucceeded(last_status);
+                }
+                GetInferencePipelineMetrics().RecordRknnRgaFill(ElapsedNanoseconds(fill_started));
+                if (!fill_ok) {
                     GetInferencePipelineMetrics().RecordRknnRgaCropResize(0, false);
                     GetInferencePipelineMetrics().RecordRknnRgaFailure();
                     InvalidateRgaBoundFrame();
