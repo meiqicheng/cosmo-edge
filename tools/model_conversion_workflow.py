@@ -219,6 +219,10 @@ def _run_logged(
             command,
             cwd=cwd,
             text=True,
+            # Tool output is UTF-8 regardless of platform locale; a GBK/cp936
+            # console would otherwise crash the reader thread.
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             check=False,
             timeout=timeout,
@@ -932,12 +936,16 @@ def _device_evidence_record(raw_path: str, project_root: Path) -> dict[str, Any]
         tracked = subprocess.run(
             ["git", "-C", str(project_root), "ls-files", "--error-unmatch", "--", relative],
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             check=False,
         )
         commit = subprocess.run(
             ["git", "-C", str(project_root), "rev-parse", "HEAD"],
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             check=False,
         )
