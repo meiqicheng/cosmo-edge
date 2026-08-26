@@ -25,9 +25,9 @@
 #
 # Targets:
 #   core         (default) RKNN + MPP/RGA + FFmpeg toolchain. No VLM runtime.
-#   vlm-overlay  optional stage adding the user-supplied RKLLM runtime on top
+#   rkllm        optional stage adding the user-supplied RKLLM runtime on top
 #                of core for Qwen3.5 VLM builds. Build explicitly with
-#                `docker build --target vlm-overlay .`
+#                `docker build --target rkllm .`
 FROM debian:bullseye@sha256:99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704ebc3ead2015675 AS core
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -234,7 +234,7 @@ WORKDIR /workspace
 # Optional VLM overlay: adds the user-supplied RKLLM Runtime v1.3.0 (aarch64)
 # on top of core so cmake/rkllm.cmake auto-enables the Qwen3.5 VLM backend.
 # Not built by default; the core package never requires these files.
-FROM core AS vlm-overlay
+FROM core AS rkllm
 COPY .rk3588-build-cache/rkllm-runtime/include/rkllm.h /opt/rknn/include/rkllm.h
 COPY .rk3588-build-cache/rkllm-runtime/lib/librkllmrt.so /opt/rknn/lib/librkllmrt.so
 COPY .rk3588-build-cache/rkllm-runtime/LICENSE /opt/rknn/LICENSE
