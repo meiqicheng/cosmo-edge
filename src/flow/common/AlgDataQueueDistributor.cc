@@ -4,6 +4,7 @@
 
 #include <algorithm>
 
+#include "flow/common/AlgTaskNativeCapability.h"
 #include "util/VideoInfo.h"
 #include "util/dto/ActionCodes.h"
 
@@ -276,11 +277,8 @@ AlgFrameDistributionPlan AlgDataQueueDistributor::PrepareFrameDistribution(AlgDa
             task_group.que->RecordDiscard();
             continue;
         }
-        const bool detector_group =
-            !task_group.tasks.empty() &&
-            std::all_of(task_group.tasks.begin(), task_group.tasks.end(),
-                        [](const AlgTaskUnit& task) { return task.actionId == AADetect_Code.data(); });
-        plan.native_inference_eligible = plan.native_inference_eligible && detector_group;
+        const bool native_capable_group = AlgTasksNativeOnlyEligible(task_group.tasks);
+        plan.native_inference_eligible  = plan.native_inference_eligible && native_capable_group;
         plan.queues.push_back(task_group.que);
     }
     return plan;
@@ -314,8 +312,8 @@ int AlgDataQueueDistributor::DistributorPreparedFrame(
     return message_count;
 }
 
-int AlgDataQueueDistributor::DistributorNativeOnlyFrame(
-    const AlgFrameDistributionPlan& plan, AlgDataPtr data) {
+int AlgDataQueueDistributor::DistributorNativeOnlyFrame(const AlgFrameDistributionPlan& plan,
+                                                        AlgDataPtr data) {
     if (!data || plan.Empty()) {
         return 0;
     }

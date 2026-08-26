@@ -22,9 +22,25 @@ struct AlgChannelDataOrig {
     VideoPacketPtr packet;
 };
 
+/// Frame identity captured by the decode stage before any Materialize
+/// decision. Host-frame and native-only (DMA-BUF) paths must carry identical
+/// stream/frame/timestamp identity so downstream tasks cannot tell the paths
+/// apart. `valid` is explicit: consumers must never fall back to all-zero
+/// identity when metadata is missing.
+struct AlgFrameMeta {
+    bool valid{false};
+    int64_t streamIndex{0};
+    int64_t frameIndex{0};
+    int64_t timestamp{0};
+    int width{0};   // Coordinate-space width of the attached pixel source.
+    int height{0};  // Coordinate-space height of the attached pixel source.
+    media::PixelFormat pixelFormat{media::PixelFormat::PIXEL_UNKNOWN};
+};
+
 struct AlgChannelDataDec {
     VideoFramePtr frame;  // AI processed frame, might be YUV or BGR depending on platform
     media::NativeVideoBufferPtr native_buffer;  // Optional borrowed hardware inference source.
+    AlgFrameMeta meta;
     int64_t reportTimeStamp{0};
 };
 
