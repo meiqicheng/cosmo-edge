@@ -286,9 +286,9 @@ void AiDetector::HandFrames(std::vector<AlgDataPtr> alg_datas) {
     std::vector<media::NativeVideoBufferPtr> native_buffers;
     std::vector<AlgDataPtr> activeAlgDatas;
     for (auto algData : alg_datas) {
-        const bool has_frame  = algData && algData->chanDataDec.frame && algData->chanDataDec.frame->Active();
-        const bool has_native = algData && algData->chanDataDec.native_buffer &&
-                                algData->chanDataDec.native_buffer->Valid();
+        const bool has_frame = algData && algData->chanDataDec.frame && algData->chanDataDec.frame->Active();
+        const bool has_native =
+            algData && algData->chanDataDec.native_buffer && algData->chanDataDec.native_buffer->Valid();
         if (has_frame || has_native) {
             images.push_back(algData->chanDataDec.frame);
             native_buffers.push_back(algData->chanDataDec.native_buffer);
@@ -326,11 +326,30 @@ void AiDetector::HandFrames(std::vector<AlgDataPtr> alg_datas) {
         auto algData                        = activeAlgDatas[i];
         DataDetTrackClassifyPtr detTrackRst = std::make_shared<DataDetTrackClassify>();
         detTrackRst->targets                = detRsts[i];
-        detTrackRst->streamIndex            = images[i]->GetStreamIndex();
-        detTrackRst->frameIndex             = images[i]->GetFrameIndex();
-        detTrackRst->timestamp              = images[i]->GetTimestamp();
-        detTrackRst->picWidth               = images[i]->GetWidth();
-        detTrackRst->picHeight              = images[i]->GetHeight();
+        // Frame identity comes from the host image when present, otherwise
+        // from the decode-stage metadata attached to native-only frames.
+        // Fabricating zeros is forbidden: a sample without either source is
+        // dropped instead of reported with a fake identity.
+        const bool has_image = images[i] && images[i]->Active();
+        const auto& meta     = algData->chanDataDec.meta;
+        if (!has_image && !meta.valid) {
+            LOG_ERRO("{}[{} {}] Dropped detection result without frame identity. channel:{} frame:{}", kTag,
+                     name_, uuid, algData->channelId, meta.frameIndex);
+            continue;
+        }
+        if (has_image) {
+            detTrackRst->streamIndex = images[i]->GetStreamIndex();
+            detTrackRst->frameIndex  = static_cast<int64_t>(images[i]->GetFrameIndex());
+            detTrackRst->timestamp   = images[i]->GetTimestamp();
+            detTrackRst->picWidth    = static_cast<int>(images[i]->GetWidth());
+            detTrackRst->picHeight   = static_cast<int>(images[i]->GetHeight());
+        } else {
+            detTrackRst->streamIndex = meta.streamIndex;
+            detTrackRst->frameIndex  = meta.frameIndex;
+            detTrackRst->timestamp   = meta.timestamp;
+            detTrackRst->picWidth    = meta.width;
+            detTrackRst->picHeight   = meta.height;
+        }
         for (auto& target : detTrackRst->targets) {
             target.frameIndex  = images[i]->GetFrameIndex();
             target.streamIndex = images[i]->GetStreamIndex();
