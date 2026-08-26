@@ -1205,6 +1205,45 @@ class PackageProfileTests(unittest.TestCase):
         failing = glibc_gate.run_scan([("lib/bad.so", bad)], "2.31")
         self.assertEqual(failing["status"], "FAIL")
 
+    def test_rk3588_model_build_provenance_is_repo_relative_and_hash_closed(self) -> None:
+        build_files = sorted(
+            (REPOSITORY / "data/resource").rglob("model.rknn.build.json")
+        )
+        self.assertEqual(len(build_files), 2)
+        for build_file in build_files:
+            record = json.loads(build_file.read_text(encoding="utf-8"))
+            for section in ("artifact", "source", "spec"):
+                entry = record.get(section)
+                if not isinstance(entry, dict):
+                    continue
+                location = entry.get("path")
+                if not isinstance(location, str) or not location:
+                    continue
+                self.assertFalse(
+                    location.startswith("/"),
+                    f"{build_file}: {section} path must be repo-relative",
+                )
+                self.assertFalse(
+                    re.match(r"^[A-Za-z]:", location),
+                    f"{build_file}: {section} path must not be a Windows path",
+                )
+                self.assertNotIn("\\", location)
+                referenced = REPOSITORY / location
+                if not referenced.is_file():
+                    continue
+                if section == "spec":
+                    # Specs may legitimately change after conversion; the
+                    # workflow's verify stage validates them at build time.
+                    continue
+                self.assertEqual(
+                    hashlib.sha256(referenced.read_bytes()).hexdigest(),
+                    entry["sha256"],
+                    f"{build_file}: {section} sha256 mismatch for {location}",
+                )
+            artifact = REPOSITORY / record["artifact"]["path"]
+            self.assertTrue(artifact.is_file(), f"{build_file}: artifact missing")
+            self.assertEqual(artifact.stat().st_size, record["artifact"]["bytes"])
+
     def test_private_key_scan_requires_full_pem_blocks(self) -> None:
         header = b"-----BEGIN ENCRYPTED PRIVATE KEY-----"
         body = b"bW9jay1rZXktYm9keS1mb3ItcGFja2FnZS1hdWRpdC10ZXN0cw=="
