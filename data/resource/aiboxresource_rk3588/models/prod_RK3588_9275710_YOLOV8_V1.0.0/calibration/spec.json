@@ -1,0 +1,313 @@
+{
+  "schema_version": 1,
+  "model": "prod_RK3588_9275710_YOLOV8_V1.0.0",
+  "purpose": "representative calibration and numerical parity; not an accuracy benchmark",
+  "source_video": "data/test-video/Safety Helmet.mp4",
+  "person_detector": null,
+  "generate": {
+    "command": "python3 tools/rknn/prepare_validation_data.py --spec <chip-spec> --video data/test-video/Safety Helmet.mp4 --output-dir <workdir>/calibration",
+    "samples_total": 32,
+    "samples_unique": 23
+  },
+  "samples": [
+    {
+      "id": "sample-0000",
+      "frame_index": 0,
+      "detection": null,
+      "tensor_sha256": "dd14fa0920c8ee7d0d01c94bc0ac8739bbc3ca73622616e7f1b7afbf3631f8a5",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0001",
+      "frame_index": 3,
+      "detection": null,
+      "tensor_sha256": "2bf5a8b281508390bf46e50561f44ccd854eb2aae7646b34e657db2b0baff2cc",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0011",
+      "frame_index": 41,
+      "detection": null,
+      "tensor_sha256": "5e892c9b8a4d636f99556d5e21d992ac531987ed20cffd3eb3c7d21dfd4bb3e7",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0012",
+      "frame_index": 45,
+      "detection": null,
+      "tensor_sha256": "13b51c79548cd5328f80ff56430f96117f6bd9cf43fe23e78dae172bba8fbe11",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0013",
+      "frame_index": 49,
+      "detection": null,
+      "tensor_sha256": "dd5753371169c78713c347fe5ebe61930f9f26fc5c219176e2ee47c20840edbb",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0014",
+      "frame_index": 52,
+      "detection": null,
+      "tensor_sha256": "91c61b9754df65edf7484560b0aac0de275574959a34a27118b2060974775dd1",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0015",
+      "frame_index": 56,
+      "detection": null,
+      "tensor_sha256": "f9b72babc3fe6c4679939852baf89424a8337fd68cbf69feebbda02621275446",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0016",
+      "frame_index": 60,
+      "detection": null,
+      "tensor_sha256": "197eb7306f035a81eac7f22f9f55724b28ac25321cdaf0106d81b75a2b618e89",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0017",
+      "frame_index": 64,
+      "detection": null,
+      "tensor_sha256": "c0ba61e64d7e2d6693878ab323c5285d2ec6be5261f0d7167754b4391d6c68cb",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0018",
+      "frame_index": 68,
+      "detection": null,
+      "tensor_sha256": "240ad5992b01d725dee5c708e9ec0109ed7fe1aab165f25adbc20d3946024cc3",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0019",
+      "frame_index": 71,
+      "detection": null,
+      "tensor_sha256": "4fff28db0c9e9fca7e2d9871977de4c855e6aaa68779561fd18443426a0efb05",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0020",
+      "frame_index": 75,
+      "detection": null,
+      "tensor_sha256": "efc129b28d058631338b7bd2a96bfebe3a8804085c29e0a6f8b62ce0fd8f3cd5",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0021",
+      "frame_index": 79,
+      "detection": null,
+      "tensor_sha256": "86bcb63debc25a2253e2310c9c60f043f68aea07838b04a298b9d56ac54b57e3",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0022",
+      "frame_index": 83,
+      "detection": null,
+      "tensor_sha256": "eae0ad2d843fb5d8ad123553e11390540b39f96ad136aedae3029a60669abd81",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0023",
+      "frame_index": 86,
+      "detection": null,
+      "tensor_sha256": "b2a956246977d5a623fc0bbba9fd985f6e92d1de406e6b4f9aac7caf1aa54d4a",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0024",
+      "frame_index": 90,
+      "detection": null,
+      "tensor_sha256": "158d961106589a1792612af26c0392232368ec2320cf1bac330726f943d9ee20",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0025",
+      "frame_index": 94,
+      "detection": null,
+      "tensor_sha256": "da7fdd970026aa9ee6b201642eee2adbb25c38e50a03810da9f548afc8b498f9",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0026",
+      "frame_index": 98,
+      "detection": null,
+      "tensor_sha256": "1288b277dd13d96e2847af7889a8ff5e69793bc64384631bb7d3aac5d18143c3",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0027",
+      "frame_index": 102,
+      "detection": null,
+      "tensor_sha256": "a3f4ef6282c8a0c8cf46aba0602764f558bb11b8f781ac7dbc9cee7bf28ca732",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0028",
+      "frame_index": 105,
+      "detection": null,
+      "tensor_sha256": "00ba590acb938a0292ef0883f1e8b6d98bdfcce5c765396cd6ff114906d48154",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0029",
+      "frame_index": 109,
+      "detection": null,
+      "tensor_sha256": "ddf9b47b2cd16ff27d40c0a86d670f8f3dc1fe3e82804cf9fe35ef84e515796e",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0030",
+      "frame_index": 113,
+      "detection": null,
+      "tensor_sha256": "a19242e52e0ff83cedf6e4823202f1d13f321303a037492415adb857d615f5f1",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    },
+    {
+      "id": "sample-0031",
+      "frame_index": 117,
+      "detection": null,
+      "tensor_sha256": "83fd46d939425d736c8b66dec02781dcac56fe8f526412caceedfd96fc7fe6da",
+      "shape": [
+        1,
+        3,
+        640,
+        640
+      ],
+      "dtype": "float32"
+    }
+  ]
+}
