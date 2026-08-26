@@ -63,6 +63,54 @@ def _container_path(path: Path, run_dir: Path) -> str:
     return f"/workspace/run/{_run_relative(path, run_dir)}"
 
 
+def _command_text(command: list[str], run_dir: Path) -> str:
+    text = core.redact_text(shlex.join(command))
+    return text.replace(str(run_dir.resolve()), "$RUN_DIR")
+
+
+def _write_private_text(path: Path, value: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path.write_text(value, encoding="utf-8")
+    path.chmod(0o600)
+
+
+def _run_logged(
+    command: list[str],
+    *,
+    cwd: Path,
+    log_path: Path,
+    commands: list[str],
+    run_dir: Path,
+    timeout: int = 1800,
+    environment: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    commands.append(_command_text(command, run_dir))
+    try:
+        process = subprocess.run(
+            command,
+            cwd=cwd,
+            text=True,
+            # Tool output is UTF-8 regardless of platform locale; a GBK/cp936
+            # console would otherwise crash the reader thread.
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            check=False,
+            timeout=timeout,
+            env=environment,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        process = subprocess.CompletedProcess(command, 127, "", str(error))
+    log = (
+        f"$ {_command_text(command, run_dir)}\n"
+        f"exitCode: {process.returncode}\n\n"
+        f"stdout:\n{core.redact_text(process.stdout)}\n\n"
+        f"stderr:\n{core.redact_text(process.stderr)}\n"
+    )
+    _write_private_text(log_path, log)
+    return process
+
+
 def _docker_base(run_dir: Path, image_id: str, entrypoint: str) -> list[str]:
     return [
         "docker",
@@ -650,12 +698,16 @@ def _device_evidence_record(raw_path: str, project_root: Path) -> dict[str, Any]
         tracked = subprocess.run(
             ["git", "-C", str(project_root), "ls-files", "--error-unmatch", "--", relative],
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             check=False,
         )
         commit = subprocess.run(
             ["git", "-C", str(project_root), "rev-parse", "HEAD"],
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             check=False,
         )

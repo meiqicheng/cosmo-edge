@@ -375,6 +375,10 @@ def _run(
             command,
             cwd=cwd,
             text=True,
+            # Git and tool output is UTF-8 regardless of platform locale;
+            # a GBK/cp936 console would otherwise crash the reader thread.
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             check=False,
             timeout=timeout,
