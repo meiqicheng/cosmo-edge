@@ -22,7 +22,13 @@
 #   /opt/cosmo/rockchip-builder-lock-rk3588.json   builder lock consumed by
 #                           scripts/build_rockchip_package.sh --chip rk3588
 #                           (via COSMO_ROCKCHIP_BUILDER_LOCK)
-FROM debian:bullseye@sha256:99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704ebc3ead2015675
+#
+# Targets:
+#   core         (default) RKNN + MPP/RGA + FFmpeg toolchain. No VLM runtime.
+#   vlm-overlay  optional stage adding the user-supplied RKLLM runtime on top
+#                of core for Qwen3.5 VLM builds. Build explicitly with
+#                `docker build --target vlm-overlay .`
+FROM debian:bullseye@sha256:99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704ebc3ead2015675 AS core
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -86,15 +92,6 @@ RUN rustc --version && cargo --version
 COPY --from=ghcr.io/cosmo-wander-ai/cosmo_edge-build-env_rk3576@sha256:135d25d0baf14e7918726f7efb040a0627926aedd5825f52fab6c1cd208da348 /opt/rknn /opt/rknn
 RUN echo "d31fc19c85b85f6091b2bd0f6af9d962d5264a4e410bfb536402ec92bac738e8  /opt/rknn/lib/librknnrt.so" | sha256sum -c - \
     && test -f /opt/rknn/include/rknn_api.h
-
-# Step 4b: stage RKLLM Runtime v1.3.0 (aarch64) so cmake/rkllm.cmake auto-enables
-# the Qwen3.5 VLM backend for this image. Files come from .rk3588-build-cache
-# (host-staged from the pinned rknn-llm-release-v1.3.0 runtime drop).
-COPY .rk3588-build-cache/rkllm-runtime/include/rkllm.h /opt/rknn/include/rkllm.h
-COPY .rk3588-build-cache/rkllm-runtime/lib/librkllmrt.so /opt/rknn/lib/librkllmrt.so
-COPY .rk3588-build-cache/rkllm-runtime/LICENSE /opt/rknn/LICENSE
-RUN test -f /opt/rknn/include/rkllm.h && test -f /opt/rknn/lib/librkllmrt.so \
-    && test -f /opt/rknn/LICENSE
 
 # Step 5: assemble a self-contained FFmpeg root for cross builds.
 #
@@ -233,4 +230,14 @@ print(json.dumps(record, indent=2))
 PYEOF
 
 WORKDIR /workspace
+
+# Optional VLM overlay: adds the user-supplied RKLLM Runtime v1.3.0 (aarch64)
+# on top of core so cmake/rkllm.cmake auto-enables the Qwen3.5 VLM backend.
+# Not built by default; the core package never requires these files.
+FROM core AS vlm-overlay
+COPY .rk3588-build-cache/rkllm-runtime/include/rkllm.h /opt/rknn/include/rkllm.h
+COPY .rk3588-build-cache/rkllm-runtime/lib/librkllmrt.so /opt/rknn/lib/librkllmrt.so
+COPY .rk3588-build-cache/rkllm-runtime/LICENSE /opt/rknn/LICENSE
+RUN test -f /opt/rknn/include/rkllm.h && test -f /opt/rknn/lib/librkllmrt.so \
+    && test -f /opt/rknn/LICENSE
 

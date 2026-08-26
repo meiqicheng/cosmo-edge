@@ -85,6 +85,18 @@ PRIVATE_MARKERS = (
     b"-----BEGIN EC PRIVATE KEY-----",
     b"-----BEGIN OPENSSH PRIVATE KEY-----",
 )
+# A complete PEM block (BEGIN line, base64 body, matching END line). Marker
+# constants embedded by libraries such as GLib appear as isolated strings and
+# do not form a block, so they stay exempt without a blanket ELF skip.
+PRIVATE_KEY_BLOCK_RE = re.compile(
+    rb"-----BEGIN ((?:RSA |EC |ENCRYPTED |OPENSSH )?PRIVATE KEY)-----"
+    rb"[A-Za-z0-9+/=\r\n]+"
+    rb"-----END \1-----"
+)
+# Known-good ELF members whose bytes legitimately contain complete PEM marker
+# pairs. Exemption is granted ONLY for the exact archive member path AND its
+# frozen sha256; add measured entries here when an audit flags such a library.
+EXEMPT_ELF_SHA256: dict[str, str] = {}
 FORBIDDEN_BASENAMES = {
     "commissioning-ed25519.seed",
     "device-certificate.bin",
@@ -316,13 +328,15 @@ def verify_model_bundle(
     if expected_models != set(package_rknn_models):
         raise PackageAuditError("packaged RKNN model inventory differs from its bundle")
 def assert_no_private_key_material(relative: str, data: bytes) -> None:
-    # PEM markers are scanned in non-ELF members only: the intent is to catch
-    # accidentally packaged key/cert files, which are ASCII. Upstream shared
-    # libraries (e.g. GLib's libgio) legitimately embed marker constants for
-    # certificate-format detection.
-    if data.startswith(b"\x7fELF"):
+    # Only complete PEM blocks count: libraries such as GLib embed the marker
+    # strings as isolated constants for certificate-format detection, while an
+    # actually packaged key always carries BEGIN..END plus its base64 body.
+    # This scan therefore also covers ELF members (embedded key material is
+    # ASCII-visible); the only exemption is EXEMPT_ELF_SHA256 (exact path +
+    # frozen sha256).
+    if EXEMPT_ELF_SHA256.get(relative) == content_sha256(data):
         return
-    if any(marker in data for marker in PRIVATE_MARKERS):
+    if PRIVATE_KEY_BLOCK_RE.search(data):
         raise PackageAuditError(f"private key material is forbidden: {relative}")
 
 
