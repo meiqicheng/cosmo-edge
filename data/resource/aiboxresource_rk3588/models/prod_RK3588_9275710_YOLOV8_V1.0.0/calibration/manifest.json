@@ -1,0 +1,949 @@
+{
+  "dataset": {
+    "path": "/tmp/rk3588-int8-convert/yolov8-cal/dataset.txt",
+    "sha256": "077bf1e8f0c5435085db0baac0270ccc4ba4976a7da65917b557325401216e94"
+  },
+  "labeled": false,
+  "person_detector": null,
+  "purpose": "representative calibration and numerical parity; not an accuracy benchmark",
+  "samples": [
+    {
+      "detection": null,
+      "frame_index": 0,
+      "id": "sample-0000",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0000.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0000.f32.bin",
+        "bin_sha256": "dd14fa0920c8ee7d0d01c94bc0ac8739bbc3ca73622616e7f1b7afbf3631f8a5",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0000.npy",
+        "npy_sha256": "7a8fa05f2214a122108e8f92ea3efb0790d4e158507c523dbce5b97bcb90afb7",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 3,
+      "id": "sample-0001",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0001.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0001.f32.bin",
+        "bin_sha256": "2bf5a8b281508390bf46e50561f44ccd854eb2aae7646b34e657db2b0baff2cc",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0001.npy",
+        "npy_sha256": "763f53edbba2a2b0f87b0aa5f41c57924edc2fc422ef1a713f0d5f93500cee2f",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 7,
+      "id": "sample-0002",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0002.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0002.f32.bin",
+        "bin_sha256": "2bf5a8b281508390bf46e50561f44ccd854eb2aae7646b34e657db2b0baff2cc",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0002.npy",
+        "npy_sha256": "763f53edbba2a2b0f87b0aa5f41c57924edc2fc422ef1a713f0d5f93500cee2f",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 11,
+      "id": "sample-0003",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0003.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0003.f32.bin",
+        "bin_sha256": "2bf5a8b281508390bf46e50561f44ccd854eb2aae7646b34e657db2b0baff2cc",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0003.npy",
+        "npy_sha256": "763f53edbba2a2b0f87b0aa5f41c57924edc2fc422ef1a713f0d5f93500cee2f",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 15,
+      "id": "sample-0004",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0004.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0004.f32.bin",
+        "bin_sha256": "2bf5a8b281508390bf46e50561f44ccd854eb2aae7646b34e657db2b0baff2cc",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0004.npy",
+        "npy_sha256": "763f53edbba2a2b0f87b0aa5f41c57924edc2fc422ef1a713f0d5f93500cee2f",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 18,
+      "id": "sample-0005",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0005.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0005.f32.bin",
+        "bin_sha256": "2bf5a8b281508390bf46e50561f44ccd854eb2aae7646b34e657db2b0baff2cc",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0005.npy",
+        "npy_sha256": "763f53edbba2a2b0f87b0aa5f41c57924edc2fc422ef1a713f0d5f93500cee2f",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 22,
+      "id": "sample-0006",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0006.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0006.f32.bin",
+        "bin_sha256": "2bf5a8b281508390bf46e50561f44ccd854eb2aae7646b34e657db2b0baff2cc",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0006.npy",
+        "npy_sha256": "763f53edbba2a2b0f87b0aa5f41c57924edc2fc422ef1a713f0d5f93500cee2f",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 26,
+      "id": "sample-0007",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0007.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0007.f32.bin",
+        "bin_sha256": "2bf5a8b281508390bf46e50561f44ccd854eb2aae7646b34e657db2b0baff2cc",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0007.npy",
+        "npy_sha256": "763f53edbba2a2b0f87b0aa5f41c57924edc2fc422ef1a713f0d5f93500cee2f",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 30,
+      "id": "sample-0008",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0008.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0008.f32.bin",
+        "bin_sha256": "2bf5a8b281508390bf46e50561f44ccd854eb2aae7646b34e657db2b0baff2cc",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0008.npy",
+        "npy_sha256": "763f53edbba2a2b0f87b0aa5f41c57924edc2fc422ef1a713f0d5f93500cee2f",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 34,
+      "id": "sample-0009",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0009.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0009.f32.bin",
+        "bin_sha256": "2bf5a8b281508390bf46e50561f44ccd854eb2aae7646b34e657db2b0baff2cc",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0009.npy",
+        "npy_sha256": "763f53edbba2a2b0f87b0aa5f41c57924edc2fc422ef1a713f0d5f93500cee2f",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 37,
+      "id": "sample-0010",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0010.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0010.f32.bin",
+        "bin_sha256": "2bf5a8b281508390bf46e50561f44ccd854eb2aae7646b34e657db2b0baff2cc",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0010.npy",
+        "npy_sha256": "763f53edbba2a2b0f87b0aa5f41c57924edc2fc422ef1a713f0d5f93500cee2f",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 41,
+      "id": "sample-0011",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0011.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0011.f32.bin",
+        "bin_sha256": "5e892c9b8a4d636f99556d5e21d992ac531987ed20cffd3eb3c7d21dfd4bb3e7",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0011.npy",
+        "npy_sha256": "2a204a0363480c744283e6366359d43847d332a1842d772656b1cf62a2f0a6c9",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 45,
+      "id": "sample-0012",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0012.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0012.f32.bin",
+        "bin_sha256": "13b51c79548cd5328f80ff56430f96117f6bd9cf43fe23e78dae172bba8fbe11",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0012.npy",
+        "npy_sha256": "824ec29825a40c6131052622b068a02a1176363f4ce8c6fbbded074a2fb94891",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 49,
+      "id": "sample-0013",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0013.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0013.f32.bin",
+        "bin_sha256": "dd5753371169c78713c347fe5ebe61930f9f26fc5c219176e2ee47c20840edbb",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0013.npy",
+        "npy_sha256": "3804ae7e74dcc9f4bb18921c8d55beab4c603d8a398415f65322e58dc4564cce",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 52,
+      "id": "sample-0014",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0014.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0014.f32.bin",
+        "bin_sha256": "91c61b9754df65edf7484560b0aac0de275574959a34a27118b2060974775dd1",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0014.npy",
+        "npy_sha256": "859915fc68edaa554f05bff369fd1c7e479c1925555e9ecc2618eeb0498da8a1",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 56,
+      "id": "sample-0015",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0015.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0015.f32.bin",
+        "bin_sha256": "f9b72babc3fe6c4679939852baf89424a8337fd68cbf69feebbda02621275446",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0015.npy",
+        "npy_sha256": "c08b30e333401a3cc98a906a8c6c93fc9fc427ed7e99abf2a327042f3e985c35",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 60,
+      "id": "sample-0016",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0016.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0016.f32.bin",
+        "bin_sha256": "197eb7306f035a81eac7f22f9f55724b28ac25321cdaf0106d81b75a2b618e89",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0016.npy",
+        "npy_sha256": "c164100900cb1761766cb86726752912786cba78e4ef8d0e45ba0057e7181e5f",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 64,
+      "id": "sample-0017",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0017.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0017.f32.bin",
+        "bin_sha256": "c0ba61e64d7e2d6693878ab323c5285d2ec6be5261f0d7167754b4391d6c68cb",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0017.npy",
+        "npy_sha256": "10879ffae319055c4535089dc5e22cba09cdeda17083b69615b942ff4ad39f93",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 68,
+      "id": "sample-0018",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0018.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0018.f32.bin",
+        "bin_sha256": "240ad5992b01d725dee5c708e9ec0109ed7fe1aab165f25adbc20d3946024cc3",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0018.npy",
+        "npy_sha256": "2219b7cbeba826917e566731274e023ecc2a1a58fd154b5b70c0beaaaaf63425",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 71,
+      "id": "sample-0019",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0019.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0019.f32.bin",
+        "bin_sha256": "4fff28db0c9e9fca7e2d9871977de4c855e6aaa68779561fd18443426a0efb05",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0019.npy",
+        "npy_sha256": "eecaea7493b70e4c08c7a51d67876823336cc37549c446cc1024065c11dab15f",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 75,
+      "id": "sample-0020",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0020.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0020.f32.bin",
+        "bin_sha256": "efc129b28d058631338b7bd2a96bfebe3a8804085c29e0a6f8b62ce0fd8f3cd5",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0020.npy",
+        "npy_sha256": "4d0c9b5cdf79d2ce9384be37a74e21104a6344bd393b42d5e4493876cec50215",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 79,
+      "id": "sample-0021",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0021.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0021.f32.bin",
+        "bin_sha256": "86bcb63debc25a2253e2310c9c60f043f68aea07838b04a298b9d56ac54b57e3",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0021.npy",
+        "npy_sha256": "53c6b702219895d36a29fee1a6b6487f98bfb9bef9dbe7f09b399cad3ee9d18b",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 83,
+      "id": "sample-0022",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0022.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0022.f32.bin",
+        "bin_sha256": "eae0ad2d843fb5d8ad123553e11390540b39f96ad136aedae3029a60669abd81",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0022.npy",
+        "npy_sha256": "a130493983001fe748222942ad9078f5e6752d28105c0b308c1db5aaf7909b50",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 86,
+      "id": "sample-0023",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0023.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0023.f32.bin",
+        "bin_sha256": "b2a956246977d5a623fc0bbba9fd985f6e92d1de406e6b4f9aac7caf1aa54d4a",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0023.npy",
+        "npy_sha256": "d8e17596a66e8a56a64134b8613adb04a8b59bc081f7fc51907b26f354769daa",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 90,
+      "id": "sample-0024",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0024.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0024.f32.bin",
+        "bin_sha256": "158d961106589a1792612af26c0392232368ec2320cf1bac330726f943d9ee20",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0024.npy",
+        "npy_sha256": "687144d5028125a2fce32da214484eeba4a45a197fe602cbc873a4e8190eef5f",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 94,
+      "id": "sample-0025",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0025.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0025.f32.bin",
+        "bin_sha256": "da7fdd970026aa9ee6b201642eee2adbb25c38e50a03810da9f548afc8b498f9",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0025.npy",
+        "npy_sha256": "b5eb0822aee0d02dc7818c521f2fbeffaa120f117682ef869df762f5dc834b25",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 98,
+      "id": "sample-0026",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0026.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0026.f32.bin",
+        "bin_sha256": "1288b277dd13d96e2847af7889a8ff5e69793bc64384631bb7d3aac5d18143c3",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0026.npy",
+        "npy_sha256": "aa03caaf91b504078f8a81493d2e5383cd0700d08fc7efd3d4cfd03124655938",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 102,
+      "id": "sample-0027",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0027.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0027.f32.bin",
+        "bin_sha256": "a3f4ef6282c8a0c8cf46aba0602764f558bb11b8f781ac7dbc9cee7bf28ca732",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0027.npy",
+        "npy_sha256": "aa9a419d97cfe62e90751a5ca1d79b09bfe89526004f4a2319b236080835645b",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 105,
+      "id": "sample-0028",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0028.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0028.f32.bin",
+        "bin_sha256": "00ba590acb938a0292ef0883f1e8b6d98bdfcce5c765396cd6ff114906d48154",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0028.npy",
+        "npy_sha256": "400fa07cdbfd98e692cc33d41f125f178b30aee135740f90753841b773c9c800",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 109,
+      "id": "sample-0029",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0029.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0029.f32.bin",
+        "bin_sha256": "ddf9b47b2cd16ff27d40c0a86d670f8f3dc1fe3e82804cf9fe35ef84e515796e",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0029.npy",
+        "npy_sha256": "9baacb0fbad2594272699efe7e2f4fceef10569a0cf4345f136bb7243bd4ef61",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 113,
+      "id": "sample-0030",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0030.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0030.f32.bin",
+        "bin_sha256": "a19242e52e0ff83cedf6e4823202f1d13f321303a037492415adb857d615f5f1",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0030.npy",
+        "npy_sha256": "9bae7839c5ae507382c67007f7303c8c3948b5e95aa93870492617f4d66ef42d",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    },
+    {
+      "detection": null,
+      "frame_index": 117,
+      "id": "sample-0031",
+      "source_image": "/tmp/rk3588-int8-convert/yolov8-cal/sources/sample-0031.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0031.f32.bin",
+        "bin_sha256": "83fd46d939425d736c8b66dec02781dcac56fe8f526412caceedfd96fc7fe6da",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/yolov8-cal/inputs/sample-0031.npy",
+        "npy_sha256": "e41d65cb138fc64839737303a7ac991819d29a03e94326c23dd4859efa8b5f25",
+        "shape": [
+          1,
+          3,
+          640,
+          640
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          140
+        ],
+        "scale": [
+          0.3333333333333333,
+          0.3333333333333333
+        ]
+      }
+    }
+  ],
+  "schema_version": 1,
+  "spec": {
+    "path": "/mnt/e/Gdsc/projects/project_aimonitor/sc-aimonitor/cosmoedge_custom/cosmo-edge/config/rknn/models/yolov8_rk3588.json",
+    "sha256": "45afcdcf02d07ae8894a715b2559f24020d9580138c8fa715b98dc648a602434"
+  },
+  "video": {
+    "frame_count": 360,
+    "path": "/mnt/e/Gdsc/projects/project_aimonitor/sc-aimonitor/cosmoedge_custom/cosmo-edge/data/test-video/Safety Helmet.mp4",
+    "sha256": "ec77182a264f3059a091b68c4973942dba3b80e93f20feaf4d7e146885caf9d2"
+  }
+}

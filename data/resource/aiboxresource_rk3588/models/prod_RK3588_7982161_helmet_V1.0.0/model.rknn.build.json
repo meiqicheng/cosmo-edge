@@ -1,18 +1,18 @@
 {
   "artifact": {
-    "bytes": 3511088,
+    "bytes": 2012605,
     "path": "data/resource/aiboxresource_rk3588/models/prod_RK3588_7982161_helmet_V1.0.0/model.rknn",
-    "sha256": "cf51f5254dc0db9942776667323845aae74ef0bd819c861ba6bdb63b2e643367"
+    "sha256": "e1ec3e335a4f2bd81059587e21d5ac731ae621a160f7b0ee2d869f8ee1378a1b"
   },
   "build": {
-    "dataset": null,
-    "dataset_sha256": null,
+    "dataset": "data/resource/aiboxresource_rk3588/models/prod_RK3588_7982161_helmet_V1.0.0/calibration/dataset.txt",
+    "dataset_sha256": "07575be7dc40c9fcf1bed2f41d4ac0145f849f4239dad1bd5efd24146d44fb86",
     "optimization_level": 3,
     "preprocessing_owner": "host",
-    "quantized": false,
+    "quantized": true,
     "target_platform": "rk3588"
   },
-  "created_at": "2026-08-17T21:25:05.541780+00:00",
+  "created_at": "2026-08-26T15:25:30.184966+00:00",
   "rknn_toolkit2_version": "2.3.2",
   "schema_version": 1,
   "source": {
@@ -28,6 +28,6 @@
   },
   "spec": {
     "path": "config/rknn/models/helmet_rk3588.json",
-    "sha256": "105618bedecd2ac5231bb9bf0b8718bfb8975559d240dbf6269a40a7853f3434"
+    "sha256": "2324c073a94aa88dc1bd2cf7aba737fee61077c00e8ed741df82a2cce3d6ce58"
   }
 }

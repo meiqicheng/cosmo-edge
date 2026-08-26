@@ -72,6 +72,7 @@
                     114,
                     114
                 ],
+                "rknn_input_contract": "cosmo.rknn.input.rgb_u8_nhwc_0_255_to_0_1.v1",
                 "square": false,
                 "square_mode": 0
             }

@@ -1,0 +1,1208 @@
+{
+  "dataset": {
+    "path": "/tmp/rk3588-int8-convert/helmet-cal/dataset.txt",
+    "sha256": "07575be7dc40c9fcf1bed2f41d4ac0145f849f4239dad1bd5efd24146d44fb86"
+  },
+  "labeled": false,
+  "person_detector": {
+    "path": "/mnt/e/Gdsc/projects/project_aimonitor/sc-aimonitor/cosmoedge_custom/cosmo-edge/data/resource/aiboxresource_x86/models/prod_X86_9275710_YOLOV8_V1.0.0/model.onnx",
+    "sha256": "5f8e91cb4507596b66cd5e3b7193bb16f7bd4779ed3b78e3613fcc51b83db8e1"
+  },
+  "purpose": "representative calibration and numerical parity; not an accuracy benchmark",
+  "samples": [
+    {
+      "detection": {
+        "box": [
+          1381.8343505859375,
+          576.99462890625,
+          1497.878173828125,
+          884.3543701171875
+        ],
+        "score": 0.8234286904335022
+      },
+      "frame_index": 0,
+      "id": "sample-0000",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0000.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0000.f32.bin",
+        "bin_sha256": "51bd18e67bad1003b077dc9b6aa7f3052e178fd3f1ef55bef16094a78cceccbf",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0000.npy",
+        "npy_sha256": "4df8015acf357f4ed1f48fe449780e0f422866d8d243bfc9263554b0c9378ab6",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.9310344827586208,
+          0.7296416938110749
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1019.4464721679688,
+          526.89697265625,
+          1116.874267578125,
+          641.4224853515625
+        ],
+        "score": 0.6302189826965332
+      },
+      "frame_index": 0,
+      "id": "sample-0001",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0001.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0001.f32.bin",
+        "bin_sha256": "9f56cc1827dca8e6e50c9a1377adc3c48ee9f73428091db29e931397000950c1",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0001.npy",
+        "npy_sha256": "916b65b2fc83d6a09dfc8e1e8658124bc1da4e7b2247f14fbdf5cd19f3408b45",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          2.2857142857142856,
+          1.9649122807017543
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1381.5860595703125,
+          577.2855834960938,
+          1497.7503662109375,
+          885.3356323242188
+        ],
+        "score": 0.8186802864074707
+      },
+      "frame_index": 3,
+      "id": "sample-0002",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0002.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0002.f32.bin",
+        "bin_sha256": "4d218bf31b30981aec4871002f159929373950fb930160da9ebb4565cfa84853",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0002.npy",
+        "npy_sha256": "2892509e5f94e5651cf9d19bccf17a5e362d32e8a96329ab0a60a8a5908f6ed9",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.9310344827586208,
+          0.7272727272727273
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1021.5618896484375,
+          525.7326049804688,
+          1115.753662109375,
+          642.0598754882812
+        ],
+        "score": 0.6084309220314026
+      },
+      "frame_index": 3,
+      "id": "sample-0003",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0003.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0003.f32.bin",
+        "bin_sha256": "32a38c3e1daa09e0f59374818e202b998cfed9e5f90c0363b3e03a0b8e6e684c",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0003.npy",
+        "npy_sha256": "a2242c59a9b30da79f2b26f4215c36bf12414449bc764acc2d2c60a5a6a5aa7c",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          2.382978723404255,
+          1.9310344827586208
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1381.5860595703125,
+          577.2855834960938,
+          1497.7503662109375,
+          885.3356323242188
+        ],
+        "score": 0.8186802864074707
+      },
+      "frame_index": 7,
+      "id": "sample-0004",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0004.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0004.f32.bin",
+        "bin_sha256": "4d218bf31b30981aec4871002f159929373950fb930160da9ebb4565cfa84853",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0004.npy",
+        "npy_sha256": "2892509e5f94e5651cf9d19bccf17a5e362d32e8a96329ab0a60a8a5908f6ed9",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.9310344827586208,
+          0.7272727272727273
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1021.5618896484375,
+          525.7326049804688,
+          1115.753662109375,
+          642.0598754882812
+        ],
+        "score": 0.6084309220314026
+      },
+      "frame_index": 7,
+      "id": "sample-0005",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0005.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0005.f32.bin",
+        "bin_sha256": "32a38c3e1daa09e0f59374818e202b998cfed9e5f90c0363b3e03a0b8e6e684c",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0005.npy",
+        "npy_sha256": "a2242c59a9b30da79f2b26f4215c36bf12414449bc764acc2d2c60a5a6a5aa7c",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          2.382978723404255,
+          1.9310344827586208
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1381.5860595703125,
+          577.2855834960938,
+          1497.7503662109375,
+          885.3356323242188
+        ],
+        "score": 0.8186802864074707
+      },
+      "frame_index": 11,
+      "id": "sample-0006",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0006.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0006.f32.bin",
+        "bin_sha256": "4d218bf31b30981aec4871002f159929373950fb930160da9ebb4565cfa84853",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0006.npy",
+        "npy_sha256": "2892509e5f94e5651cf9d19bccf17a5e362d32e8a96329ab0a60a8a5908f6ed9",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.9310344827586208,
+          0.7272727272727273
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1021.5618896484375,
+          525.7326049804688,
+          1115.753662109375,
+          642.0598754882812
+        ],
+        "score": 0.6084309220314026
+      },
+      "frame_index": 11,
+      "id": "sample-0007",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0007.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0007.f32.bin",
+        "bin_sha256": "32a38c3e1daa09e0f59374818e202b998cfed9e5f90c0363b3e03a0b8e6e684c",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0007.npy",
+        "npy_sha256": "a2242c59a9b30da79f2b26f4215c36bf12414449bc764acc2d2c60a5a6a5aa7c",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          2.382978723404255,
+          1.9310344827586208
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1381.5860595703125,
+          577.2855834960938,
+          1497.7503662109375,
+          885.3356323242188
+        ],
+        "score": 0.8186802864074707
+      },
+      "frame_index": 15,
+      "id": "sample-0008",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0008.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0008.f32.bin",
+        "bin_sha256": "4d218bf31b30981aec4871002f159929373950fb930160da9ebb4565cfa84853",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0008.npy",
+        "npy_sha256": "2892509e5f94e5651cf9d19bccf17a5e362d32e8a96329ab0a60a8a5908f6ed9",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.9310344827586208,
+          0.7272727272727273
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1021.5618896484375,
+          525.7326049804688,
+          1115.753662109375,
+          642.0598754882812
+        ],
+        "score": 0.6084309220314026
+      },
+      "frame_index": 15,
+      "id": "sample-0009",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0009.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0009.f32.bin",
+        "bin_sha256": "32a38c3e1daa09e0f59374818e202b998cfed9e5f90c0363b3e03a0b8e6e684c",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0009.npy",
+        "npy_sha256": "a2242c59a9b30da79f2b26f4215c36bf12414449bc764acc2d2c60a5a6a5aa7c",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          2.382978723404255,
+          1.9310344827586208
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1381.5860595703125,
+          577.2855834960938,
+          1497.7503662109375,
+          885.3356323242188
+        ],
+        "score": 0.8186802864074707
+      },
+      "frame_index": 18,
+      "id": "sample-0010",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0010.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0010.f32.bin",
+        "bin_sha256": "4d218bf31b30981aec4871002f159929373950fb930160da9ebb4565cfa84853",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0010.npy",
+        "npy_sha256": "2892509e5f94e5651cf9d19bccf17a5e362d32e8a96329ab0a60a8a5908f6ed9",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.9310344827586208,
+          0.7272727272727273
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1021.5618896484375,
+          525.7326049804688,
+          1115.753662109375,
+          642.0598754882812
+        ],
+        "score": 0.6084309220314026
+      },
+      "frame_index": 18,
+      "id": "sample-0011",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0011.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0011.f32.bin",
+        "bin_sha256": "32a38c3e1daa09e0f59374818e202b998cfed9e5f90c0363b3e03a0b8e6e684c",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0011.npy",
+        "npy_sha256": "a2242c59a9b30da79f2b26f4215c36bf12414449bc764acc2d2c60a5a6a5aa7c",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          2.382978723404255,
+          1.9310344827586208
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1381.5860595703125,
+          577.2855834960938,
+          1497.7503662109375,
+          885.3356323242188
+        ],
+        "score": 0.8186802864074707
+      },
+      "frame_index": 22,
+      "id": "sample-0012",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0012.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0012.f32.bin",
+        "bin_sha256": "4d218bf31b30981aec4871002f159929373950fb930160da9ebb4565cfa84853",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0012.npy",
+        "npy_sha256": "2892509e5f94e5651cf9d19bccf17a5e362d32e8a96329ab0a60a8a5908f6ed9",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.9310344827586208,
+          0.7272727272727273
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1021.5618896484375,
+          525.7326049804688,
+          1115.753662109375,
+          642.0598754882812
+        ],
+        "score": 0.6084309220314026
+      },
+      "frame_index": 22,
+      "id": "sample-0013",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0013.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0013.f32.bin",
+        "bin_sha256": "32a38c3e1daa09e0f59374818e202b998cfed9e5f90c0363b3e03a0b8e6e684c",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0013.npy",
+        "npy_sha256": "a2242c59a9b30da79f2b26f4215c36bf12414449bc764acc2d2c60a5a6a5aa7c",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          2.382978723404255,
+          1.9310344827586208
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1381.5860595703125,
+          577.2855834960938,
+          1497.7503662109375,
+          885.3356323242188
+        ],
+        "score": 0.8186802864074707
+      },
+      "frame_index": 26,
+      "id": "sample-0014",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0014.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0014.f32.bin",
+        "bin_sha256": "4d218bf31b30981aec4871002f159929373950fb930160da9ebb4565cfa84853",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0014.npy",
+        "npy_sha256": "2892509e5f94e5651cf9d19bccf17a5e362d32e8a96329ab0a60a8a5908f6ed9",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.9310344827586208,
+          0.7272727272727273
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1021.5618896484375,
+          525.7326049804688,
+          1115.753662109375,
+          642.0598754882812
+        ],
+        "score": 0.6084309220314026
+      },
+      "frame_index": 26,
+      "id": "sample-0015",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0015.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0015.f32.bin",
+        "bin_sha256": "32a38c3e1daa09e0f59374818e202b998cfed9e5f90c0363b3e03a0b8e6e684c",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0015.npy",
+        "npy_sha256": "a2242c59a9b30da79f2b26f4215c36bf12414449bc764acc2d2c60a5a6a5aa7c",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          2.382978723404255,
+          1.9310344827586208
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1381.5860595703125,
+          577.2855834960938,
+          1497.7503662109375,
+          885.3356323242188
+        ],
+        "score": 0.8186802864074707
+      },
+      "frame_index": 30,
+      "id": "sample-0016",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0016.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0016.f32.bin",
+        "bin_sha256": "4d218bf31b30981aec4871002f159929373950fb930160da9ebb4565cfa84853",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0016.npy",
+        "npy_sha256": "2892509e5f94e5651cf9d19bccf17a5e362d32e8a96329ab0a60a8a5908f6ed9",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.9310344827586208,
+          0.7272727272727273
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1021.5618896484375,
+          525.7326049804688,
+          1115.753662109375,
+          642.0598754882812
+        ],
+        "score": 0.6084309220314026
+      },
+      "frame_index": 30,
+      "id": "sample-0017",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0017.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0017.f32.bin",
+        "bin_sha256": "32a38c3e1daa09e0f59374818e202b998cfed9e5f90c0363b3e03a0b8e6e684c",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0017.npy",
+        "npy_sha256": "a2242c59a9b30da79f2b26f4215c36bf12414449bc764acc2d2c60a5a6a5aa7c",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          2.382978723404255,
+          1.9310344827586208
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1381.5860595703125,
+          577.2855834960938,
+          1497.7503662109375,
+          885.3356323242188
+        ],
+        "score": 0.8186802864074707
+      },
+      "frame_index": 34,
+      "id": "sample-0018",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0018.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0018.f32.bin",
+        "bin_sha256": "4d218bf31b30981aec4871002f159929373950fb930160da9ebb4565cfa84853",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0018.npy",
+        "npy_sha256": "2892509e5f94e5651cf9d19bccf17a5e362d32e8a96329ab0a60a8a5908f6ed9",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.9310344827586208,
+          0.7272727272727273
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1021.5618896484375,
+          525.7326049804688,
+          1115.753662109375,
+          642.0598754882812
+        ],
+        "score": 0.6084309220314026
+      },
+      "frame_index": 34,
+      "id": "sample-0019",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0019.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0019.f32.bin",
+        "bin_sha256": "32a38c3e1daa09e0f59374818e202b998cfed9e5f90c0363b3e03a0b8e6e684c",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0019.npy",
+        "npy_sha256": "a2242c59a9b30da79f2b26f4215c36bf12414449bc764acc2d2c60a5a6a5aa7c",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          2.382978723404255,
+          1.9310344827586208
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1381.5860595703125,
+          577.2855834960938,
+          1497.7503662109375,
+          885.3356323242188
+        ],
+        "score": 0.8186802864074707
+      },
+      "frame_index": 37,
+      "id": "sample-0020",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0020.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0020.f32.bin",
+        "bin_sha256": "4d218bf31b30981aec4871002f159929373950fb930160da9ebb4565cfa84853",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0020.npy",
+        "npy_sha256": "2892509e5f94e5651cf9d19bccf17a5e362d32e8a96329ab0a60a8a5908f6ed9",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.9310344827586208,
+          0.7272727272727273
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1021.5618896484375,
+          525.7326049804688,
+          1115.753662109375,
+          642.0598754882812
+        ],
+        "score": 0.6084309220314026
+      },
+      "frame_index": 37,
+      "id": "sample-0021",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0021.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0021.f32.bin",
+        "bin_sha256": "32a38c3e1daa09e0f59374818e202b998cfed9e5f90c0363b3e03a0b8e6e684c",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0021.npy",
+        "npy_sha256": "a2242c59a9b30da79f2b26f4215c36bf12414449bc764acc2d2c60a5a6a5aa7c",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          2.382978723404255,
+          1.9310344827586208
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1241.6397705078125,
+          732.4085083007812,
+          1442.759521484375,
+          925.0823364257812
+        ],
+        "score": 0.47106248140335083
+      },
+      "frame_index": 41,
+      "id": "sample-0022",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0022.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0022.f32.bin",
+        "bin_sha256": "cafdb4c03e8245f8ad384e61845ecde8d1cdb806dc01f5d51f25969af3955122",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0022.npy",
+        "npy_sha256": "21fd4a31565916ba752139fa4c006e7b42a0b213a37f2dc50215e4dd30d2416d",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.1144278606965174,
+          1.160621761658031
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1238.3193359375,
+          735.8037109375,
+          1441.6180419921875,
+          926.5866088867188
+        ],
+        "score": 0.41738998889923096
+      },
+      "frame_index": 45,
+      "id": "sample-0023",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0023.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0023.f32.bin",
+        "bin_sha256": "24aaab162a8599e7266ddb99988267205f4cc76889afe4afbb8b49f9b676337c",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0023.npy",
+        "npy_sha256": "a302bb74c4bdb24dfe322fbff47e17c58d80ed3c2c1121fc8a3f8c1decb8c55d",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.0980392156862746,
+          1.1727748691099475
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1239.3763427734375,
+          735.3809204101562,
+          1441.088623046875,
+          926.0283203125
+        ],
+        "score": 0.5694728493690491
+      },
+      "frame_index": 49,
+      "id": "sample-0024",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0024.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0024.f32.bin",
+        "bin_sha256": "6f895e28adacc33d207a54ad859fdc4b76edca9daffd5b1a7bdc74a92966b56c",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0024.npy",
+        "npy_sha256": "5db26886d274b0bc6ae6ff6279457d4dfcf163a447464232fa02bf3a735c6e3a",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.108910891089109,
+          1.1727748691099475
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1241.5152587890625,
+          735.831298828125,
+          1440.962158203125,
+          926.0198364257812
+        ],
+        "score": 0.608245849609375
+      },
+      "frame_index": 52,
+      "id": "sample-0025",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0025.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0025.f32.bin",
+        "bin_sha256": "f76c82f2971bfd01bb4e35187197c676e42255e605a69a7e03eeeb2b9058a7f6",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0025.npy",
+        "npy_sha256": "3f60d9904861f7650e57a1942ba13664918600012f2ef548d212bad3d4d8df78",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.1256281407035176,
+          1.1789473684210525
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1240.886962890625,
+          735.342041015625,
+          1440.7550048828125,
+          925.32861328125
+        ],
+        "score": 0.6087028384208679
+      },
+      "frame_index": 56,
+      "id": "sample-0026",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0026.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0026.f32.bin",
+        "bin_sha256": "d6ca1bb66a3ce1daa34e1185483668785f5174d1d211d97d65cd5f0f06546de2",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0026.npy",
+        "npy_sha256": "a97913b413e457bad8a6013df52561aae7dca9afafa650b0b621af49f1586dac",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.12,
+          1.1789473684210525
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1242.6602783203125,
+          735.3310546875,
+          1439.714599609375,
+          924.5921630859375
+        ],
+        "score": 0.6524089574813843
+      },
+      "frame_index": 60,
+      "id": "sample-0027",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0027.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0027.f32.bin",
+        "bin_sha256": "3b36abb421f5ff721342b9917a879b83760a9db79bc995a5949ef43809c92fde",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0027.npy",
+        "npy_sha256": "c21feaf09b52d0cea262feba0b74a7678f3ea03155bf1da6ef922264d286dacf",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.1370558375634519,
+          1.1789473684210525
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1240.617919921875,
+          736.1226196289062,
+          1440.08349609375,
+          925.591552734375
+        ],
+        "score": 0.6256455183029175
+      },
+      "frame_index": 64,
+      "id": "sample-0028",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0028.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0028.f32.bin",
+        "bin_sha256": "1e6ec676dacda896b52367f8f9e99890ac51cadf066a6a93b8685cc58a11bd8b",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0028.npy",
+        "npy_sha256": "1c24709e7f5345158a3f3fb8c9c8eaf78595c22459d090dd82ee0b930856e9cb",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.1256281407035176,
+          1.1789473684210525
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1239.844482421875,
+          736.9544677734375,
+          1440.217529296875,
+          926.8040771484375
+        ],
+        "score": 0.5862802267074585
+      },
+      "frame_index": 68,
+      "id": "sample-0029",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0029.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0029.f32.bin",
+        "bin_sha256": "aed41f4fbda4398e3aeb19e8218324d8db215a869153e5ac26be018bb2b855e9",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0029.npy",
+        "npy_sha256": "990b90e45b2f0178f91e94209f072296052ac8090b9326c0ae4db6eab82e794f",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.12,
+          1.1789473684210525
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1240.8936767578125,
+          739.4280395507812,
+          1441.0408935546875,
+          923.6665649414062
+        ],
+        "score": 0.5730500221252441
+      },
+      "frame_index": 71,
+      "id": "sample-0030",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0030.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0030.f32.bin",
+        "bin_sha256": "52a194a2597d95ca01fd2f8442971ea1813e2cc0a741870aa31d404c70eeac3b",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0030.npy",
+        "npy_sha256": "47f98c403dec7b3e9f73a5e8bd243a84dfee9f3d22cd8bc0b96eedfb1006dd95",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.12,
+          1.2108108108108109
+        ]
+      }
+    },
+    {
+      "detection": {
+        "box": [
+          1242.94189453125,
+          741.167724609375,
+          1441.5185546875,
+          924.37060546875
+        ],
+        "score": 0.6131970882415771
+      },
+      "frame_index": 75,
+      "id": "sample-0031",
+      "source_image": "/tmp/rk3588-int8-convert/helmet-cal/sources/sample-0031.jpg",
+      "tensor": {
+        "bin": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0031.f32.bin",
+        "bin_sha256": "f3876f03d373cc30fe8a697935edacf69a79bcddb5a650206a7dd1fc41705221",
+        "dtype": "float32",
+        "npy": "/tmp/rk3588-int8-convert/helmet-cal/inputs/sample-0031.npy",
+        "npy_sha256": "010f61dfd7cbb4f1721abb4bb70e3722747b1f27dc9e3d57775e55d3580fe033",
+        "shape": [
+          1,
+          3,
+          224,
+          224
+        ]
+      },
+      "transform": {
+        "pad": [
+          0,
+          0
+        ],
+        "scale": [
+          1.1256281407035176,
+          1.2240437158469946
+        ]
+      }
+    }
+  ],
+  "schema_version": 1,
+  "spec": {
+    "path": "/mnt/e/Gdsc/projects/project_aimonitor/sc-aimonitor/cosmoedge_custom/cosmo-edge/config/rknn/models/helmet_rk3588.json",
+    "sha256": "2324c073a94aa88dc1bd2cf7aba737fee61077c00e8ed741df82a2cce3d6ce58"
+  },
+  "video": {
+    "frame_count": 360,
+    "path": "/mnt/e/Gdsc/projects/project_aimonitor/sc-aimonitor/cosmoedge_custom/cosmo-edge/data/test-video/Safety Helmet.mp4",
+    "sha256": "ec77182a264f3059a091b68c4973942dba3b80e93f20feaf4d7e146885caf9d2"
+  }
+}
