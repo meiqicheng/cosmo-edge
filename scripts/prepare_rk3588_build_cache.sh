@@ -149,10 +149,16 @@ preflight() {
   need docker
   echo "docker: $(docker --version)"
   local digest="debian:bullseye@sha256:99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704ebc3ead2015675"
+  # docker manifest inspect always contacts the registry and ignores daemon
+  # registry mirrors, so a mirror-only host would fail here even though the
+  # builder can materialize the exact digest. Accept either route: direct
+  # manifest reachability, or the daemon resolving/pinning the same digest.
   if docker manifest inspect "${digest}" >/dev/null 2>&1; then
     echo "base image digest reachable: ${digest}"
+  elif docker pull "${digest}" >/dev/null 2>&1 && docker image inspect "${digest}" >/dev/null 2>&1; then
+    echo "base image digest resolvable by local daemon (registry route): ${digest}"
   else
-    die "cannot inspect base image ${digest}; docker may be offline or the digest unpullable"
+    die "cannot obtain base image ${digest}; docker may be offline or the digest unpullable"
   fi
   echo "preflight OK"
 }
