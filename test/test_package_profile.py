@@ -1037,7 +1037,7 @@ class PackageProfileTests(unittest.TestCase):
             "b3f15d57a7516bab1e6167b8244afaff8f27b0b7d34813328db8420a7019820b",
         )
 
-    def test_rk3588_preview_binds_cpu_media_to_frozen_bullseye_builder(self) -> None:
+    def test_rk3588_preview_binds_rockchip_media_to_frozen_bullseye_builder(self) -> None:
         profile = json.loads(
             (REPOSITORY / "config/rknn/platforms/rk3588.json").read_text(
                 encoding="utf-8"
@@ -1063,12 +1063,17 @@ class PackageProfileTests(unittest.TestCase):
             encoding="utf-8"
         )
 
-        # Platform profile: RKNN inference with CPU/FFmpeg media, no RKLLM.
+        # Platform profile: RKNN inference with Rockchip MPP/RGA media.
+        # The core package carries no VLM runtime; RKLLM is an optional
+        # overlay (builder target `vlm-overlay`).
         self.assertEqual(profile["backend"], "rknn")
         self.assertEqual(profile["chip"], "rk3588")
         self.assertEqual(profile["conversion"]["target_platform"], "rk3588")
-        self.assertEqual(profile["media"]["default_backend"], "cpu")
-        self.assertEqual(profile["media"]["runtime_profile"], "cpu-ffmpeg-debian11-v1")
+        self.assertEqual(profile["media"]["default_backend"], "rockchip")
+        self.assertEqual(
+            profile["media"]["runtime_profile"],
+            "rk3588-mpp-1.1.0-rga-1.10.6-bullseye-v1",
+        )
         self.assertTrue(profile["qualification"]["requires_target_bound_evidence"])
 
         # Dedicated lock: rk3588 only, glibc 2.31 policy, ffmpeg root set,
@@ -1080,13 +1085,22 @@ class PackageProfileTests(unittest.TestCase):
             target["media_runtime_profile"], profile["media"]["runtime_profile"]
         )
         self.assertFalse(target["rkllm_required"])
-        self.assertEqual(target["media_root"], "")
+        self.assertEqual(target["media_root"], "/opt/rockchip-media/rk3588")
         self.assertEqual(builder_lock["common"]["glibc_max"], "2.31")
         self.assertEqual(builder_lock["common"]["ffmpeg_root"], "/opt/ffmpeg-debian11")
-        self.assertIsNone(builder_lock["common"]["rkllm"])
+        self.assertNotIn("rkllm", builder_lock["common"])
         self.assertIn("lib/libavcodec.so.58", target["required_package_paths"])
-        self.assertIn("lib/librkllmrt.so", target["forbidden_package_paths"])
-        self.assertIn("lib/librockchip_mpp.so", target["forbidden_package_paths"])
+        self.assertIn("lib/librockchip_mpp.so.1", target["required_package_paths"])
+        self.assertIn("lib/librga.so", target["required_package_paths"])
+        self.assertNotIn("lib/librkllmrt.so", target["required_package_paths"])
+        self.assertNotIn("share/licenses/rkllm/LICENSE", target["required_package_paths"])
+        self.assertEqual(target["forbidden_package_paths"], [])
+
+        # The VLM runtime moved to an explicit optional overlay identity.
+        overlay = builder_lock["optional_overlays"]["vlm"]
+        self.assertEqual(overlay["image_target"], "vlm-overlay")
+        self.assertEqual(overlay["version"], "1.3.0")
+        self.assertFalse(overlay["redistribution_allowed"])
 
         # Builder image freezes the bullseye base by digest, verifies the
         # RKNN runtime sha256, assembles the FFmpeg root, and bakes in the
@@ -1113,6 +1127,11 @@ class PackageProfileTests(unittest.TestCase):
             dockerfile,
         )
         self.assertIn("builder-versions-rk3588.json", dockerfile)
+
+        # Core/VLM split: default target is core; RKLLM only in the overlay.
+        self.assertIn(" AS core", dockerfile)
+        self.assertIn("FROM core AS vlm-overlay", dockerfile)
+        self.assertIn("target: core", compose)
 
         # Package entry point selects the chip-specific lock and enforces
         # the glibc gate for rk3588.
@@ -1186,13 +1205,64 @@ class PackageProfileTests(unittest.TestCase):
         failing = glibc_gate.run_scan([("lib/bad.so", bad)], "2.31")
         self.assertEqual(failing["status"], "FAIL")
 
-    def test_private_key_scan_skips_elf_but_flags_text_members(self) -> None:
-        marker = b"-----BEGIN ENCRYPTED PRIVATE KEY-----"
-        verifier.assert_no_private_key_material("lib/libgio-2.0.so.0", b"\x7fELF" + marker)
+    def test_private_key_scan_requires_full_pem_blocks(self) -> None:
+        header = b"-----BEGIN ENCRYPTED PRIVATE KEY-----"
+        body = b"bW9jay1rZXktYm9keS1mb3ItcGFja2FnZS1hdWRpdC10ZXN0cw=="
+        footer = b"-----END ENCRYPTED PRIVATE KEY-----"
+        full_block = header + b"\n" + body + b"\n" + footer
+
+        # A complete PEM block in any member is forbidden.
         with self.assertRaises(verifier.PackageAuditError) as caught:
-            verifier.assert_no_private_key_material("etc/leaked.pem", marker)
+            verifier.assert_no_private_key_material("etc/leaked.pem", full_block)
         self.assertIn("leaked.pem", str(caught.exception))
+
+        # Isolated marker constants (no END line, no body) are tolerated:
+        # this is what libraries such as GLib embed for format detection.
+        verifier.assert_no_private_key_material("etc/config.txt", header)
+        verifier.assert_no_private_key_material(
+            "lib/libgio-2.0.so.0", b"\x7fELF" + header + footer
+        )
+
+    def test_private_key_scan_flags_keys_embedded_in_elf(self) -> None:
+        header = b"-----BEGIN RSA PRIVATE KEY-----"
+        body = b"bW9jay1rZXktYm9keS1mb3ItcGFja2FnZS1hdWRpdC10ZXN0cw=="
+        embedded = (
+            b"\x7fELF\x02\x01\x01\x00" + b"\x00" * 16 + header + b"\n" + body
+            + b"\n" + b"-----END RSA PRIVATE KEY-----"
+        )
+
+        with self.assertRaises(verifier.PackageAuditError) as caught:
+            verifier.assert_no_private_key_material("lib/libtrojan.so", embedded)
+        self.assertIn("libtrojan.so", str(caught.exception))
         verifier.assert_no_private_key_material("lib/libclean.so", b"\x7fELF\x02\x01")
+
+    def test_private_key_scan_elf_exemption_needs_exact_path_and_sha256(
+        self,
+    ) -> None:
+        embedded = (
+            b"\x7fELF\x02\x01\x01\x00"
+            + b"\n-----BEGIN PRIVATE KEY-----\na2V5\n"
+            b"-----END PRIVATE KEY-----\n"
+        )
+        digest = hashlib.sha256(embedded).hexdigest()
+        exempt_path = "lib/libglib-marker.so"
+        original = dict(verifier.EXEMPT_ELF_SHA256)
+        try:
+            verifier.EXEMPT_ELF_SHA256[exempt_path] = digest
+            # Exact path AND frozen sha256 override block detection.
+            verifier.assert_no_private_key_material(exempt_path, embedded)
+
+            # Same bytes under a different path stay forbidden.
+            with self.assertRaises(verifier.PackageAuditError):
+                verifier.assert_no_private_key_material("lib/other.so", embedded)
+            # Same path with different bytes stays forbidden.
+            with self.assertRaises(verifier.PackageAuditError):
+                verifier.assert_no_private_key_material(
+                    exempt_path, embedded + b"\x00"
+                )
+        finally:
+            verifier.EXEMPT_ELF_SHA256.clear()
+            verifier.EXEMPT_ELF_SHA256.update(original)
 
     def test_shared_rknn_and_rockchip_sources_do_not_fork_by_chip(self) -> None:
         source_roots = (
