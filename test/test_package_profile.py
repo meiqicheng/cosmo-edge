@@ -1065,7 +1065,7 @@ class PackageProfileTests(unittest.TestCase):
 
         # Platform profile: RKNN inference with Rockchip MPP/RGA media.
         # The core package carries no VLM runtime; RKLLM is an optional
-        # overlay (builder target `vlm-overlay`).
+        # overlay (builder target `rkllm`).
         self.assertEqual(profile["backend"], "rknn")
         self.assertEqual(profile["chip"], "rk3588")
         self.assertEqual(profile["conversion"]["target_platform"], "rk3588")
@@ -1097,8 +1097,8 @@ class PackageProfileTests(unittest.TestCase):
         self.assertEqual(target["forbidden_package_paths"], [])
 
         # The VLM runtime moved to an explicit optional overlay identity.
-        overlay = builder_lock["optional_overlays"]["vlm"]
-        self.assertEqual(overlay["image_target"], "vlm-overlay")
+        overlay = builder_lock["optional_overlays"]["llm"]
+        self.assertEqual(overlay["image_target"], "rkllm")
         self.assertEqual(overlay["version"], "1.3.0")
         self.assertFalse(overlay["redistribution_allowed"])
 
@@ -1130,7 +1130,7 @@ class PackageProfileTests(unittest.TestCase):
 
         # Core/VLM split: default target is core; RKLLM only in the overlay.
         self.assertIn(" AS core", dockerfile)
-        self.assertIn("FROM core AS vlm-overlay", dockerfile)
+        self.assertIn("FROM core AS rkllm", dockerfile)
         self.assertIn("target: core", compose)
 
         # Package entry point selects the chip-specific lock and enforces
