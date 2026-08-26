@@ -8,11 +8,10 @@
 //   4. BlobHandle.base nullability when native_image is valid
 //   5. CheckNodeForwardParamNativeAware() null-base acceptance
 
-#include "catch_amalgamated.hpp"
-
 #include <memory>
 #include <vector>
 
+#include "catch_amalgamated.hpp"
 #include "flow/common/AlgDataQueue.h"
 #include "flow/common/AlgDataQueueDistributor.h"
 #include "flow/common/AlgDataUnit.h"
@@ -22,7 +21,7 @@
 #include "media/VideoFrame.h"
 #include "util/dto/ActionCodes.h"
 
-#if defined(COSMO_NN_USE_RKNN_BACKEND) || defined(COSMO_NN_USE_HOST_BACKEND) || \
+#if defined(COSMO_NN_USE_RKNN_BACKEND) || defined(COSMO_NN_USE_HOST_BACKEND) ||                              \
     defined(COSMO_NN_USE_SOPHON_BACKEND)
 #include "nn/core/blob.h"
 #include "nn/node/node.h"
@@ -32,27 +31,27 @@ namespace {
 
 // Helper: build a fake NativeVideoBuffer that passes Valid().
 auto MakeValidNativeBuffer(int w, int h) {
-    auto buf  = std::make_shared<cosmo::media::NativeVideoBuffer>();
-    buf->fd   = 42;  // fake fd, not actually used in unit test
-    buf->bytes = static_cast<size_t>(w * h * 3 / 2);  // NV12 size
-    buf->width = w;
-    buf->height = h;
-    buf->width_stride = w;
+    auto buf           = std::make_shared<cosmo::media::NativeVideoBuffer>();
+    buf->fd            = 42;                                  // fake fd, not actually used in unit test
+    buf->bytes         = static_cast<size_t>(w * h * 3 / 2);  // NV12 size
+    buf->width         = w;
+    buf->height        = h;
+    buf->width_stride  = w;
     buf->height_stride = h;
-    buf->format = cosmo::media::NativeVideoBufferFormat::NV12;
-    buf->color_space = cosmo::media::NativeVideoColorSpace::Bt601;
-    buf->color_range = cosmo::media::NativeVideoColorRange::Limited;
-    buf->owner = std::shared_ptr<void>(new int(0), [](int* p) { delete p; });
+    buf->format        = cosmo::media::NativeVideoBufferFormat::NV12;
+    buf->color_space   = cosmo::media::NativeVideoColorSpace::Bt601;
+    buf->color_range   = cosmo::media::NativeVideoColorRange::Limited;
+    buf->owner         = std::shared_ptr<void>(new int(0), [](int* p) { delete p; });
     return buf;
 }
 
 // Helper: build a minimal AlgData with native_buffer set, no host frame.
 cosmo::AlgDataPtr MakeNativeOnlyData(const cosmo::media::NativeVideoBufferPtr& native,
-                                       const std::string& channel_id = "test_ch") {
-    auto data               = std::make_shared<cosmo::AlgData>();
-    data->dataType          = cosmo::AlgDataType::ChannelDataDec;
-    data->channelId         = channel_id;
-    data->firstTimePoint    = std::chrono::steady_clock::now();
+                                     const std::string& channel_id = "test_ch") {
+    auto data                       = std::make_shared<cosmo::AlgData>();
+    data->dataType                  = cosmo::AlgDataType::ChannelDataDec;
+    data->channelId                 = channel_id;
+    data->firstTimePoint            = std::chrono::steady_clock::now();
     data->chanDataDec.native_buffer = native;
     // frame is intentionally left null (default-constructed VideoFramePtr)
     return data;
@@ -64,8 +63,7 @@ cosmo::AlgDataPtr MakeNativeOnlyData(const cosmo::media::NativeVideoBufferPtr& n
 // 1. SupportsNativeInference()
 // ---------------------------------------------------------------------------
 
-TEST_CASE("AlgFrameDistributionPlan::SupportsNativeInference",
-          "[flow][native-inference]") {
+TEST_CASE("AlgFrameDistributionPlan::SupportsNativeInference", "[flow][native-inference]") {
     using cosmo::AlgFrameDistributionPlan;
 
     AlgFrameDistributionPlan empty;
@@ -94,8 +92,7 @@ TEST_CASE("AlgFrameDistributionPlan::SupportsNativeInference",
 // 2. DistributorNativeOnlyFrame()
 // ---------------------------------------------------------------------------
 
-TEST_CASE("DistributorNativeOnlyFrame enqueues to all plan queues",
-          "[flow][native-inference]") {
+TEST_CASE("DistributorNativeOnlyFrame enqueues to all plan queues", "[flow][native-inference]") {
     using cosmo::AlgDataQueueDistributor;
     using cosmo::AlgFrameDistributionPlan;
 
@@ -106,7 +103,7 @@ TEST_CASE("DistributorNativeOnlyFrame enqueues to all plan queues",
     auto q2 = std::make_shared<cosmo::AlgDataQueue<cosmo::AlgDataPtr>>("q2");
 
     AlgFrameDistributionPlan plan;
-    plan.queues = {q1, q2};
+    plan.queues                    = {q1, q2};
     plan.native_inference_eligible = true;
 
     auto native = MakeValidNativeBuffer(1920, 1080);
@@ -133,8 +130,7 @@ TEST_CASE("DistributorNativeOnlyFrame enqueues to all plan queues",
 // 3. ConvertImagesToBlobs: null image + valid native → produces blob
 // ---------------------------------------------------------------------------
 
-TEST_CASE("ConvertImagesToBlobs accepts null image with valid native buffer",
-          "[flow][native-inference]") {
+TEST_CASE("ConvertImagesToBlobs accepts null image with valid native buffer", "[flow][native-inference]") {
     using cosmo::media::NativeVideoBufferPtr;
 
     // Empty images vector should still work when native_buffers is provided
@@ -152,9 +148,9 @@ TEST_CASE("ConvertImagesToBlobs accepts null image with valid native buffer",
     CHECK(result == cosmo::util::ErrorEnum::Success);
     REQUIRE(blobs.size() == 1);
 
-    const auto& blob    = blobs[0];
-    const auto& handle  = blob->GetHandle();
-    const auto& desc    = blob->GetBlobDesc();
+    const auto& blob   = blobs[0];
+    const auto& handle = blob->GetHandle();
+    const auto& desc   = blob->GetBlobDesc();
 
     // base should be null since image is null
     CHECK(handle.base == nullptr);
@@ -220,8 +216,7 @@ TEST_CASE("ConvertImagesToBlobs copies all NativeVideoBuffer fields to BlobHandl
 // 5. NativeVideoBuffer::Valid() boundary conditions
 // ---------------------------------------------------------------------------
 
-TEST_CASE("NativeVideoBuffer::Valid() rejects incomplete buffers",
-          "[flow][native-inference]") {
+TEST_CASE("NativeVideoBuffer::Valid() rejects incomplete buffers", "[flow][native-inference]") {
     cosmo::media::NativeVideoBuffer buf;
 
     SECTION("all defaults → invalid") {
@@ -229,38 +224,38 @@ TEST_CASE("NativeVideoBuffer::Valid() rejects incomplete buffers",
     }
 
     SECTION("missing owner → invalid") {
-        buf.fd = 1;
-        buf.bytes = 100;
-        buf.width = 10;
-        buf.height = 10;
-        buf.width_stride = 10;
+        buf.fd            = 1;
+        buf.bytes         = 100;
+        buf.width         = 10;
+        buf.height        = 10;
+        buf.width_stride  = 10;
         buf.height_stride = 10;
-        buf.format = cosmo::media::NativeVideoBufferFormat::NV12;
+        buf.format        = cosmo::media::NativeVideoBufferFormat::NV12;
         // owner not set
         CHECK_FALSE(buf.Valid());
     }
 
     SECTION("width_stride < width → invalid") {
-        buf.fd = 1;
-        buf.bytes = 100;
-        buf.width = 10;
-        buf.height = 10;
-        buf.width_stride = 5;  // less than width
+        buf.fd            = 1;
+        buf.bytes         = 100;
+        buf.width         = 10;
+        buf.height        = 10;
+        buf.width_stride  = 5;  // less than width
         buf.height_stride = 10;
-        buf.format = cosmo::media::NativeVideoBufferFormat::NV12;
-        buf.owner = std::shared_ptr<void>(new int(0), [](int* p) { delete p; });
+        buf.format        = cosmo::media::NativeVideoBufferFormat::NV12;
+        buf.owner         = std::shared_ptr<void>(new int(0), [](int* p) { delete p; });
         CHECK_FALSE(buf.Valid());
     }
 
     SECTION("complete buffer → valid") {
-        buf.fd = 1;
-        buf.bytes = 100;
-        buf.width = 10;
-        buf.height = 10;
-        buf.width_stride = 10;
+        buf.fd            = 1;
+        buf.bytes         = 100;
+        buf.width         = 10;
+        buf.height        = 10;
+        buf.width_stride  = 10;
         buf.height_stride = 10;
-        buf.format = cosmo::media::NativeVideoBufferFormat::NV12;
-        buf.owner = std::shared_ptr<void>(new int(0), [](int* p) { delete p; });
+        buf.format        = cosmo::media::NativeVideoBufferFormat::NV12;
+        buf.owner         = std::shared_ptr<void>(new int(0), [](int* p) { delete p; });
         CHECK(buf.Valid());
     }
 }
@@ -269,8 +264,7 @@ TEST_CASE("NativeVideoBuffer::Valid() rejects incomplete buffers",
 // 6. Native-only AlgData construction (simulates AlgChannelDecode skip_materialize)
 // ---------------------------------------------------------------------------
 
-TEST_CASE("MakeNativeOnlyData produces correctly structured AlgData",
-          "[flow][native-inference]") {
+TEST_CASE("MakeNativeOnlyData produces correctly structured AlgData", "[flow][native-inference]") {
     auto native = MakeValidNativeBuffer(1920, 1080);
     auto data   = MakeNativeOnlyData(native, "ch_001");
 
@@ -289,15 +283,14 @@ TEST_CASE("MakeNativeOnlyData produces correctly structured AlgData",
 // 7. Multi-queue isolation: DistributorNativeOnlyFrame copies for parallel queues
 // ---------------------------------------------------------------------------
 
-TEST_CASE("DistributorNativeOnlyFrame isolates AlgData for parallel queues",
-          "[flow][native-inference]") {
+TEST_CASE("DistributorNativeOnlyFrame isolates AlgData for parallel queues", "[flow][native-inference]") {
     cosmo::AlgDataQueueDistributor distributor("test_iso");
 
     auto q1 = std::make_shared<cosmo::AlgDataQueue<cosmo::AlgDataPtr>>("q1");
     auto q2 = std::make_shared<cosmo::AlgDataQueue<cosmo::AlgDataPtr>>("q2");
 
     cosmo::AlgFrameDistributionPlan plan;
-    plan.queues = {q1, q2};
+    plan.queues                    = {q1, q2};
     plan.native_inference_eligible = true;
 
     auto native = MakeValidNativeBuffer(640, 480);
@@ -317,14 +310,13 @@ TEST_CASE("DistributorNativeOnlyFrame isolates AlgData for parallel queues",
     CHECK(popped1->chanDataDec.native_buffer->fd == popped2->chanDataDec.native_buffer->fd);
 }
 
-#if defined(COSMO_NN_USE_RKNN_BACKEND) || defined(COSMO_NN_USE_HOST_BACKEND) || \
+#if defined(COSMO_NN_USE_RKNN_BACKEND) || defined(COSMO_NN_USE_HOST_BACKEND) ||                              \
     defined(COSMO_NN_USE_SOPHON_BACKEND)
 // ---------------------------------------------------------------------------
 // 8. BlobHandle with null base + valid native_image through nn::Blob
 // ---------------------------------------------------------------------------
 
-TEST_CASE("BlobHandle supports null base with valid native_image",
-          "[flow][native-inference]") {
+TEST_CASE("BlobHandle supports null base with valid native_image", "[flow][native-inference]") {
     using namespace cosmo::nn;
 
     BlobDesc desc;
@@ -335,12 +327,12 @@ TEST_CASE("BlobHandle supports null base with valid native_image",
     desc.dims         = {1, 640, 640, 3};
 
     BlobHandle handle{};
-    handle.base = nullptr;  // no host allocation
-    handle.native_image.fd = 42;
-    handle.native_image.bytes = 640 * 640 * 3 / 2;
-    handle.native_image.width = 640;
-    handle.native_image.height = 640;
-    handle.native_image.width_stride = 640;
+    handle.base                       = nullptr;  // no host allocation
+    handle.native_image.fd            = 42;
+    handle.native_image.bytes         = 640 * 640 * 3 / 2;
+    handle.native_image.width         = 640;
+    handle.native_image.height        = 640;
+    handle.native_image.width_stride  = 640;
     handle.native_image.height_stride = 640;
 
     auto blob = std::make_shared<Blob>(desc, false);  // false = no auto-alloc
@@ -361,20 +353,20 @@ TEST_CASE("CheckNodeForwardParamNativeAware accepts null base with valid native"
     using namespace cosmo::nn;
 
     BlobDesc desc;
-    desc.device_type  = DEVICE_NAIVE;
-    desc.data_type    = DATA_TYPE_UINT8;
-    desc.dims         = {1, 3, 640, 640};
+    desc.device_type = DEVICE_NAIVE;
+    desc.data_type   = DATA_TYPE_UINT8;
+    desc.dims        = {1, 3, 640, 640};
 
     auto blob = std::make_shared<Blob>(desc, false);
     BlobHandle handle{};
-    handle.base = nullptr;
-    handle.native_image.fd = 42;
-    handle.native_image.bytes = 640 * 640 * 3;
-    handle.native_image.width = 640;
-    handle.native_image.height = 640;
-    handle.native_image.width_stride = 640;
+    handle.base                       = nullptr;
+    handle.native_image.fd            = 42;
+    handle.native_image.bytes         = 640 * 640 * 3;
+    handle.native_image.width         = 640;
+    handle.native_image.height        = 640;
+    handle.native_image.width_stride  = 640;
     handle.native_image.height_stride = 640;
-    handle.native_image.format = cosmo::nn::ImageFormat::IMAGE_NV12;  // Valid() requires non-UNKNOWN
+    handle.native_image.format        = cosmo::nn::ImageFormat::IMAGE_NV12;  // Valid() requires non-UNKNOWN
     blob->SetHandle(handle);
 
     // CheckNodeForwardParamNativeAware should succeed when base is null
@@ -388,9 +380,9 @@ TEST_CASE("CheckNodeForwardParamNativeAware rejects null base without native",
     using namespace cosmo::nn;
 
     BlobDesc desc;
-    desc.device_type  = DEVICE_NAIVE;
-    desc.data_type    = DATA_TYPE_UINT8;
-    desc.dims         = {1, 3, 640, 640};
+    desc.device_type = DEVICE_NAIVE;
+    desc.data_type   = DATA_TYPE_UINT8;
+    desc.dims        = {1, 3, 640, 640};
 
     auto blob = std::make_shared<Blob>(desc, false);
     BlobHandle handle{};
@@ -408,8 +400,7 @@ TEST_CASE("CheckNodeForwardParamNativeAware rejects null base without native",
 // 10. Frame metadata contract (Phase 1 remediation)
 // ---------------------------------------------------------------------------
 
-TEST_CASE("AlgFrameMeta defaults are invalid and zero-filled",
-          "[flow][native-inference][meta]") {
+TEST_CASE("AlgFrameMeta defaults are invalid and zero-filled", "[flow][native-inference][meta]") {
     cosmo::AlgFrameMeta meta;
     CHECK_FALSE(meta.valid);
     CHECK(meta.streamIndex == 0);
@@ -455,8 +446,8 @@ TEST_CASE("ResolveAlgTaskNativeCapability is fail-closed for unknown codes",
     CHECK(unknown.requires_crop_or_classification);
     CHECK_FALSE(unknown.NativeOnlyEligible());
 
-    for (const auto& code : {cosmo::AATrack_Code, cosmo::AAClassify_Code, cosmo::GADetectTrack_Code,
-                             cosmo::DAQwen3VL_Code}) {
+    for (const auto& code :
+         {cosmo::AATrack_Code, cosmo::AAClassify_Code, cosmo::GADetectTrack_Code, cosmo::DAQwen3VL_Code}) {
         const auto capability = ResolveAlgTaskNativeCapability(code);
         INFO("actionId=" << code);
         CHECK_FALSE(capability.NativeOnlyEligible());
@@ -465,8 +456,8 @@ TEST_CASE("ResolveAlgTaskNativeCapability is fail-closed for unknown codes",
 
 TEST_CASE("AlgTasksNativeOnlyEligible requires every task to be eligible",
           "[flow][native-inference][capability]") {
-    using cosmo::AlgTaskUnit;
     using cosmo::AlgTasksNativeOnlyEligible;
+    using cosmo::AlgTaskUnit;
 
     AlgTaskUnit detector;
     detector.actionId = std::string(cosmo::AADetect_Code);
@@ -490,11 +481,11 @@ TEST_CASE("DistributorNativeOnlyFrame preserves frame metadata on queued copies"
     auto q2 = std::make_shared<AlgDataQueue<cosmo::AlgDataPtr>>("mq2");
 
     AlgFrameDistributionPlan plan;
-    plan.queues = {q1, q2};
+    plan.queues                    = {q1, q2};
     plan.native_inference_eligible = true;
 
-    auto native = MakeValidNativeBuffer(1280, 720);
-    auto data   = MakeNativeOnlyData(native);
+    auto native                        = MakeValidNativeBuffer(1280, 720);
+    auto data                          = MakeNativeOnlyData(native);
     data->chanDataDec.meta.valid       = true;
     data->chanDataDec.meta.streamIndex = 7;
     data->chanDataDec.meta.frameIndex  = 99;

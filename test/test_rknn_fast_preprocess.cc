@@ -77,7 +77,7 @@ bool RgaSmallSourceUpscaleAvailable() {
         node.LoadParam(&param);
         if (!bool(node.InferTopShapes()))
             return false;
-        auto image   = std::make_shared<nn::Blob>(PackedImageDesc(16, 16, nn::IMAGE_BGR), true);
+        auto image = std::make_shared<nn::Blob>(PackedImageDesc(16, 16, nn::IMAGE_BGR), true);
         nn::BlobDesc rect_desc;
         rect_desc.device_type = nn::DEVICE_NAIVE;
         rect_desc.data_type   = nn::DATA_TYPE_INT32;
@@ -643,18 +643,18 @@ TEST_CASE("RKNN classifier crop-resize stages extreme scaling in RGA and emits p
     std::copy(crop_rect.begin(), crop_rect.end(), rect_data);
 
     BlobDesc top_desc;
-    top_desc.device_type = DEVICE_NAIVE;
-    top_desc.data_type   = DATA_TYPE_UINT8;
-    top_desc.data_format = DATA_FORMAT_NHWC;
-    top_desc.dims        = node.GetTopBlobShapes().front();
-    auto top             = std::make_shared<Blob>(top_desc, true);
+    top_desc.device_type                = DEVICE_NAIVE;
+    top_desc.data_type                  = DATA_TYPE_UINT8;
+    top_desc.data_format                = DATA_FORMAT_NHWC;
+    top_desc.dims                       = node.GetTopBlobShapes().front();
+    auto top                            = std::make_shared<Blob>(top_desc, true);
     const bool staged_upscale_available = RgaSmallSourceUpscaleAvailable();
-    const auto before    = GetInferencePipelineMetrics().Snapshot();
+    const auto before                   = GetInferencePipelineMetrics().Snapshot();
     std::vector<std::shared_ptr<Blob>> images{image};
     std::vector<std::shared_ptr<Blob>> rects{rect};
     std::vector<std::shared_ptr<Blob>> tops{top};
     REQUIRE(bool(node.Forward(images, rects, tops)));
-    const auto after = GetInferencePipelineMetrics().Snapshot();
+    const auto after   = GetInferencePipelineMetrics().Snapshot();
     const auto* output = static_cast<const uint8_t*>(top->GetHandle().base);
     if (staged_upscale_available) {
         CHECK(after.rknn_rga_crop_resize_calls == before.rknn_rga_crop_resize_calls + 2);
@@ -801,8 +801,12 @@ public:
     ScopedMemfd(const ScopedMemfd&)            = delete;
     ScopedMemfd& operator=(const ScopedMemfd&) = delete;
 
-    int get() const { return fd_; }
-    size_t bytes() const { return bytes_; }
+    int get() const {
+        return fd_;
+    }
+    size_t bytes() const {
+        return bytes_;
+    }
 
     void Poke(size_t offset, uint8_t value) const {
         void* mapped = mmap(nullptr, bytes_, PROT_WRITE, MAP_SHARED, fd_, 0);
@@ -820,17 +824,17 @@ cosmo::nn::Blob NativeSourceBlob(int height, int width, cosmo::nn::ImageFormat f
                                  cosmo::nn::NativeImageColorSpace color_space,
                                  cosmo::nn::NativeImageColorRange color_range, int width_stride,
                                  int height_stride, int fd, size_t bytes) {
-    cosmo::nn::BlobDesc desc   = PackedImageDesc(height, width, format);
+    cosmo::nn::BlobDesc desc = PackedImageDesc(height, width, format);
     cosmo::nn::BlobHandle handle;
-    handle.native_image.fd           = fd;
-    handle.native_image.bytes        = bytes;
-    handle.native_image.width        = width;
-    handle.native_image.height       = height;
-    handle.native_image.width_stride = width_stride;
+    handle.native_image.fd            = fd;
+    handle.native_image.bytes         = bytes;
+    handle.native_image.width         = width;
+    handle.native_image.height        = height;
+    handle.native_image.width_stride  = width_stride;
     handle.native_image.height_stride = height_stride;
-    handle.native_image.format       = format;
-    handle.native_image.color_space  = color_space;
-    handle.native_image.color_range  = color_range;
+    handle.native_image.format        = format;
+    handle.native_image.color_space   = color_space;
+    handle.native_image.color_range   = color_range;
     return cosmo::nn::Blob(desc, handle);
 }
 
@@ -915,10 +919,10 @@ TEST_CASE("RKNN native CPU fallback selects BT.709 and full-range matrices from 
     dma_buf.Poke(16, 160);
     dma_buf.Poke(17, 96);
 
-    auto bottom = std::make_shared<Blob>(
-        NativeSourceBlob(4, 4, IMAGE_NV12, NativeImageColorSpace::Bt709,
-                         NativeImageColorRange::Limited, 4, 4, dma_buf.get(), dma_buf.bytes()));
-    auto top = AllocResizeTop(node);
+    auto bottom = std::make_shared<Blob>(NativeSourceBlob(4, 4, IMAGE_NV12, NativeImageColorSpace::Bt709,
+                                                          NativeImageColorRange::Limited, 4, 4, dma_buf.get(),
+                                                          dma_buf.bytes()));
+    auto top    = AllocResizeTop(node);
     std::vector<std::shared_ptr<Blob>> bottoms{bottom};
     std::vector<std::shared_ptr<Blob>> tops{top};
     REQUIRE(bool(node.Forward(bottoms, tops)));
@@ -936,10 +940,10 @@ TEST_CASE("RKNN native CPU fallback selects BT.709 and full-range matrices from 
     }
     full_range.Poke(16, 128);
     full_range.Poke(17, 128);
-    auto full_bottom = std::make_shared<Blob>(
-        NativeSourceBlob(4, 4, IMAGE_NV12, NativeImageColorSpace::Bt601,
-                         NativeImageColorRange::Full, 4, 4, full_range.get(), full_range.bytes()));
-    auto full_top = AllocResizeTop(node);
+    auto full_bottom = std::make_shared<Blob>(NativeSourceBlob(4, 4, IMAGE_NV12, NativeImageColorSpace::Bt601,
+                                                               NativeImageColorRange::Full, 4, 4,
+                                                               full_range.get(), full_range.bytes()));
+    auto full_top    = AllocResizeTop(node);
     std::vector<std::shared_ptr<Blob>> full_bottoms{full_bottom};
     std::vector<std::shared_ptr<Blob>> full_tops{full_top};
     REQUIRE(bool(node.Forward(full_bottoms, full_tops)));
@@ -994,8 +998,7 @@ TEST_CASE("RKNN native CPU fallback rejects invalid descriptors without touching
     REQUIRE(undersized.get() >= 0);
     auto bottom = std::make_shared<Blob>(
         NativeSourceBlob(4, 4, IMAGE_NV12, NativeImageColorSpace::Unspecified,
-                         NativeImageColorRange::Unspecified, 4, 4, undersized.get(),
-                         undersized.bytes()));
+                         NativeImageColorRange::Unspecified, 4, 4, undersized.get(), undersized.bytes()));
     auto top = AllocResizeTop(node);
     std::memset(top->GetHandle().base, 0xAB, static_cast<size_t>(4) * 4 * 3);
     const auto before = GetInferencePipelineMetrics().Snapshot();
@@ -1013,8 +1016,7 @@ TEST_CASE("RKNN native CPU fallback rejects invalid descriptors without touching
     REQUIRE(wrong_format.get() >= 0);
     auto rgb_bottom = std::make_shared<Blob>(
         NativeSourceBlob(4, 4, IMAGE_RGB, NativeImageColorSpace::Unspecified,
-                         NativeImageColorRange::Unspecified, 4, 4, wrong_format.get(),
-                         wrong_format.bytes()));
+                         NativeImageColorRange::Unspecified, 4, 4, wrong_format.get(), wrong_format.bytes()));
     auto rgb_top = AllocResizeTop(node);
     std::vector<std::shared_ptr<Blob>> rgb_bottoms{rgb_bottom};
     std::vector<std::shared_ptr<Blob>> rgb_tops{rgb_top};

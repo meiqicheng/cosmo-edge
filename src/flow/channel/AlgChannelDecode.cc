@@ -348,10 +348,8 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
     constexpr bool prepared_viewer_distribution = false;
 #endif
 
-    const bool host_frame_required = !decoded_frame.IsDeferred() ||
-                                     !task_plan.Empty() ||
-                                     !viewer_plan.empty() ||
-                                     NeedsHostFrame(output_stream_index);
+    const bool host_frame_required = !decoded_frame.IsDeferred() || !task_plan.Empty() ||
+                                     !viewer_plan.empty() || NeedsHostFrame(output_stream_index);
     if (!host_frame_required) {
         decoded_frame.Discard();
         duration_stat_.EndSample();
@@ -362,12 +360,10 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
         return;
     }
 
-    const bool all_tasks_native = native_inference_buffer &&
-                                  native_inference_buffer->Valid() &&
-                                  task_plan.SupportsNativeInference();
-    const bool skip_materialize = all_tasks_native &&
-                                  viewer_plan.empty() &&
-                                  !NeedsHostFrame(output_stream_index);
+    const bool all_tasks_native =
+        native_inference_buffer && native_inference_buffer->Valid() && task_plan.SupportsNativeInference();
+    const bool skip_materialize =
+        all_tasks_native && viewer_plan.empty() && !NeedsHostFrame(output_stream_index);
 
     frame_index_ = video_frame->index;
     decode_count_++;
@@ -375,10 +371,10 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
 
     if (skip_materialize) {
         duration_stat_.EndSample();
-        auto native_only_data            = std::make_shared<AlgData>();
-        native_only_data->chanDataOrig.packet = demux_data->chanDataOrig.packet;
-        native_only_data->chanDataOrig.fps    = demux_data->chanDataOrig.fps;
-        native_only_data->dataType            = AlgDataType::ChannelDataDec;
+        auto native_only_data                       = std::make_shared<AlgData>();
+        native_only_data->chanDataOrig.packet       = demux_data->chanDataOrig.packet;
+        native_only_data->chanDataOrig.fps          = demux_data->chanDataOrig.fps;
+        native_only_data->dataType                  = AlgDataType::ChannelDataDec;
         native_only_data->chanDataDec.native_buffer = std::move(native_inference_buffer);
         native_only_data->chanDataDec.meta          = frame_meta;
         if (native_only_data->chanDataDec.native_buffer) {
@@ -401,8 +397,8 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
             }
         }
         native_only_data->chanDataDec.reportTimeStamp = frame_meta.timestamp;
-        native_only_data->channelId           = channel_id_;
-        native_only_data->firstTimePoint      = demux_data->firstTimePoint;
+        native_only_data->channelId                   = channel_id_;
+        native_only_data->firstTimePoint              = demux_data->firstTimePoint;
         DistributorNativeOnlyFrame(task_plan, native_only_data);
         return;
     }
@@ -536,19 +532,19 @@ AlgDataPtr AlgChannelDecode::ColorConvert(AlgDataPtr demux_data, VideoFramePtr i
     ai_frame->SetTimestamp(in_data->GetTimestamp());
     ai_frame->SetStreamIndex(in_data->GetStreamIndex());
 
-    AlgDataPtr data                 = std::make_shared<AlgData>();
-    data->chanDataOrig.packet       = demux_data->chanDataOrig.packet;
-    data->chanDataOrig.fps          = demux_data->chanDataOrig.fps;
-    data->dataType                  = AlgDataType::ChannelDataDec;
-    data->chanDataDec.frame         = ai_frame;
-    data->chanDataDec.native_buffer = std::move(native_buffer);
-    data->chanDataDec.meta          = frame_meta;
-    auto& out_meta                  = data->chanDataDec.meta;
-    out_meta.width                  = static_cast<int>(ai_frame->GetWidth());
-    out_meta.height                 = static_cast<int>(ai_frame->GetHeight());
-    out_meta.pixelFormat            = ai_frame->GetPixelFormat();
+    AlgDataPtr data                   = std::make_shared<AlgData>();
+    data->chanDataOrig.packet         = demux_data->chanDataOrig.packet;
+    data->chanDataOrig.fps            = demux_data->chanDataOrig.fps;
+    data->dataType                    = AlgDataType::ChannelDataDec;
+    data->chanDataDec.frame           = ai_frame;
+    data->chanDataDec.native_buffer   = std::move(native_buffer);
+    data->chanDataDec.meta            = frame_meta;
+    auto& out_meta                    = data->chanDataDec.meta;
+    out_meta.width                    = static_cast<int>(ai_frame->GetWidth());
+    out_meta.height                   = static_cast<int>(ai_frame->GetHeight());
+    out_meta.pixelFormat              = ai_frame->GetPixelFormat();
     data->chanDataDec.reportTimeStamp = frame_meta.timestamp;
-    data->channelId                 = channel_id_;
+    data->channelId                   = channel_id_;
 
     data->firstTimePoint = demux_data->firstTimePoint;
     action_status_       = util::ErrorEnum::Success;

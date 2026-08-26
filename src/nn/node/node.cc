@@ -209,8 +209,8 @@ Status CheckNodeInputOutput(std::vector<std::shared_ptr<Blob>>& bottom_blobs,
     return COSMO_NN_OK;
 }
 
-Status CheckNodeInputOutputNativeAware(std::shared_ptr<Blob>& bottom_blob,
-                                       std::shared_ptr<Blob>& top_blob, bool check_same_device) {
+Status CheckNodeInputOutputNativeAware(std::shared_ptr<Blob>& bottom_blob, std::shared_ptr<Blob>& top_blob,
+                                       bool check_same_device) {
     if (!bottom_blob || !top_blob)
         return Status(COSMO_NN_ERR_NULL_PARAM, "bottom or top blob is null");
 

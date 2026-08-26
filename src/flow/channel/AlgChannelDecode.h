@@ -90,7 +90,7 @@ private:
     bool NeedsResize(VideoPacketPtr& videoFrame);
     AlgDataPtr ColorConvert(AlgDataPtr demuxData, VideoFramePtr inData,
                             media::NativeVideoBufferPtr nativeBuffer = nullptr,
-                            const AlgFrameMeta& frameMeta = {});
+                            const AlgFrameMeta& frameMeta            = {});
 
     void FrameInfoSave(VideoPacketPtr packet);
     AlgFrameInfo FrameInfoGet(int64_t index);

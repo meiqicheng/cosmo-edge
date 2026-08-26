@@ -119,7 +119,7 @@ Status CheckNodeInputOutput(std::shared_ptr<Blob>& bottom_blob, std::shared_ptr<
                             bool same_device);
 Status CheckNodeInputOutput(std::vector<std::shared_ptr<Blob>>& bottom_blob,
                             std::vector<std::shared_ptr<Blob>>& top_blob, bool same_device);
-Status CheckNodeInputOutputNativeAware(std::shared_ptr<Blob>& bottom_blob,
-                                       std::shared_ptr<Blob>& top_blob, bool same_device);
+Status CheckNodeInputOutputNativeAware(std::shared_ptr<Blob>& bottom_blob, std::shared_ptr<Blob>& top_blob,
+                                       bool same_device);
 
 }  // namespace cosmo::nn

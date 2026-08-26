@@ -3,7 +3,6 @@
 #include "nn/device/rknn/rknn_preprocess_node.h"
 
 #include <rga/im2d.h>
-
 #include <sys/mman.h>
 
 #include <algorithm>
@@ -456,10 +455,10 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
         return false;
     }
 
-    auto& mutable_bottom = const_cast<Blob&>(bottom);
-    auto bottom_desc     = mutable_bottom.GetBlobDesc();
-    auto bottom_handle   = mutable_bottom.GetHandle();
-    auto top_handle      = top.GetHandle();
+    auto& mutable_bottom         = const_cast<Blob&>(bottom);
+    auto bottom_desc             = mutable_bottom.GetBlobDesc();
+    auto bottom_handle           = mutable_bottom.GetHandle();
+    auto top_handle              = top.GetHandle();
     const bool bottom_has_native = bottom_handle.native_image.Valid();
     if ((!bottom_handle.base && !bottom_has_native) || bottom_desc.dims.size() != 4 ||
         bottom_desc.dims[0] != 1 || bottom_desc.dims[3] != 3 ||
@@ -467,16 +466,16 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
         static std::atomic<bool> desc_warned{false};
         if (!desc_warned.exchange(true)) {
             const auto& n = bottom_handle.native_image;
-            LOG_WARN("RknnResize RGA rejected source: base={} dims=[{},{},{},{}] fmt={} native(fd={} bytes={} "
-                     "{}x{} stride={}x{} fmt={} valid={})",
-                     bottom_handle.base != nullptr, bottom_desc.dims.size(),
-                     bottom_desc.dims.empty() ? -1 : bottom_desc.dims[0],
-                     bottom_desc.dims.size() < 3 ? -1 : bottom_desc.dims[1],
-                     bottom_desc.dims.size() < 3 ? -1 : bottom_desc.dims[2],
-                     bottom_desc.dims.size() < 4 ? -1 : bottom_desc.dims[3],
-                     static_cast<int>(bottom_desc.image_format), n.fd, n.bytes, n.width, n.height,
-                     n.width_stride, n.height_stride, static_cast<int>(n.format),
-                     bottom_has_native);
+            LOG_WARN(
+                "RknnResize RGA rejected source: base={} dims=[{},{},{},{}] fmt={} native(fd={} bytes={} "
+                "{}x{} stride={}x{} fmt={} valid={})",
+                bottom_handle.base != nullptr, bottom_desc.dims.size(),
+                bottom_desc.dims.empty() ? -1 : bottom_desc.dims[0],
+                bottom_desc.dims.size() < 3 ? -1 : bottom_desc.dims[1],
+                bottom_desc.dims.size() < 3 ? -1 : bottom_desc.dims[2],
+                bottom_desc.dims.size() < 4 ? -1 : bottom_desc.dims[3],
+                static_cast<int>(bottom_desc.image_format), n.fd, n.bytes, n.width, n.height, n.width_stride,
+                n.height_stride, static_cast<int>(n.format), bottom_has_native);
         }
         GetInferencePipelineMetrics().RecordRknnRgaFailure();
         return false;
@@ -512,11 +511,10 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
     // letterbox 底色填充。旧版 RGA 多核驱动会以内核级 "no core match" 拒绝独立的
     // FILL 任务，而同一缓冲区上的普通拷贝/CSC/resize 任务可正常提交；因此只要目标
     // 存在 host 映射就用 CPU 填充，imfill_t 仅保留给没有 host 映射的 DMA-BUF bound 目标。
-    const uint8_t padding_byte =
-        static_cast<uint8_t>(padding_color_.empty() ? 114 : padding_color_[0]);
-    IM_STATUS last_status  = IM_STATUS_FAILED;
-    const auto fill_started = MetricsClock::now();
-    bool fill_ok = true;
+    const uint8_t padding_byte = static_cast<uint8_t>(padding_color_.empty() ? 114 : padding_color_[0]);
+    IM_STATUS last_status      = IM_STATUS_FAILED;
+    const auto fill_started    = MetricsClock::now();
+    bool fill_ok               = true;
     if (!bound_target && top_handle.base) {
         std::memset(top_handle.base, padding_byte, target_size);
     } else {
@@ -529,10 +527,9 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
     if (!fill_ok)
         return false;
 
-    const auto run_resize_once = [&](rga_buffer_handle_t source_handle, int visible_width,
-                                     int visible_height, int width_stride, int height_stride,
-                                     int source_format, IM_COLOR_SPACE_MODE yuv_color_space,
-                                     bool apply_color_space) {
+    const auto run_resize_once = [&](rga_buffer_handle_t source_handle, int visible_width, int visible_height,
+                                     int width_stride, int height_stride, int source_format,
+                                     IM_COLOR_SPACE_MODE yuv_color_space, bool apply_color_space) {
         auto source = wrapbuffer_handle_t(source_handle, visible_width, visible_height, width_stride,
                                           height_stride, source_format);
         if (yuv_color_space != IM_COLOR_SPACE_DEFAULT && apply_color_space) {
@@ -577,8 +574,9 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
         if (yuv_color_space == IM_COLOR_SPACE_DEFAULT)
             return false;
         yuv_colorspace_unsupported.store(true, std::memory_order_relaxed);
-        LOG_WARN("RKNN RGA rejected YUV color-space descriptors; retrying without them "
-                 "(legacy RGA driver detected)");
+        LOG_WARN(
+            "RKNN RGA rejected YUV color-space descriptors; retrying without them "
+            "(legacy RGA driver detected)");
         return run_resize_once(source_handle, visible_width, visible_height, width_stride, height_stride,
                                source_format, yuv_color_space, false);
     };
@@ -692,9 +690,9 @@ Status RknnResizeNode::ResizeNativeWithCpu(const Blob& bottom, Blob& top) const 
     const bool nv12 = native.format == IMAGE_NV12;
     const size_t luma_bytes =
         static_cast<size_t>(native.width_stride) * static_cast<size_t>(native.height_stride);
-    const size_t chroma_rows = (static_cast<size_t>(native.height_stride) + 1) / 2;
+    const size_t chroma_rows        = (static_cast<size_t>(native.height_stride) + 1) / 2;
     const size_t chroma_plane_bytes = static_cast<size_t>(native.width_stride) * chroma_rows;
-    const size_t required_bytes = luma_bytes + chroma_plane_bytes * (nv12 ? 1 : 2);
+    const size_t required_bytes     = luma_bytes + chroma_plane_bytes * (nv12 ? 1 : 2);
     if (required_bytes > native.bytes)
         return Status(COSMO_NN_ERR_INVALID_INPUT,
                       "RKNN native CPU fallback plane layout exceeds DMA-BUF bytes");
@@ -704,24 +702,22 @@ Status RknnResizeNode::ResizeNativeWithCpu(const Blob& bottom, Blob& top) const 
         return Status(COSMO_NN_ERR_NODE_FORWARD, "RKNN native CPU fallback could not map DMA-BUF fd");
 
     const YuvToBgrCoeffs coeffs = ResolveYuvToBgrCoeffs(native.color_space, native.color_range);
-    const int src_w = native.width;
-    const int src_h = native.height;
+    const int src_w             = native.width;
+    const int src_h             = native.height;
     std::vector<uint8_t> bgr(static_cast<size_t>(src_w) * src_h * 3);
-    const auto* luma = static_cast<const uint8_t*>(mapped);
-    const auto* chroma_base = luma + luma_bytes;
-    const size_t second_chroma_offset =
-        nv12 ? 0 : static_cast<size_t>(native.width_stride) * chroma_rows;
+    const auto* luma                  = static_cast<const uint8_t*>(mapped);
+    const auto* chroma_base           = luma + luma_bytes;
+    const size_t second_chroma_offset = nv12 ? 0 : static_cast<size_t>(native.width_stride) * chroma_rows;
     for (int row = 0; row < src_h; ++row) {
-        const auto* y_row = luma + static_cast<size_t>(row) * native.width_stride;
+        const auto* y_row  = luma + static_cast<size_t>(row) * native.width_stride;
         const auto* uv_row = chroma_base + static_cast<size_t>(row / 2) * native.width_stride;
-        auto* dst = bgr.data() + static_cast<size_t>(row) * src_w * 3;
+        auto* dst          = bgr.data() + static_cast<size_t>(row) * src_w * 3;
         for (int col = 0; col < src_w; ++col) {
             const int y = y_row[col] - coeffs.y_offset;
             const int u = uv_row[(col & ~1)] - 128;
             const int v = nv12 ? uv_row[(col & ~1) + 1] - 128
                                : chroma_base[second_chroma_offset +
-                                             static_cast<size_t>(row / 2) * native.width_stride +
-                                             col] -
+                                             static_cast<size_t>(row / 2) * native.width_stride + col] -
                                      128;
             dst[col * 3 + 0] =
                 static_cast<uint8_t>(std::clamp((coeffs.y_scale * y + coeffs.ub * u + 128) >> 8, 0, 255));
@@ -737,7 +733,7 @@ Status RknnResizeNode::ResizeNativeWithCpu(const Blob& bottom, Blob& top) const 
     temp_desc.dims         = {1, src_h, src_w, 3};
     temp_desc.image_format = IMAGE_BGR;
     BlobHandle temp_handle;
-    temp_handle.base     = bgr.data();
+    temp_handle.base = bgr.data();
     Blob temp_bottom(temp_desc, temp_handle);
     ResizeWithCpu(temp_bottom, top, detector_contract_);
     return COSMO_NN_OK;
@@ -745,7 +741,7 @@ Status RknnResizeNode::ResizeNativeWithCpu(const Blob& bottom, Blob& top) const 
 
 Status RknnResizeNode::ResizeSingle(const std::shared_ptr<Blob>& bottom, const std::shared_ptr<Blob>& top,
                                     bool allow_bound_target) {
-    const auto& bottom_handle = bottom ? bottom->GetHandle() : BlobHandle{};
+    const auto& bottom_handle    = bottom ? bottom->GetHandle() : BlobHandle{};
     const bool bottom_has_native = bottom_handle.native_image.Valid();
     if (!bottom || !top || !top->GetHandle().base ||
         (!bottom_handle.base && !bottom_handle.native_image.Valid()))
@@ -947,8 +943,8 @@ bool RknnCropResizeNode::ForwardWithRga(std::vector<std::shared_ptr<Blob>>& imag
 
     IM_STATUS last_status = IM_STATUS_FAILED;
     for (size_t image_index = 0; image_index < image_blobs.size(); ++image_index) {
-        const auto& image_blob = image_blobs[image_index];
-        const bool image_has_host = image_blob && image_blob->GetHandle().base;
+        const auto& image_blob      = image_blobs[image_index];
+        const bool image_has_host   = image_blob && image_blob->GetHandle().base;
         const bool image_has_native = image_blob && image_blob->GetHandle().native_image.Valid();
         if (!image_has_host && !image_has_native)
             return false;
@@ -1034,14 +1030,13 @@ bool RknnCropResizeNode::ForwardWithRga(std::vector<std::shared_ptr<Blob>>& imag
                     offset_x = (dst_width - resized_width) / 2;
                     offset_y = (dst_height - resized_height) / 2;
                 }
-                const uint8_t padding = static_cast<uint8_t>(color.empty() ? 114 : color[0]);
+                const uint8_t padding   = static_cast<uint8_t>(color.empty() ? 114 : color[0]);
                 const auto fill_started = MetricsClock::now();
                 bool fill_ok            = true;
                 if (!bound_target) {
                     // 与 RknnResizeNode 相同的旧驱动 FILL 限制：
                     // host 目标用 CPU 填充替代 imfill_t。
-                    std::memset(top_data + static_cast<size_t>(processed) * slice_size, padding,
-                                slice_size);
+                    std::memset(top_data + static_cast<size_t>(processed) * slice_size, padding, slice_size);
                 } else {
                     const int fill_color = (padding << 16) | (padding << 8) | padding;
                     const im_rect full_target{0, 0, dst_width, dst_height};

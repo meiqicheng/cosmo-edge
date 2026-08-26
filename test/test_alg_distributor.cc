@@ -134,10 +134,9 @@ TEST_CASE("Native inference plan is fail-closed for non-detect task codes", "[Di
         const char* name;
         std::string action;
     };
-    for (const auto& item : {Case{"track", std::string(AATrack_Code)},
-                             Case{"combo", std::string(GADetectTrack_Code)},
-                             Case{"vlm", std::string(DAQwen3VL_Code)},
-                             Case{"unknown", std::string("ZZ_99999")}}) {
+    for (const auto& item :
+         {Case{"track", std::string(AATrack_Code)}, Case{"combo", std::string(GADetectTrack_Code)},
+          Case{"vlm", std::string(DAQwen3VL_Code)}, Case{"unknown", std::string("ZZ_99999")}}) {
         DYNAMIC_SECTION("action " << item.name) {
             AlgDataQueueDistributor dist("native_failclosed_dist");
             auto task = makeTask("ch1", std::string("task-") + item.name, item.action, -1.0f);

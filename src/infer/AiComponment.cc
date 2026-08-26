@@ -44,9 +44,8 @@ util::ErrorEnum ConvertImagesToBlobs(const std::vector<VideoFramePtr>& images,
     }
 
     for (size_t i = 0; i < images.size(); i++) {
-        auto image = images[i];
-        const bool has_native = i < native_buffers.size() && native_buffers[i] &&
-                                native_buffers[i]->Valid();
+        auto image            = images[i];
+        const bool has_native = i < native_buffers.size() && native_buffers[i] && native_buffers[i]->Valid();
         if (!image || !image->Active()) {
             if (!has_native)
                 continue;
@@ -125,14 +124,13 @@ util::ErrorEnum ConvertImagesToBlobs(const std::vector<VideoFramePtr>& images,
             blob_h = native_buffers[i]->height;
         }
 
-        desc.dims         = {1, blob_h, blob_w,
-                             static_cast<int>(cosmo::nn::ImageFormatChannels(desc.image_format))};
-        desc.device_type  = GetDeviceType();
+        desc.dims = {1, blob_h, blob_w, static_cast<int>(cosmo::nn::ImageFormatChannels(desc.image_format))};
+        desc.device_type = GetDeviceType();
         cosmo::nn::BlobHandle handle;
         if (has_native) {
-            const bool dim_match = image && image->Active()
-                ? (native_buffers[i]->width == blob_w && native_buffers[i]->height == blob_h)
-                : true;
+            const bool dim_match = image && image->Active() ? (native_buffers[i]->width == blob_w &&
+                                                               native_buffers[i]->height == blob_h)
+                                                            : true;
             if (dim_match) {
                 const auto& native                = *native_buffers[i];
                 handle.native_image.fd            = native.fd;
