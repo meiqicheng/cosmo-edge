@@ -1,0 +1,160 @@
+name: RK3588 Preview Checks
+
+# Preview-grade coverage for the RK3588 package path (RKNN + MPP/RGA core;
+# the optional RKLLM/Qwen VLM overlay is user-supplied and never built here).
+#
+# - On PRs: package-profile/hash-closure tests, media sysroot lock, builder
+#   preflight, and diff whitespace.
+# - Nightly / manual: additionally build the locked core builder and produce a
+#   full RK3588 candidate package (no device execution).
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run daily at 02:42 Beijing Time (18:42 UTC on the previous day).
+    - cron: '42 18 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-policy:
+    name: rk3588-package-policy-and-hashes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Syntax-check RK3588 build scripts
+        run: |
+          bash -n scripts/prepare_rk3588_build_cache.sh \
+            scripts/build_rockchip_package.sh scripts/build_rknn.sh
+
+      - name: Validate package profile, model hashes, and provenance closure
+        run: python -m unittest discover -s test -p 'test_package_profile.py'
+
+      - name: Validate RKNN media sysroot lock
+        run: python -m unittest discover -s test/agent -p 'test_rknn_media_sysroot_lock.py'
+
+      - name: Check diff whitespace
+        run: |
+          set -euo pipefail
+          base="${{ github.event.pull_request.base.sha }}"
+          if [[ -z "$base" ]]; then
+            base="$(git rev-parse HEAD~1 2>/dev/null || true)"
+          fi
+          if [[ -n "$base" ]] && git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            git diff --check "$base" HEAD
+          else
+            echo "No comparable base revision; skipping whitespace check."
+          fi
+
+  builder-preflight:
+    name: rk3588-builder-preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Preflight pinned builder inputs (docker + base image digest)
+        run: bash scripts/prepare_rk3588_build_cache.sh --preflight
+
+  package-core:
+    name: rk3588-core-package
+    if: github.event_name != 'pull_request'
+    needs: [package-policy, builder-preflight]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Prepare pinned build cache (MPP/librga; RKLLM not required)
+        run: bash scripts/prepare_rk3588_build_cache.sh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build locked RK3588 core builder
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.rk3588-bullseye
+          target: core
+          platforms: linux/amd64
+          load: true
+          tags: cosmo-edge-build-env-rk3588-bullseye:ci
+          provenance: false
+          cache-from: type=gha,scope=rk3588-core-builder
+          cache-to: type=gha,mode=max,scope=rk3588-core-builder
+
+      - name: Validate shared Compose entry
+        env:
+          COSMO_RK3588_BUILDER_IMAGE: cosmo-edge-build-env-rk3588-bullseye:ci
+          COSMO_TARGET_CHIP: rk3588
+          COSMO_PACKAGE_MODELS: include
+        run: docker compose -f docker-compose.rk3588.yml config --quiet
+
+      - name: Build core package and tests
+        env:
+          COSMO_RK3588_BUILDER_IMAGE: cosmo-edge-build-env-rk3588-bullseye:ci
+          COSMO_TARGET_CHIP: rk3588
+          COSMO_PACKAGE_MODELS: include
+        run: docker compose -f docker-compose.rk3588.yml run --rm cosmo-rk3588-package
+
+      - name: Verify core artifacts
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          packages=("build_output/rk3588"/cosmo-*.tar.gz)
+          if (( ${#packages[@]} != 1 )) || [[ ! -f "${packages[0]:-}" || -L "${packages[0]:-}" ]]; then
+            echo "Expected exactly one regular rk3588 package artifact." >&2
+            exit 1
+          fi
+          package="${packages[0]}"
+          package_name="${package##*/}"
+          digest="$(sha256sum -- "$package")"
+          digest="${digest%% *}"
+          printf '%s  %s\n' "$digest" "$package_name" | tee rk3588-package.sha256
+          cmp -s <(printf '%s\n' "rk3588") "build_output/rk3588/TARGET_CHIP"
+          (cd "build_output/rk3588" && sha256sum -c SHA256SUMS)
+          for binary in build_rknn/cosmo-tests build_rknn/cosmo-rknn-backend-smoke build_rknn/cosmo-rknn-fastpath-qualify; do
+            binary_info="$(file "$binary")"
+            printf '%s\n' "$binary_info"
+            grep -Fq 'ARM aarch64' <<< "$binary_info"
+          done
+          printf "## rk3588 core candidate\n\n- Package: \`%s\`\n- SHA-256: \`%s\`\n" \
+            "$package_name" "$digest" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload core candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: rk3588-core-candidate-${{ github.sha }}
+          path: |
+            build_output/rk3588/*.tar.gz
+            build_output/rk3588/TARGET_CHIP
+            build_output/rk3588/MEDIA_RUNTIME_PROFILE
+            build_output/rk3588/SHA256SUMS
+            rk3588-package.sha256
+            build_rknn/cosmo-tests
+            build_rknn/cosmo-rknn-backend-smoke
+            build_rknn/cosmo-rknn-fastpath-qualify
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
