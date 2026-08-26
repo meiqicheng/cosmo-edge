@@ -26,8 +26,8 @@
     }
   },
   "optional_overlays": {
-    "vlm": {
-      "image_target": "vlm-overlay",
+    "llm": {
+      "image_target": "rkllm",
       "rkllm_root": "/opt/rknn",
       "version": "1.3.0",
       "source": "rknn-llm-release-v1.3.0 (user-supplied runtime drop)",

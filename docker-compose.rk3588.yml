@@ -17,8 +17,8 @@ services:
       context: .
       dockerfile: Dockerfile.rk3588-bullseye
       # Core image only (RKNN + MPP/RGA + FFmpeg). The optional RKLLM/Qwen VLM
-      # runtime lives in the separate `vlm-overlay` target; build it explicitly
-      # with: docker build --target vlm-overlay -f Dockerfile.rk3588-bullseye .
+      # runtime lives in the separate `rkllm` target; build it explicitly
+      # with: docker build --target rkllm -f Dockerfile.rk3588-bullseye .
       target: core
     image: ${COSMO_RK3588_BUILDER_IMAGE:-cosmo-edge-build-env-rk3588-bullseye:v1}
     platform: linux/amd64
