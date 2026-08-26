@@ -17,4 +17,3 @@ for (const ch of list) {
 const hw = await client.queryHardwareResource();
 console.log('=== HARDWARE ===');
 console.log(JSON.stringify(hw, null, 1).slice(0, 3000));
-

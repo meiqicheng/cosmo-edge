@@ -240,4 +240,3 @@ COPY .rk3588-build-cache/rkllm-runtime/lib/librkllmrt.so /opt/rknn/lib/librkllmr
 COPY .rk3588-build-cache/rkllm-runtime/LICENSE /opt/rknn/LICENSE
 RUN test -f /opt/rknn/include/rkllm.h && test -f /opt/rknn/lib/librkllmrt.so \
     && test -f /opt/rknn/LICENSE
-
