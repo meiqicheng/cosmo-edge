@@ -2,17 +2,17 @@
   "artifact": {
     "bytes": 4279251,
     "path": "data/resource/aiboxresource_rk3588/models/prod_RK3588_9275710_YOLOV8_V1.0.0/model.rknn",
-    "sha256": "ce3f68fc51b6ce5e91174cbccf658a07bba6cb100b6938dfe409d6f28d98ff41"
+    "sha256": "bce9f86626678b0b8989b9218ee9e3bf583001810715973b414f48b15c6ca834"
   },
   "build": {
     "dataset": "data/resource/aiboxresource_rk3588/models/prod_RK3588_9275710_YOLOV8_V1.0.0/calibration/dataset.txt",
-    "dataset_sha256": "077bf1e8f0c5435085db0baac0270ccc4ba4976a7da65917b557325401216e94",
+    "dataset_sha256": "0f13c0f86685e3b3e58dc6037ada6156b4c0f0e4cedaeec8c4566e5bcf86f1a2",
     "optimization_level": 3,
     "preprocessing_owner": "host",
     "quantized": true,
     "target_platform": "rk3588"
   },
-  "created_at": "2026-08-26T15:32:48.748307+00:00",
+  "created_at": "2026-08-27T00:06:02.671772+00:00",
   "rknn_toolkit2_version": "2.3.2",
   "schema_version": 1,
   "source": {
