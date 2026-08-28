@@ -142,6 +142,11 @@ namespace {
             LOG_WARN("{} could not retain MPP DMA-BUF for inference", decoder_name);
             return nullptr;
         }
+        if (mpp_buffer_sync_ro_begin(buffer) != MPP_OK) {
+            LOG_WARN("{} could not sync MPP DMA-BUF for RGA read; rolling back", decoder_name);
+            mpp_buffer_put(buffer);
+            return nullptr;
+        }
 
         auto result           = std::make_shared<NativeVideoBuffer>();
         result->fd            = fd;
@@ -155,6 +160,7 @@ namespace {
         result->color_range   = ToNativeColorRange(mpp_frame_get_color_range(frame));
         result->owner         = std::shared_ptr<void>(buffer, [](void* value) {
             if (value) {
+                mpp_buffer_sync_ro_end(static_cast<MppBuffer>(value));
                 mpp_buffer_put(static_cast<MppBuffer>(value));
             }
         });
@@ -267,56 +273,13 @@ namespace {
             vertical_stride > static_cast<size_t>(std::numeric_limits<int>::max()) ||
             horizontal_stride < width || vertical_stride < height || !IsCompact420Format(format) || !buffer ||
             source_format == RK_FORMAT_UNKNOWN) {
-            GetPreviewPipelineMetrics().RecordMppRgaCopyOut(false);
             GetPreviewPipelineMetrics().RecordMppCpuCopyOutFallback();
             return CopyMppFrameCpu(decoder_name, frame);
         }
 
-        auto output = std::make_shared<VideoFrame>(static_cast<int>(width), static_cast<int>(height),
-                                                   PixelFormat::PIXEL_I420);
-        if (!output || !output->Active() || !output->GetData()) {
-            GetPreviewPipelineMetrics().RecordMppRgaCopyOut(false);
-            return nullptr;
-        }
-
-        const auto rga_started = std::chrono::steady_clock::now();
-        ScopedRgaBufferHandle source_handle;
-        ScopedRgaBufferHandle target_handle(output->GetData(), output->GetSize());
-        const int source_fd = mpp_buffer_get_fd(buffer);
-        source_handle.ImportFd(source_fd, mpp_buffer_get_size(buffer));
-        IM_STATUS status = IM_STATUS_OUT_OF_MEMORY;
-        if (source_handle && target_handle) {
-            auto source = wrapbuffer_handle_t(source_handle.Get(), static_cast<int>(width),
-                                              static_cast<int>(height), static_cast<int>(horizontal_stride),
-                                              static_cast<int>(vertical_stride), source_format);
-            auto target =
-                wrapbuffer_handle_t(target_handle.Get(), static_cast<int>(width), static_cast<int>(height),
-                                    static_cast<int>(width), static_cast<int>(height), RK_FORMAT_YCbCr_420_P);
-            if (source_format == RK_FORMAT_YCbCr_420_P) {
-                const im_rect source_rect{0, 0, static_cast<int>(width), static_cast<int>(height)};
-                const im_rect target_rect = source_rect;
-                const im_rect empty_rect{};
-                const rga_buffer_t empty_buffer{};
-                status =
-                    improcess(source, target, empty_buffer, source_rect, target_rect, empty_rect, IM_SYNC);
-            } else {
-                status = imcvtcolor_t(source, target, source_format, RK_FORMAT_YCbCr_420_P,
-                                      IM_COLOR_SPACE_DEFAULT, 1);
-            }
-        }
-        const bool rga_success = RockchipRgaSucceeded(status);
-        GetPreviewPipelineMetrics().RecordRgaOperation(rga_success, ElapsedNanoseconds(rga_started));
-        GetPreviewPipelineMetrics().RecordMppRgaCopyOut(rga_success);
-        if (rga_success) {
-            return output;
-        }
-
-        static std::atomic_flag fallback_logged = ATOMIC_FLAG_INIT;
-        if (!fallback_logged.test_and_set(std::memory_order_relaxed)) {
-            LOG_WARN("{} RGA DMA-BUF materialization failed with status {} ({}); using CPU copy-out",
-                     decoder_name, status, imStrError_t(status));
-        }
-        GetPreviewPipelineMetrics().RecordMppCpuCopyOutFallback();
+        // Decoder copy-out uses the CPU path. RGA-based DMA-BUF copy-out was observed to
+        // fail 100% of the time on this platform (see rk3588_rga_fix_plan.md), so we skip
+        // the RGA attempt entirely to avoid wasted RGA jobs and dmesg rga_job errors.
         return CopyMppFrameCpu(decoder_name, frame);
     }
 

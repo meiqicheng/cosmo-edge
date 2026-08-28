@@ -588,7 +588,8 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
     if (native_compatible) {
         bool native_success = false;
         media::ScopedRgaBufferHandle native_source_handle;
-        if (!RknnForceMppDmaBufFailure()) {
+        if (!RknnForceMppDmaBufFailure() &&
+            !(native.format == IMAGE_I420 && native.width % 16 != 0)) {
             const auto import_started = MetricsClock::now();
             native_source_handle.ImportFd(native.fd, native.bytes);
             GetInferencePipelineMetrics().RecordRknnMppDmaBufImport(ElapsedNanoseconds(import_started),
@@ -612,7 +613,7 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
                 auto& bound_input = shared_resource->rknn_bound_input_target;
                 if (bound_input.owner == shared_resource->rknn_bound_input_provider &&
                     bound_input.generation == rga_bound_target_generation_) {
-                    bound_input.frame_ready = true;
+                    bound_input.frame_ready.store(true, std::memory_order_release);
                 }
             }
             return true;
@@ -633,7 +634,7 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
         auto& bound_input = shared_resource->rknn_bound_input_target;
         if (bound_input.owner == shared_resource->rknn_bound_input_provider &&
             bound_input.generation == rga_bound_target_generation_) {
-            bound_input.frame_ready = true;
+            bound_input.frame_ready.store(true, std::memory_order_release);
         }
     }
     return true;
@@ -808,7 +809,7 @@ Status RknnResizeNode::Forward(std::vector<std::shared_ptr<Blob>>& bottom_blobs,
     const size_t slice_size = PackedByteCount(out_width_, out_height_);
     if (shared_resource &&
         shared_resource->rknn_bound_input_target.owner == shared_resource->rknn_bound_input_provider) {
-        shared_resource->rknn_bound_input_target.frame_ready = false;
+        shared_resource->rknn_bound_input_target.frame_ready.store(false, std::memory_order_release);
     }
     for (int index = 0; index < batch; ++index) {
         BlobDesc slice_desc = top_desc;
@@ -855,7 +856,7 @@ void RknnCropResizeNode::InvalidateRgaBoundFrame() {
         return;
     auto& target = shared_resource->rknn_bound_input_target;
     if (target.owner == shared_resource->rknn_bound_input_provider)
-        target.frame_ready = false;
+        target.frame_ready.store(false, std::memory_order_release);
 }
 
 bool RknnCropResizeNode::AcquireRgaBoundTarget(uint32_t& handle) {
@@ -969,7 +970,8 @@ bool RknnCropResizeNode::ForwardWithRga(std::vector<std::shared_ptr<Blob>>& imag
         media::ScopedRgaBufferHandle native_source_handle;
         bool native_source_ready = false;
         int native_source_format = RK_FORMAT_UNKNOWN;
-        if (native_compatible && !RknnForceMppDmaBufFailure()) {
+        if (native_compatible && !RknnForceMppDmaBufFailure() &&
+            !(native.format == IMAGE_I420 && native.width % 16 != 0)) {
             const auto import_started = MetricsClock::now();
             native_source_handle.ImportFd(native.fd, native.bytes);
             native_source_ready = bool(native_source_handle);

@@ -103,6 +103,10 @@ VideoFramePtr VideoFrameProcRockchip::ResizeWithRga(const VideoFramePtr& frame, 
 
     const int src_width  = static_cast<int>(frame->GetWidth());
     const int src_height = static_cast<int>(frame->GetHeight());
+    // RGA3 requires I420 width to be 16-pixel aligned; bail so caller uses CPU
+    if (src_width % 16 != 0 || dst_width % 16 != 0) {
+        return nullptr;
+    }
     auto output          = std::make_shared<VideoFrame>(dst_width, dst_height, PixelFormat::PIXEL_I420,
                                                         frame->GetFrameIndex(), frame->GetTimestamp());
     if (!VideoFrameValid(output, true)) {
