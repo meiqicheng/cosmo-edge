@@ -142,6 +142,11 @@ namespace {
             LOG_WARN("{} could not retain MPP DMA-BUF for inference", decoder_name);
             return nullptr;
         }
+        if (mpp_buffer_sync_ro_begin(buffer) != MPP_OK) {
+            LOG_WARN("{} could not sync MPP DMA-BUF for RGA read; rolling back", decoder_name);
+            mpp_buffer_put(buffer);
+            return nullptr;
+        }
 
         auto result           = std::make_shared<NativeVideoBuffer>();
         result->fd            = fd;
@@ -155,6 +160,7 @@ namespace {
         result->color_range   = ToNativeColorRange(mpp_frame_get_color_range(frame));
         result->owner         = std::shared_ptr<void>(buffer, [](void* value) {
             if (value) {
+                mpp_buffer_sync_ro_end(static_cast<MppBuffer>(value));
                 mpp_buffer_put(static_cast<MppBuffer>(value));
             }
         });
@@ -272,7 +278,6 @@ namespace {
             vertical_stride > static_cast<size_t>(std::numeric_limits<int>::max()) ||
             horizontal_stride < width || vertical_stride < height || !IsCompact420Format(format) || !buffer ||
             source_format == RK_FORMAT_UNKNOWN) {
-            GetPreviewPipelineMetrics().RecordMppRgaCopyOut(false);
             GetPreviewPipelineMetrics().RecordMppCpuCopyOutFallback();
             return CopyMppFrameCpu(decoder_name, frame);
         }

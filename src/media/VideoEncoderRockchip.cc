@@ -382,7 +382,7 @@ VideoPacketPtr VideoEncoderRockchip::SendYUVFrame(void* data) {
         ScopedRgaBufferHandle source_handle(const_cast<uint8_t*>(source),
                                             compact_y_size + compact_uv_size * 2);
         IM_STATUS status = IM_STATUS_OUT_OF_MEMORY;
-        if (source_handle) {
+        if (source_handle && width_ % 16 == 0) {
             auto source_image = wrapbuffer_handle_t(source_handle.Get(), static_cast<int>(width_),
                                                     static_cast<int>(height_), static_cast<int>(width_),
                                                     static_cast<int>(height_), RK_FORMAT_YCbCr_420_P);
