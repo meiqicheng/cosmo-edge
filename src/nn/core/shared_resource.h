@@ -5,6 +5,7 @@
 #include "bmruntime_interface.h"
 #endif
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -63,7 +64,7 @@ struct RknnBoundInputTarget {
     int channels{0};
     int width_stride{0};
     uint64_t generation{0};
-    bool frame_ready{false};
+    std::atomic<bool> frame_ready{false};
 
     [[nodiscard]] bool Matches(int expected_height, int expected_width) const {
         if (!owner || !virtual_address || fd < 0 || height != expected_height || width != expected_width ||
@@ -76,7 +77,16 @@ struct RknnBoundInputTarget {
     }
 
     void Reset() {
-        *this = {};
+        owner           = nullptr;
+        virtual_address = nullptr;
+        fd              = -1;
+        bytes           = 0;
+        height          = 0;
+        width           = 0;
+        channels        = 0;
+        width_stride    = 0;
+        generation      = 0;
+        frame_ready.store(false, std::memory_order_relaxed);
     }
 };
 

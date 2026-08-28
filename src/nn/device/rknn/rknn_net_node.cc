@@ -579,7 +579,7 @@ void RknnNetNode::PublishRgaBoundInputTarget() {
     target.width_stride    = static_cast<int>(bound_input_attr_.w_stride == 0 ? bound_input_attr_.dims[2]
                                                                               : bound_input_attr_.w_stride);
     target.generation      = ++bound_input_generation_;
-    target.frame_ready     = false;
+    target.frame_ready.store(false, std::memory_order_release);
 }
 
 void RknnNetNode::ClearRgaBoundInputTarget() {
@@ -924,10 +924,10 @@ Status RknnNetNode::Forward(std::vector<std::shared_ptr<Blob>>& bottom_blobs,
     const auto prepare_started = MetricsClock::now();
     const auto input_desc      = bottom_blobs[0]->GetBlobDesc();
     bool rga_bound_frame       = false;
-    if (shared_resource && shared_resource->rknn_bound_input_target.frame_ready &&
+    if (shared_resource && shared_resource->rknn_bound_input_target.frame_ready.load(std::memory_order_acquire) &&
         shared_resource->rknn_bound_input_target.owner == this) {
         auto& target              = shared_resource->rknn_bound_input_target;
-        target.frame_ready        = false;
+        target.frame_ready.store(false, std::memory_order_release);
         const bool rga_bound_mode = bound_input_mode_ == BoundInputMode::RgaNativeInt8;
         const bool blob_matches   = input_desc.data_type == DATA_TYPE_INT8 &&
                                   input_desc.data_format == DATA_FORMAT_NHWC &&
