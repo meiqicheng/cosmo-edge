@@ -72,6 +72,10 @@ public:
         return action_status_;
     }
 
+    // When a downstream flow action requires a host frame (e.g. classify),
+    // native-only decode must be disabled even if the detector supports it.
+    void SetRequiresHostFrame(bool v) { requires_host_frame_ = v; }
+
     // Public interface for image capture.
     VideoFramePtr CaptureImage(int timeoutMs = 3000);
 
@@ -139,5 +143,6 @@ private:
 
     int width_{0};
     int height_{0};
+    bool requires_host_frame_{false};
 };
 }  // namespace cosmo
