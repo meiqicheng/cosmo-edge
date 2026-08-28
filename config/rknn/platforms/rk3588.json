@@ -28,8 +28,8 @@
     "compatible_tokens": ["rk3588"]
   },
   "qualification": {
-    "status": "UNVERIFIED",
+    "status": "candidate-validated",
     "requires_target_bound_evidence": true,
-    "note": "Board-side baseline pending measurement on a real RK3588 device (stage 5 of the RK3588 support plan)"
+    "note": "Board-side baseline measured on a real RK3588 device (192.168.112.199, Debian 11 bullseye, kernel 5.10.198): cosmo-tests 981/984 pass, backend-smoke Helmet INT8 3.14ms + YOLOv8 INT8 33.43ms PASS, fastpath-qualify direct-output-parity + rga-host-preprocess-parity PASS. YOLOv8 reconverted to INT8 (artifact ee898fbc7b1656690fb66fbcffaf4e6fa5ef061dad35e96361af2db8cc464a87) reproducing original 17a2cd60... input. See output/agent-runs/rk3588-v3-device-acceptance/evidence/device-acceptance.md"
   }
 }

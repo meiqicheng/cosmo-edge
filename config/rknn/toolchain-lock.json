@@ -54,8 +54,13 @@
       }
     },
     "rk3588": {
-      "status": "UNVERIFIED",
-      "note": "Board-side baseline pending measurement on a real RK3588 device (stage 5 of the RK3588 support plan)"
+      "status": "candidate-validated",
+      "device_baseline": {
+        "kernel": "5.10.198",
+        "rknpu_driver": "rknpu (via /dev/dri/renderD128)",
+        "system_runtime": "2.0.0b0",
+        "note": "YOLOv8 INT8 reconverted (artifact ee898fbc7b1656690fb66fbcffaf4e6fa5ef061dad35e96361af2db8cc464a87) reproducing original 17a2cd60... input; backend-smoke + fastpath-qualify PASS on-device. See output/agent-runs/rk3588-v3-device-acceptance/evidence/device-acceptance.md"
+      }
     },
     "rv1126b": {
       "status": "candidate-validated",
