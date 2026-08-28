@@ -147,6 +147,7 @@ def conversion_parameters(contract: dict[str, Any], run_dir: Path) -> dict[str, 
             "personDetector": person_detector,
             "personDetectorSpecPath": person_detector_spec_path,
             "personDetectorSpec": person_detector_spec,
+            "opsetPythonExecutable": parameters["raw"].get("opsetPythonExecutable"),
         }
     )
     return parameters
@@ -229,10 +230,17 @@ def _prepare_conversion_input(
         raise core.WorkflowError(
             "model spec requires a transformed RKNN input but declares no supported transform"
         )
+    # Opset downgrade may need a newer onnx than the RKNN Toolkit2 runtime
+    # allows (it depends on onnx.mapping, removed in onnx>=1.17).
+    opset_python = parameters.get("opsetPythonExecutable") or python
+    if not Path(opset_python).is_absolute():
+        opset_python = shutil.which(opset_python) or opset_python
+    if not Path(opset_python).is_file():
+        raise core.WorkflowError(f"opset Python executable is unavailable: {opset_python}")
     converted = attempt_dir / f"{parameters['modelName']}-opset.onnx"
     converted_report = attempt_dir / "opset-conversion.json"
     convert_command = [
-        python,
+        opset_python,
         str(PROJECT_ROOT / "tools" / "rknn" / "convert_onnx_opset.py"),
         "--input",
         str(source),
