@@ -79,6 +79,7 @@ run options:
   --only-channels <n>  Run only one exact channel-count step from the effective profile
   --ramp-batch-size <n>
   --ramp-batch-delay-sec <n>
+  --hold-warmup-sec <n>   Ignore the first N seconds of each hold window for bottleneck detection (default: 0)
   --vlm-ready-timeout-sec <n> Wait for each new VLM route, default 180
   --preview <mode>      none (default) | raw | algorithm
   --preview-streams <n> Number of preview streams or all (default)
@@ -565,6 +566,7 @@ async function runBenchmark(args) {
     const activeEntries = () => runner.expectedTaskEntries(runner.allChannelIds.slice(0, currentChannels));
     const FPS_HALVE_RATIO = 0.5;
     const DISCARD_BOTTLENECK = 0.05;
+    const holdWarmupSec = Number(args['hold-warmup-sec'] ?? 0);
 
     const captureSample = async (phase = 'hold', targetChannels = currentChannels) => {
       throwIfAborted(signal);
@@ -695,7 +697,7 @@ async function runBenchmark(args) {
         const summary = summarizeStep({
           ...step,
           currentVlmBindings: currentVlmBindingsByStep.get(step.index) ?? [],
-        }, samples, pkg.thresholds, pkg.videoMode);
+        }, samples, pkg.thresholds, pkg.videoMode, holdWarmupSec);
         const minFps = summary.minFpsAcross;
         const meanDiscard = summary.avgDiscard;
         const maxNpu = summary.maxNpu;
