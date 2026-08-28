@@ -2,6 +2,7 @@
 // Split from TaskBase.cc to reduce file size (DEBT-007).
 
 #include "flow/task/TaskBase.h"
+#include "flow/channel/AlgChannel.h"
 #include "util/Log.h"
 #include "util/dto/ActionCodes.h"
 
@@ -40,6 +41,24 @@ bool TaskBase::TaskRegist(TaskElementPtr task) {
                      task->taskId, task->GetAlgName(), taNode.action.actionId, taNode.action.flowActionId);
         }
     }
+
+    // If any action in this task is a classify node (AAClassify_Code), the
+    // channel decoder must materialize host frames even though the detector
+    // supports native-only inference.  Without this, classify receives a
+    // null frame and reports FrameDataInvalid / crashes.
+    for (const auto& taNode : task->actions) {
+        if (taNode.action.actionId == AAClassify_Code && taNode.fatherAction) {
+            auto* channel = dynamic_cast<AlgChannel*>(taNode.fatherAction.get());
+            if (channel) {
+                channel->SetDecoderRequiresHostFrame(true);
+                LOG_INFO("[{}-{} Create {}] Classify detected in pipeline, "
+                         "decoder forced to host-frame mode",
+                         task->channelId, task->taskId, task->GetAlgName());
+            }
+            break;
+        }
+    }
+
     return true;
 }
 
