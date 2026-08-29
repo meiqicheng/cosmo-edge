@@ -69,6 +69,7 @@ public:
     bool RmvTask(const std::string& target_task_id);
 
     void SetDecoderRequiresHostFrame(bool v) { decoder_.SetRequiresHostFrame(v); }
+    [[nodiscard]] bool GetDecoderRequiresHostFrame() const { return decoder_.RequiresHostFrame(); }
 
     [[nodiscard]] std::vector<std::string> GetTasks() const;
 

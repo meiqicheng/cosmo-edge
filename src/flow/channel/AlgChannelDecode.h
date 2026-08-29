@@ -75,6 +75,7 @@ public:
     // When a downstream flow action requires a host frame (e.g. classify),
     // native-only decode must be disabled even if the detector supports it.
     void SetRequiresHostFrame(bool v) { requires_host_frame_ = v; }
+    [[nodiscard]] bool RequiresHostFrame() const { return requires_host_frame_; }
 
     // Public interface for image capture.
     VideoFramePtr CaptureImage(int timeoutMs = 3000);
