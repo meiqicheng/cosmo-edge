@@ -6,7 +6,56 @@
 #include "util/Log.h"
 #include "util/dto/ActionCodes.h"
 
+#include <algorithm>
+#include <string_view>
+
 namespace cosmo {
+
+namespace {
+
+// Classify-family action codes whose crop-resize inference pipeline requires a
+// host frame.  When any of these nodes is present in a task pipeline, the
+// channel decoder must materialize host frames even though the detector
+// supports native-only inference; otherwise classify receives a null frame and
+// reports FrameDataInvalid / crashes.
+bool IsClassifyAction(std::string_view actionId) {
+    return actionId == AAClassify_Code || actionId == AAClassifyGroup_Code ||
+           actionId == AAClassifyArea_Code || actionId == AAClassifyAttr_Code ||
+           actionId == AAClassifyMultPic_Code || actionId == AAFightClassify_Code ||
+           actionId == PAClassify_Code;
+}
+
+}  // namespace
+
+// If any action in this task is a classify-family node, the channel decoder
+// must materialize host frames even though the detector supports native-only
+// inference.  Without this, classify receives a null frame and reports
+// FrameDataInvalid / crashes.
+//
+// The classify node's direct father is usually an intermediate action (e.g.
+// TargetFilter), not the channel itself, so locate the AlgChannel instance
+// (the root action's actionInst) by walking the action list instead of casting
+// the classify node's father.
+bool ForceHostFrameForClassifyPipeline(TaskElementPtr task) {
+    const bool has_classify =
+        std::any_of(task->actions.begin(), task->actions.end(), [](const TaskAction& taNode) {
+            return IsClassifyAction(taNode.action.actionId);
+        });
+    if (!has_classify) {
+        return false;
+    }
+    for (const auto& taNode : task->actions) {
+        auto* channel = dynamic_cast<AlgChannel*>(taNode.actionInst.get());
+        if (channel) {
+            channel->SetDecoderRequiresHostFrame(true);
+            LOG_INFO("[{}-{} Create {}] Classify detected in pipeline, "
+                     "decoder forced to host-frame mode",
+                     task->channelId, task->taskId, task->GetAlgName());
+            return true;
+        }
+    }
+    return false;
+}
 
 bool TaskBase::TaskRegist(TaskElementPtr task) {
     // Register task queues with parent actions
@@ -42,22 +91,7 @@ bool TaskBase::TaskRegist(TaskElementPtr task) {
         }
     }
 
-    // If any action in this task is a classify node (AAClassify_Code), the
-    // channel decoder must materialize host frames even though the detector
-    // supports native-only inference.  Without this, classify receives a
-    // null frame and reports FrameDataInvalid / crashes.
-    for (const auto& taNode : task->actions) {
-        if (taNode.action.actionId == AAClassify_Code && taNode.fatherAction) {
-            auto* channel = dynamic_cast<AlgChannel*>(taNode.fatherAction.get());
-            if (channel) {
-                channel->SetDecoderRequiresHostFrame(true);
-                LOG_INFO("[{}-{} Create {}] Classify detected in pipeline, "
-                         "decoder forced to host-frame mode",
-                         task->channelId, task->taskId, task->GetAlgName());
-            }
-            break;
-        }
-    }
+    ForceHostFrameForClassifyPipeline(task);
 
     return true;
 }

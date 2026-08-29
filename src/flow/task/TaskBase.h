@@ -86,6 +86,12 @@ struct TaskElement {
 };
 using TaskElementPtr = std::shared_ptr<TaskElement>;
 
+// When a task pipeline contains a classify-family node, force the channel
+// decoder to materialize host frames (disabling native-only inference) so the
+// classify crop-resize pipeline never receives a null frame.  Returns true
+// when a classify node was found and the channel decoder was switched.
+bool ForceHostFrameForClassifyPipeline(TaskElementPtr task);
+
 class TaskBase {
 public:
     TaskBase();

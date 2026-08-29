@@ -12,10 +12,13 @@
 #include <vector>
 
 #include "catch_amalgamated.hpp"
+#include "mock/MockServiceRegistry.h"
+#include "flow/channel/AlgChannel.h"
 #include "flow/common/AlgDataQueue.h"
 #include "flow/common/AlgDataQueueDistributor.h"
 #include "flow/common/AlgDataUnit.h"
 #include "flow/common/AlgTaskNativeCapability.h"
+#include "flow/task/TaskBase.h"
 #include "infer/AiComponment.h"
 #include "media/NativeVideoBuffer.h"
 #include "media/VideoFrame.h"
@@ -513,4 +516,71 @@ TEST_CASE("DistributorNativeOnlyFrame preserves frame metadata on queued copies"
         CHECK(queued->chanDataDec.reportTimeStamp == 555777);
         CHECK(queued->chanDataDec.native_buffer == native);
     }
+}
+
+TEST_CASE("ForceHostFrameForClassifyPipeline enables host-frame mode for classify pipelines",
+          "[flow][native-inference][task-regist]") {
+    using cosmo::AlgChannel;
+    using cosmo::ForceHostFrameForClassifyPipeline;
+    using cosmo::TaskAction;
+    using cosmo::TaskElement;
+
+    cosmo::test::MockServiceRegistry mocks;
+
+    auto task       = std::make_shared<TaskElement>();
+    task->channelId = "ch1";
+    task->taskId    = "t1";
+
+    TaskAction root;
+    root.action.actionId     = std::string(cosmo::BAStreamChannel_Code);
+    root.action.flowActionId = "root-flow";
+    root.actionInst          = std::make_shared<AlgChannel>("ch1", "t1", root.action);
+
+    TaskAction classify;
+    classify.action.actionId        = std::string(cosmo::AAClassify_Code);
+    classify.action.flowActionId    = "cls-flow";
+    classify.action.preFlowActionId = "root-flow";
+    classify.fatherAction           = root.actionInst;
+
+    task->actions = {root, classify};
+
+    auto* channel = dynamic_cast<AlgChannel*>(root.actionInst.get());
+    REQUIRE(channel);
+    CHECK_FALSE(channel->GetDecoderRequiresHostFrame());
+
+    CHECK(ForceHostFrameForClassifyPipeline(task));
+    CHECK(channel->GetDecoderRequiresHostFrame());
+}
+
+TEST_CASE("ForceHostFrameForClassifyPipeline leaves detect-only pipelines untouched",
+          "[flow][native-inference][task-regist]") {
+    using cosmo::AlgChannel;
+    using cosmo::ForceHostFrameForClassifyPipeline;
+    using cosmo::TaskAction;
+    using cosmo::TaskElement;
+
+    cosmo::test::MockServiceRegistry mocks;
+
+    auto task       = std::make_shared<TaskElement>();
+    task->channelId = "ch1";
+    task->taskId    = "t1";
+
+    TaskAction root;
+    root.action.actionId     = std::string(cosmo::BAStreamChannel_Code);
+    root.action.flowActionId = "root-flow";
+    root.actionInst          = std::make_shared<AlgChannel>("ch1", "t1", root.action);
+
+    TaskAction detect;
+    detect.action.actionId        = std::string(cosmo::AADetect_Code);
+    detect.action.flowActionId    = "det-flow";
+    detect.action.preFlowActionId = "root-flow";
+    detect.fatherAction           = root.actionInst;
+
+    task->actions = {root, detect};
+
+    auto* channel = dynamic_cast<AlgChannel*>(root.actionInst.get());
+    REQUIRE(channel);
+
+    CHECK_FALSE(ForceHostFrameForClassifyPipeline(task));
+    CHECK_FALSE(channel->GetDecoderRequiresHostFrame());
 }
