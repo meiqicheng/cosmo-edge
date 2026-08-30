@@ -462,7 +462,7 @@ def verify_package(
     if effective_chip is not None:
         expected_data_dir = (
             RUNTIME_DATA_DIRS["rockchip"]
-            if effective_chip in ("rk3576", "rv1126b")
+            if effective_chip in ("rk3576", "rk3588", "rv1126b")
             else RUNTIME_DATA_DIRS["default"]
         )
         if runtime_paths["COSMO_PACKAGE_DATA_DIR"] != expected_data_dir:
