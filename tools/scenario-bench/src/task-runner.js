@@ -15,11 +15,14 @@ export class TaskRunner {
    * @param {string|number} [ctx.algorithmCode] legacy single-task algorithm code
    * @param {string} [ctx.scheduleId] legacy single-task schedule id
    * @param {object} [ctx.taskConfig] legacy single-task config
-   * @param {number} [ctx.rampBatchSize]
-   * @param {number} [ctx.rampBatchDelaySec]
-   * @param {AbortSignal} [ctx.signal]
-   * @param {import('./logger.js').Logger} [logger]
-   */
+* @param {number} [ctx.rampBatchSize]
+    * @param {number} [ctx.rampBatchDelaySec]
+    * @param {number} [ctx.bindRetryCount] transient bind retries (default 3)
+    * @param {number} [ctx.bindRetryBaseDelayMs] first retry backoff (default 1000)
+    * @param {number} [ctx.channelSettleMs] settle delay after channel creation before first bind (default 3000)
+    * @param {AbortSignal} [ctx.signal]
+    * @param {import('./logger.js').Logger} [logger]
+    */
   constructor(client, ctx, logger) {
     this.client = client;
     this.tasks = normalizeTasks(ctx);
@@ -27,6 +30,9 @@ export class TaskRunner {
     this.bindings = normalizeBindings(ctx.bindings, this.tasks);
     this.rampBatchSize = Math.max(1, Number(ctx.rampBatchSize ?? 1));
     this.rampBatchDelaySec = Math.max(0, Number(ctx.rampBatchDelaySec ?? 15));
+    this.bindRetryCount = Math.max(0, Number(ctx.bindRetryCount ?? 3));
+    this.bindRetryBaseDelayMs = Math.max(0, Number(ctx.bindRetryBaseDelayMs ?? 1000));
+    this.channelSettleMs = Math.max(0, Number(ctx.channelSettleMs ?? 3000));
     this.signal = ctx.signal;
     this.log = logger;
     /** @type {string[]} videoChannelIds in bind order */
@@ -85,12 +91,7 @@ export class TaskRunner {
       this.log?.info(
         `Binding task "${task.id}" (${task.algorithmId}) to ${targetChannelIds.length} channel(s) via ApplyParamsBatch...`,
       );
-      const { failedList } = await this.client.taskApplyParamsBatch({
-        algorithmId: task.algorithmId,
-        scheduleId: task.scheduleId,
-        taskConfig: task.taskConfig,
-        targetChannelIds,
-      });
+      const failedList = await this._bindWithRetry(task, targetChannelIds);
       if (failedList?.length) {
         const failed = failedList.map((f) => f.id).join(', ');
         this.log?.warn(`ApplyParamsBatch partially failed for task "${task.id}" on: ${failed}`);
@@ -98,6 +99,57 @@ export class TaskRunner {
       }
     }
     return failures;
+  }
+
+  /**
+   * ApplyParamsBatch with bounded retry for transient channel-readiness races.
+   *
+   * The engine's Camera/AddVideo responds before channel initialization fully
+   * completes (InitCameraChannel → demux → SaveConfig), so a bind issued
+   * immediately after channel creation can hit SaveOrUpdateTask while the
+   * channel is not yet ready, returning CameraNotExist or TaskCreateFailed.
+   * Those failures are transient: the engine retries the same request
+   * successfully once the channel settles. Retry only the failed channels with
+   * exponential backoff; other error codes are treated as permanent.
+   */
+  async _bindWithRetry(task, targetChannelIds) {
+    // Engine ErrorEnum values (uint32_t): TaskCreateFailed=19, CameraNotExist=100.
+    // The engine serializes resCode as the numeric enum value, not the name.
+    const TRANSIENT = new Set([19, 100, 'TaskCreateFailed', 'CameraNotExist']);
+    let pending = [...targetChannelIds];
+    let lastFailedList = [];
+
+    for (let attempt = 0; attempt <= this.bindRetryCount; attempt++) {
+      throwIfAborted(this.signal);
+      if (attempt > 0) {
+        const delayMs = this.bindRetryBaseDelayMs * 2 ** (attempt - 1);
+        this.log?.warn(
+          `Retrying bind for task "${task.id}" on ${pending.length} channel(s) `
+          + `(attempt ${attempt}/${this.bindRetryCount}, backoff ${delayMs}ms)...`,
+        );
+        await sleepWithSignal(delayMs, this.signal);
+      }
+      const { failedList } = await this.client.taskApplyParamsBatch({
+        algorithmId: task.algorithmId,
+        scheduleId: task.scheduleId,
+        taskConfig: task.taskConfig,
+        targetChannelIds: pending,
+      });
+      lastFailedList = failedList ?? [];
+      if (!lastFailedList.length) return [];
+
+      if (attempt === 0) {
+        this.log?.warn(
+          `ApplyParamsBatch failedList (attempt 0) for task "${task.id}": `
+          + lastFailedList.map((f) => `${f.id}:${f.resCode ?? f.code ?? '?'}:${f.resMsg ?? ''}`).join(' | '),
+        );
+      }
+
+      const transient = lastFailedList.filter((f) => TRANSIENT.has(f.resCode ?? f.code ?? ''));
+      if (!transient.length) return lastFailedList;
+      pending = transient.map((f) => f.id);
+    }
+    return lastFailedList;
   }
 
   async _switch(entries, enable) {
@@ -132,6 +184,10 @@ export class TaskRunner {
 
     try {
       throwIfAborted(this.signal);
+      if (this.channelSettleMs > 0) {
+        this.log?.info(`Waiting ${this.channelSettleMs}ms for channels to settle before first bind...`);
+        await sleepWithSignal(this.channelSettleMs, this.signal);
+      }
       for (let i = 0; i < loadProfile.length; i++) {
         throwIfAborted(this.signal);
         const step = { ...loadProfile[i], index: i };

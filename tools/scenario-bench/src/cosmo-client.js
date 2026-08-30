@@ -100,6 +100,7 @@ export class CosmoClient {
     this.base = base.replace(/\/+$/, '');
     this.user = user;
     this.password = password;
+    this._savedPassword = password;
     this.lang = lang;
     this.mtk = token;
     this.uploadConcurrency = uploadConcurrency;
@@ -142,10 +143,11 @@ export class CosmoClient {
   /** Log in and store the mtk token. Returns the login response resData. */
   async login() {
     if (this.mtk) return { mtk: this.mtk };
-    if (!this.user || !this.password) throw new Error('login requires user/password or an existing token');
+    const pwd = this._savedPassword ?? this.password;
+    if (!this.user || !pwd) throw new Error('login requires user/password or an existing token');
     const res = await this._post('/login/dologin', {
       account: this.user,
-      pwd: hashPassword(this.password),
+      pwd: hashPassword(pwd),
     });
     this.mtk = res.resData?.mtk;
     if (!this.mtk) {
@@ -361,7 +363,7 @@ export class CosmoClient {
       headers.mtk = this.mtk;
       headers.token = this.mtk;
     }
-    return this._withUploadSlot(() => this._sendMultipartWithRetry(path, url, headers, body));
+    return this._withUploadSlot(() => this._sendMultipartWithRetry(path, url, headers, body, fields));
   }
 
   async _withUploadSlot(operation) {
@@ -378,7 +380,7 @@ export class CosmoClient {
     }
   }
 
-  async _sendMultipartWithRetry(path, url, headers, body) {
+  async _sendMultipartWithRetry(path, url, headers, body, fields) {
     const timeout = LONG_TIMEOUT_ROUTES.has(path) ? LONG_TIMEOUT_MS : DEFAULT_TIMEOUT_MS;
     for (let attempt = 1; attempt <= this.uploadAttempts; attempt += 1) {
       throwIfSignalAborted(this.signal);
@@ -425,6 +427,11 @@ export class CosmoClient {
         error.msgCode = firstMsg?.msgCode ?? 'HTTP_SERVICE_BUSY';
         throw error;
       }
+      if (resp.status === 401 && this._savedPassword) {
+        this.mtk = null;
+        await this.login();
+        return this._postMultipart(path, fields);
+      }
       if (!resp.ok) {
         const error = new Error(`HTTP ${resp.status} on POST ${path}`);
         error.httpStatus = resp.status;
@@ -454,7 +461,7 @@ export class CosmoClient {
    * @param {object} body JSON body
    * @returns {Promise<object>} full wire response (with resCode/resData/resMsg)
    */
-  async _post(path, body) {
+  async _post(path, body, { allowRelogin = true } = {}) {
     const url = path.startsWith('/v1/')
       ? `${this.base}${path}`
       : `${this.base}${API_PREFIX}${path}`;
@@ -489,6 +496,11 @@ export class CosmoClient {
       abortContext.cleanup();
     }
 
+    if (resp.status === 401 && allowRelogin && path.toLowerCase() !== '/login/dologin' && this._savedPassword) {
+      this.mtk = null;
+      await this.login();
+      return this._post(path, body, { allowRelogin: false });
+    }
     if (!resp.ok) {
       throw new Error(`HTTP ${resp.status} on POST ${path}`);
     }
