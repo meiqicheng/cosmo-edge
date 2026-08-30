@@ -51,12 +51,8 @@ esac
 if [ -z "${PROJECT_ROOT_PATH:-}" ]; then
     PROJECT_ROOT_PATH=$(cd "$(dirname "$0")/.." && pwd -P)
 fi
-# rk3588 uses the Debian 11 (bullseye) builder with its own lock file so the
-# published Ubuntu 22.04 builder images for rk3576/rv1126b stay compatible.
-case "${chip}" in
-    rk3588) builder_lock="${PROJECT_ROOT_PATH}/config/rockchip-build/builder-lock-rk3588.json" ;;
-    *)      builder_lock="${PROJECT_ROOT_PATH}/config/rockchip-build/builder-lock.json" ;;
-esac
+# All Rockchip targets (rk3576, rk3588, rv1126b) share one builder lock.
+builder_lock="${PROJECT_ROOT_PATH}/config/rockchip-build/builder-lock.json"
 image_lock="${COSMO_ROCKCHIP_BUILDER_LOCK:-/opt/cosmo/rockchip-builder-lock.json}"
 if [ ! -f "${builder_lock}" ]; then
     echo "ERROR: Rockchip builder lock is missing: ${builder_lock}" >&2
@@ -89,8 +85,8 @@ values = (
     target["media_root"],
     target["media_runtime_profile"],
     "ON" if target["rkllm_required"] else "OFF",
-    common.get("ffmpeg_root", ""),
-    common.get("glibc_max", ""),
+    target.get("ffmpeg_root") or common.get("ffmpeg_root", ""),
+    target.get("glibc_max") or common.get("glibc_max", ""),
 )
 if any("|" in str(value) or "\n" in str(value) for value in values):
     raise SystemExit("builder lock values must be single-line fields")
