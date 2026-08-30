@@ -37,6 +37,25 @@
         "lib/librkllmrt.so",
         "share/licenses/rkllm/LICENSE"
       ]
+    },
+    "rk3588": {
+      "image_repository": "cosmo-edge-build-env-rk3588-bullseye",
+      "base_image": "debian@sha256:99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704ebc3ead2015675",
+      "sdk_source_image": "ghcr.io/cosmo-wander-ai/cosmo_edge-build-env_rk3576@sha256:135d25d0baf14e7918726f7efb040a0627926aedd5825f52fab6c1cd208da348",
+      "media_runtime_profile": "rk3588-mpp-1.1.0-rga-1.10.6-bullseye-v1",
+      "media_root": "/opt/rockchip-media/rk3588",
+      "rkllm_required": true,
+      "ffmpeg_root": "/opt/ffmpeg-debian11",
+      "glibc_max": "2.31",
+      "required_package_paths": [
+        "share/cosmo/platform-profile.json",
+        "lib/libavcodec.so.58",
+        "lib/librockchip_mpp.so.1",
+        "lib/librga.so",
+        "lib/librkllmrt.so",
+        "share/licenses/rkllm/LICENSE"
+      ],
+      "forbidden_package_paths": []
     }
   }
 }

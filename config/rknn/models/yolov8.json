@@ -9,6 +9,7 @@
   },
   "conversion": {
     "input_sha256": "17a2cd603576afd1b5dd86a485933b857534355d25f517f6e1f2acd2a2fe4563",
+    "input_provenance": "The originally pinned yolov8_6head_op19.onnx (17a2cd60...) was lost with its agent-run directory. Regenerated 2026-08-27 via onnx 1.17.0 version_converter (opset 22→19, ir_version 10→9), which supports opset 22; this reproduces the original pinned model hash 17a2cd60... The 2026-08-26 manual-metadata-change regeneration (46adbf0d...) was a workaround for onnx 1.16.2's opset 1-21 limit and is superseded.",
     "maximum_onnx_opset": 19,
     "maximum_onnx_ir_version": 9,
     "optimization_level": 3,
