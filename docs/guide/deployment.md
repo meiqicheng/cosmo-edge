@@ -161,7 +161,7 @@ v1.1 新增平台描述成从 v1.0.0 原位升级：
 | BM1688 v1.0.0 | 使用 BM1688 Open 或对应受控 Protected 包原位升级 | 继续使用 `/data/cwaiuserdata` |
 | x86 Linux/Windows v1.0.0 | 从 `v1.1.0` 源码重新构建 Compose 服务 | 保留原命名卷；不要运行 `down -v` |
 | CV186X | 全新安装 v1.1.0 CV186X 包 | 没有公开的 v1.0.0 CV186X 升级基线 |
-| RK3576 / RV1126B | 正式用户全新安装；曾运行发布前构建的设备按下述数据根迁移处理 | v1.1 使用 `/userdata/cwaiuserdata` |
+| RK3576 / RK3588 / RV1126B | 正式用户全新安装；曾运行发布前构建的设备按下述数据根迁移处理 | v1.1 使用 `/userdata/cwaiuserdata` |
 | Apple Silicon macOS | 按 Preview 指南全新启动 | 没有 v1.0.0 macOS 发布基线 |
 
 本节定义升级方法，但不单独证明某个候选包已经通过发布验收。维护者必须把最终
@@ -197,7 +197,7 @@ commit、package SHA-256、设备和升级结果绑定到同一份证据，才�
 
 ### Rockchip 数据根迁移
 
-面向 RK3576 或 RV1126B 的包会在替换应用前处理从 `/data/cwaiuserdata` 到
+面向 RK3576、RK3588 或 RV1126B 的包会在替换应用前处理从 `/data/cwaiuserdata` 到
 `/userdata/cwaiuserdata` 的一次性迁移：
 
 - 事务复制配置、配置备份、数据库、数据库备份、摄像头配置、用户模型、图片库、

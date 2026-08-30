@@ -162,7 +162,7 @@ upgrades from v1.0.0:
 | BM1688 v1.0.0 | In-place upgrade with the BM1688 Open package or corresponding controlled Protected package | Continues to use `/data/cwaiuserdata` |
 | x86 Linux/Windows v1.0.0 | Rebuild the Compose service from the `v1.1.0` source | Preserve the existing named volumes; do not run `down -v` |
 | CV186X | Fresh installation of the v1.1.0 CV186X package | No public v1.0.0 CV186X upgrade baseline exists |
-| RK3576 / RV1126B | Fresh installation for release users; devices that ran prerelease builds follow the data-root migration below | v1.1 uses `/userdata/cwaiuserdata` |
+| RK3576 / RK3588 / RV1126B | Fresh installation for release users; devices that ran prerelease builds follow the data-root migration below | v1.1 uses `/userdata/cwaiuserdata` |
 | Apple Silicon macOS | Start fresh through the Preview guide | No v1.0.0 macOS release baseline exists |
 
 This section defines the upgrade method; it does not by itself prove that a
@@ -205,7 +205,7 @@ record before releasing an artifact.
 
 ### Rockchip data-root migration
 
-An RK3576 or RV1126B package performs a one-time migration from
+An RK3576, RK3588, or RV1126B package performs a one-time migration from
 `/data/cwaiuserdata` to `/userdata/cwaiuserdata` before replacing the application:
 
 - It transactionally copies configuration, configuration backups, databases,
