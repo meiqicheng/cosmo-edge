@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { summarizeStep } from '../src/step-evaluator.js';
 
-const RESULTS_ROOT = 'results/rk3588-capacity';
+const RESULTS_ROOT = 'results/rk3588-full-retest';
 const OUT = '../../docs/benchmarks/scenario-bench/v1.1/results/rk3588/cases.json';
 
 const THRESHOLDS = {
@@ -27,16 +27,26 @@ const TASK_NAME_MAP = {
   'no-safety-helmet': 'no-safety-helmet-analysis',
 };
 
+// Case-level metadata (lastPass/firstBlocked/outcome/boundaryKind/blockedReason)
+// is derived from each scenario's summary.json, which is the authoritative
+// conclusion of the retest run. Only the directory/workload/fps identity is
+// listed here.
 const SCENARIOS = [
-  { dir: 'person-detector-24fps', workload: 'person-detector', targetFps: 24, outcome: 'setup-blocked', boundaryKind: 'binding-blocked', lastPass: 5, firstBlocked: 6, blockedReason: 'task binding failed (device concurrent authorization limit reached)' },
-  { dir: 'person-detector-10fps', workload: 'person-detector', targetFps: 10, outcome: 'stopped', boundaryKind: 'performance-stop', lastPass: 6, firstBlocked: 7, blockedReason: 'average discard-rate protection threshold reached' },
-  { dir: 'person-detector-7fps', workload: 'person-detector', targetFps: 7, outcome: 'stopped', boundaryKind: 'performance-stop', lastPass: 7, firstBlocked: 8, blockedReason: 'average discard-rate protection threshold reached' },
-  { dir: 'person-detector-5fps', workload: 'person-detector', targetFps: 5, outcome: 'stopped', boundaryKind: 'performance-stop', lastPass: 7, firstBlocked: 8, blockedReason: 'average discard-rate protection threshold reached' },
-  { dir: 'no-safety-helmet-24fps', workload: 'no-safety-helmet-analysis', targetFps: 24, outcome: 'stopped', boundaryKind: 'performance-stop', lastPass: 3, firstBlocked: 4, blockedReason: 'processing-FPS gate failed (79.2%)' },
-  { dir: 'no-safety-helmet-10fps', workload: 'no-safety-helmet-analysis', targetFps: 10, outcome: 'stopped', boundaryKind: 'performance-stop', lastPass: 5, firstBlocked: 6, blockedReason: 'average discard-rate protection threshold reached' },
-  { dir: 'no-safety-helmet-7fps', workload: 'no-safety-helmet-analysis', targetFps: 7, outcome: 'stopped', boundaryKind: 'performance-stop', lastPass: 6, firstBlocked: 7, blockedReason: 'average discard-rate protection threshold reached' },
-  { dir: 'no-safety-helmet-5fps', workload: 'no-safety-helmet-analysis', targetFps: 5, outcome: 'stopped', boundaryKind: 'performance-stop', lastPass: 6, firstBlocked: 7, blockedReason: 'average discard-rate protection threshold reached' },
-  { dir: 'concurrent-mixed-5fps', workload: 'concurrent-mixed', targetFps: 5, outcome: 'stopped', boundaryKind: 'performance-stop', lastPass: 6, firstBlocked: 7, blockedReason: 'average discard-rate protection threshold reached' },
+  { dir: 'person-detector-24fps', workload: 'person-detector', targetFps: 24 },
+  { dir: 'person-detector-15fps', workload: 'person-detector', targetFps: 15 },
+  { dir: 'person-detector-10fps', workload: 'person-detector', targetFps: 10 },
+  { dir: 'person-detector-7fps', workload: 'person-detector', targetFps: 7 },
+  { dir: 'person-detector-5fps', workload: 'person-detector', targetFps: 5 },
+  { dir: 'no-safety-helmet-24fps', workload: 'no-safety-helmet-analysis', targetFps: 24 },
+  { dir: 'no-safety-helmet-15fps', workload: 'no-safety-helmet-analysis', targetFps: 15 },
+  { dir: 'no-safety-helmet-10fps', workload: 'no-safety-helmet-analysis', targetFps: 10 },
+  { dir: 'no-safety-helmet-7fps', workload: 'no-safety-helmet-analysis', targetFps: 7 },
+  { dir: 'no-safety-helmet-5fps', workload: 'no-safety-helmet-analysis', targetFps: 5 },
+  { dir: 'concurrent-mixed-24fps-32ch-fixed', workload: 'concurrent-mixed', targetFps: 24 },
+  { dir: 'concurrent-mixed-15fps-32ch-fixed', workload: 'concurrent-mixed', targetFps: 15 },
+  { dir: 'concurrent-mixed-10fps-32ch-fixed', workload: 'concurrent-mixed', targetFps: 10 },
+  { dir: 'concurrent-mixed-7fps-32ch-fixed', workload: 'concurrent-mixed', targetFps: 7 },
+  { dir: 'concurrent-mixed-5fps-32ch-fixed', workload: 'concurrent-mixed', targetFps: 5 },
 ];
 
 const WORKLOAD_PREFIX = {
@@ -60,17 +70,44 @@ function round(v, digits) {
   return Math.round(v * f) / f;
 }
 
+function deriveCaseMeta(summary) {
+  const lastPass = summary.maxStableChannels ?? summary.maxVerifiedPassedChannels;
+  const firstBlocked = summary.firstFailedStep?.channels ?? summary.bottleneck?.channels ?? null;
+  let outcome;
+  let boundaryKind;
+  let blockedReason;
+  if (summary.capacityMeasured) {
+    outcome = 'stopped';
+    boundaryKind = 'performance-stop';
+    blockedReason = summary.bottleneck?.reason ?? null;
+  } else if (summary.capacityExecutionBlocked) {
+    // The run was stopped by the runtime protection fuse before a capacity
+    // boundary was measured. The retest report does not count this as a
+    // capacity failure and no capacity limit is formed.
+    outcome = 'stopped';
+    boundaryKind = 'performance-stop';
+    blockedReason = `execution blocked: ${summary.bottleneck?.reason ?? 'run stopped before capacity measured'} (not counted as capacity failure)`;
+  } else {
+    outcome = 'stopped';
+    boundaryKind = 'performance-stop';
+    blockedReason = summary.bottleneck?.reason ?? null;
+  }
+  return { lastPass, firstBlocked, outcome, boundaryKind, blockedReason };
+}
+
 function buildCase(scenario) {
   const dir = join(RESULTS_ROOT, scenario.dir);
   const metricsBuf = readFileSync(join(dir, 'metrics.json'));
   const metrics = JSON.parse(metricsBuf.toString('utf8'));
+  const summary = JSON.parse(readFileSync(join(dir, 'summary.json'), 'utf8'));
   const sourceSummarySha256 = sha256(metricsBuf);
+  const meta = deriveCaseMeta(summary);
 
   const steps = [];
   for (const step of metrics.steps) {
     const channels = step.channels;
-    const isBlockedStep = scenario.boundaryKind === 'performance-stop' && channels === scenario.firstBlocked;
-    if (channels > scenario.lastPass && !isBlockedStep) continue; // never executed / not part of a binding-blocked case
+    const isBlockedStep = meta.boundaryKind === 'performance-stop' && channels === meta.firstBlocked;
+    if (channels > meta.lastPass && !isBlockedStep) continue; // never executed / not part of a binding-blocked case
     const summary = summarizeStep(step, metrics.samples, THRESHOLDS, 'local', 0);
 
     const result = isBlockedStep ? 'STOP' : 'PASS';
@@ -104,7 +141,7 @@ function buildCase(scenario) {
       acceleratorMemoryPeakPercent: summary.maxAcceleratorMem != null ? round(summary.maxAcceleratorMem, 1) : null,
       cpuPeakPercent: summary.maxCpu != null ? round(summary.maxCpu, 1) : null,
       memoryPeakPercent: summary.maxMem != null ? round(summary.maxMem, 1) : null,
-      failureReason: result === 'PASS' ? null : scenario.blockedReason,
+      failureReason: result === 'PASS' ? null : meta.blockedReason,
     });
 
     if (result === 'STOP') {
@@ -112,20 +149,20 @@ function buildCase(scenario) {
     }
   }
 
-  const caseId = `${WORKLOAD_PREFIX[scenario.workload]}-${scenario.targetFps}fps-16ch`;
-  const sourceCaseId = `${SOURCE_PREFIX[scenario.workload]}-${scenario.targetFps}fps-16ch`;
+  const caseId = `${WORKLOAD_PREFIX[scenario.workload]}-${scenario.targetFps}fps-32ch`;
+  const sourceCaseId = `${SOURCE_PREFIX[scenario.workload]}-${scenario.targetFps}fps-32ch`;
 
   return {
     caseId,
     sourceCaseId,
     workload: scenario.workload,
     targetFps: scenario.targetFps,
-    configuredChannels: 16,
-    outcome: scenario.outcome,
-    boundaryKind: scenario.boundaryKind,
-    lastPassingChannels: scenario.lastPass,
-    firstBlockedChannels: scenario.firstBlocked,
-    blockedReason: scenario.blockedReason,
+    configuredChannels: 32,
+    outcome: meta.outcome,
+    boundaryKind: meta.boundaryKind,
+    lastPassingChannels: meta.lastPass,
+    firstBlockedChannels: meta.firstBlocked,
+    blockedReason: meta.blockedReason,
     sourceSummarySha256,
     steps,
   };
@@ -140,7 +177,7 @@ const casesJson = {
   platformId: 'rk3588',
   platform: 'RK3588',
   scope: 'additional-experimental-platform',
-  evidenceDate: '2026-08-29',
+  evidenceDate: '2026-08-30',
   caseCount: cases.length,
   gates: {
     minFpsRatio: 0.8,
