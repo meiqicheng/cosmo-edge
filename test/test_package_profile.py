@@ -131,7 +131,7 @@ class PackageProfileTests(unittest.TestCase):
                 if name == "share/cosmo/runtime-paths.env":
                     selected_data_dir = runtime_data_dir or (
                         "/userdata/cwaiuserdata"
-                        if target_chip in ("rk3576", "rv1126b")
+                        if target_chip in ("rk3576", "rk3588", "rv1126b")
                         else "/data/cwaiuserdata"
                     )
                     data = (
@@ -478,7 +478,7 @@ class PackageProfileTests(unittest.TestCase):
             verifier.verify_package(wrong_platform, "public-runtime", "rv1126b")
 
     def test_runtime_paths_match_target_chip(self) -> None:
-        for target_chip in ("rk3576", "rv1126b"):
+        for target_chip in ("rk3576", "rk3588", "rv1126b"):
             package = self.make_package(
                 "public-runtime",
                 target_chip=target_chip,
@@ -486,20 +486,13 @@ class PackageProfileTests(unittest.TestCase):
             )
             verifier.verify_package(package, "public-runtime", target_chip)
 
-        # rk3588 preview keeps the default data root (CosmoRuntimePaths.cmake
-        # only routes rk3576/rv1126b to /userdata) and binds a platform profile.
-        rk3588 = self.make_package(
-            "public-runtime",
-            target_chip="rk3588",
-            platform_chip="rk3588",
-        )
-        verifier.verify_package(rk3588, "public-runtime", "rk3588")
-
+        # rk3588 routes to /userdata like the other Rockchip targets and binds
+        # a platform profile; a /data data root is rejected for it.
         rk3588_wrong_root = self.make_package(
             "public-runtime",
             target_chip="rk3588",
             platform_chip="rk3588",
-            runtime_data_dir="/userdata/cwaiuserdata",
+            runtime_data_dir="/data/cwaiuserdata",
         )
         with self.assertRaisesRegex(
             verifier.PackageAuditError, "runtime data directory does not match"
