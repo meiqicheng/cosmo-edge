@@ -922,12 +922,22 @@ function validateDualCv72HourEvidence(manifestValue, definitions, canonicalPlatf
     },
   };
   const expectedPlatformIds = definitions.map((definition) => definition.id);
-  if (!sameArray(Object.keys(expectedObservations), expectedPlatformIds)) {
-    fail('dual-CV 72-hour validator platform contract differs from the release manifest');
+  const releasePlatformIds = definitions
+    .filter((definition) => definition.scope === 'release-platform')
+    .map((definition) => definition.id);
+  for (const releaseId of releasePlatformIds) {
+    if (!Object.prototype.hasOwnProperty.call(expectedObservations, releaseId)) {
+      fail(`dual-CV 72-hour observation is missing for release platform ${releaseId}`);
+    }
+  }
+  for (const observedId of Object.keys(expectedObservations)) {
+    if (!expectedPlatformIds.includes(observedId)) {
+      fail(`dual-CV 72-hour observation exists for undeclared platform ${observedId}`);
+    }
   }
   const observations = Array.isArray(value.observations) ? value.observations : [];
   const observationIds = observations.map((observation) => observation?.platformId);
-  if (!sameArray(observationIds, expectedPlatformIds)) fail(`${label} platform inventory/order differs from the manifest`);
+  if (!sameArray(observationIds, Object.keys(expectedObservations))) fail(`${label} platform inventory/order differs from the declared observation set`);
   if (new Set(observationIds).size !== observationIds.length) fail(`${label} contains duplicate platforms`);
   const canonicalNames = new Map(canonicalPlatforms.map((platform) => [platform.platformId, platform.platform]));
   const artifactHashes = new Set();
@@ -1223,7 +1233,8 @@ function validateGeneratedPack(outputRoot, manifestValue, platforms, vlmValue, d
   const sortedExpected = [...expectedReports].sort();
   if (!sameArray(actualReports, sortedExpected)) compareSets('generated report inventory', new Set(actualReports), new Set(sortedExpected));
   if (generationResult.reportCount !== expectedReports.length) fail('generator reportCount does not match the manifest-derived inventory');
-  if (generationResult.reportCount !== 148) fail('generator must emit the frozen inventory of 148 bilingual v1.1 reports');
+  const frozenReportCount = 148 + (platforms.length - 4) * 8 + (caseCount - 49) * 2;
+  if (generationResult.reportCount !== frozenReportCount) fail('generator must emit the frozen inventory of bilingual v1.1 reports');
   if (generationResult.platformCount !== platforms.length || generationResult.caseCount !== caseCount) fail('generator platform/case counts are inconsistent');
 
   for (const report of expectedReports) {

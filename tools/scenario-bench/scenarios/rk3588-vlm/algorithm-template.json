@@ -1,0 +1,29 @@
+{
+  "algorithmCategory": 2,
+  "algorithmCode": 7463006,
+  "algorithmId": "7463006",
+  "algorithmMetadata": "{\"params\":[],\"region\":{\"heads\":[]},\"regionType\":\"0\",\"scheduleSupport\":false,\"defaultFullScreen\":true,\"maxAreaCount\":4,\"shieldedRegion\":{}}",
+  "algorithmName": "RK3588 Qwen3.5 Video Analysis",
+  "algorithmProcessdata": "[{\"actionId\":\"BA_00001\",\"actionName\":\"视频解码\",\"flowActionId\":\"video-decode\",\"preFlowActionId\":\"-1\",\"configObject\":{\"params\":[]}},{\"actionId\":\"DA_00003\",\"actionName\":\"Qwen3.5 VLM Analysis\",\"flowActionId\":\"qwen35-vlm\",\"preFlowActionId\":\"video-decode\",\"configObject\":{\"params\":[{\"key\":\"atomicCode\",\"value\":\"7000001\"},{\"key\":\"fps\",\"value\":\"0.1\"},{\"key\":\"advanced_mode\",\"value\":\"0\"},{\"key\":\"keywords\",\"value\":\"判断有没有人\"},{\"key\":\"generationStyle\",\"value\":\"standard\"}]}},{\"actionId\":\"BA_00004\",\"actionName\":\"事件上报\",\"flowActionId\":\"event-report\",\"preFlowActionId\":\"qwen35-vlm\",\"configObject\":{\"params\":[{\"key\":\"custParam.alarmType\",\"value\":\"1\"},{\"key\":\"alarmProperty\",\"value\":\"0\"},{\"key\":\"triggerEventRecordType\",\"value\":\"0\"},{\"key\":\"realtimeEventRecordType\",\"value\":\"0\"},{\"key\":\"enableLlmReview\",\"value\":\"0\"}]}}]",
+  "algorithmUsage": 1,
+  "atomicList": "[{\"atomicCode\":\"7000001\",\"atomicName\":\"Qwen3_5\",\"position\":\"qwen35-vlm\",\"labelList\":[],\"categoriesLabelList\":[]}]",
+  "checkType": 0,
+  "confVersionId": "rk3588-qwen35-video-v1",
+  "confVersionName": "V1",
+  "configVersionList": [
+    {
+      "algorithmCode": "7463006",
+      "algorithmMetadata": "{\"params\":[],\"region\":{\"heads\":[]},\"regionType\":\"0\",\"scheduleSupport\":false,\"defaultFullScreen\":true,\"maxAreaCount\":4,\"shieldedRegion\":{}}",
+      "algorithmProcessdata": "[{\"actionId\":\"BA_00001\",\"actionName\":\"视频解码\",\"flowActionId\":\"video-decode\",\"preFlowActionId\":\"-1\",\"configObject\":{\"params\":[]}},{\"actionId\":\"DA_00003\",\"actionName\":\"Qwen3.5 VLM Analysis\",\"flowActionId\":\"qwen35-vlm\",\"preFlowActionId\":\"video-decode\",\"configObject\":{\"params\":[{\"key\":\"atomicCode\",\"value\":\"7000001\"},{\"key\":\"fps\",\"value\":\"0.1\"},{\"key\":\"advanced_mode\",\"value\":\"0\"},{\"key\":\"keywords\",\"value\":\"判断有没有人\"},{\"key\":\"generationStyle\",\"value\":\"standard\"}]}},{\"actionId\":\"BA_00004\",\"actionName\":\"事件上报\",\"flowActionId\":\"event-report\",\"preFlowActionId\":\"qwen35-vlm\",\"configObject\":{\"params\":[{\"key\":\"custParam.alarmType\",\"value\":\"1\"},{\"key\":\"alarmProperty\",\"value\":\"0\"},{\"key\":\"triggerEventRecordType\",\"value\":\"0\"},{\"key\":\"realtimeEventRecordType\",\"value\":\"0\"},{\"key\":\"enableLlmReview\",\"value\":\"0\"}]}}]",
+      "algorithmUpdateTime": 1787459000000,
+      "atomicList": "[{\"atomicCode\":\"7000001\",\"atomicName\":\"Qwen3_5\",\"position\":\"qwen35-vlm\",\"labelList\":[],\"categoriesLabelList\":[]}]",
+      "id": "rk3588-qwen35-video-v1",
+      "name": "V1"
+    }
+  ],
+  "createTime": 1787459000000,
+  "description": "RK3588 video pipeline running the Qwen3.5 multimodal model (RKLLM backend) for video analysis",
+  "remark": "RK3588 video pipeline running the Qwen3.5 multimodal model (RKLLM backend) for video analysis",
+  "supplier": "CWAI",
+  "updateTime": 1787459000000
+}

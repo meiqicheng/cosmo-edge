@@ -1,0 +1,56 @@
+name: rk3588-capacity-concurrent-mixed-7fps
+displayName: RK3588 并发混合任务矩阵 每路两业务任务 3模型阶段 7FPS
+sampleIntervalSec: 3
+
+channels:
+  mode: local
+  repeatCount: 0
+  sources:
+    - name: no-helmet-01
+      file: ../../rk3588-detect-classify/LX0000000007.mp4
+
+tasks:
+  - id: person-detector
+    displayName: 人员检测
+    type: cv
+    algorithmId: "7463"
+    scheduleId: "e89c6c6385e5454b35cde0d1653vg"
+    template: ../person-detector/algorithm-template.json
+    targetFps: 7
+    taskConfig:
+      params:
+        - key: param.targetAlarmInterval
+          value: "36000"
+        - key: param.targetAlarmCount
+          value: "1"
+        - key: param.restrainSwitch
+          value: "1"
+        - key: param.sensitivity
+          value: "1"
+        - key: param.detectionDuration
+          value: "3600"
+  - id: no-safety-helmet
+    displayName: 未戴安全帽分析
+    type: cv
+    algorithmId: "7463002"
+    scheduleId: "e89c6c6385e5454b35cde0d1653vg"
+    template: ../algorithm-template-7463002.json
+    targetFps: 7
+    taskConfig:
+      params: []
+
+loadProfile:
+  - channels: 32
+    holdSec: 30
+
+thresholds:
+  pass:
+    maxCriticalPathLatencyMs: 200
+    maxDetectorLatencyMs: 150
+    avgDiscardRate: 0.05
+    maxPacketDiscardRate: 0.01
+    maxDiskUsedPercent: 90
+  taskTypes:
+    cv:
+      minFpsRatio: 0.8
+      maxMissingRate: 0
