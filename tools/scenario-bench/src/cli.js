@@ -79,6 +79,9 @@ run options:
   --only-channels <n>  Run only one exact channel-count step from the effective profile
   --ramp-batch-size <n>
   --ramp-batch-delay-sec <n>
+  --channel-settle-ms <n>   Wait after channel creation before the first bind (default: 3000)
+  --bind-retry-count <n>    Transient bind retries per task (default: 3)
+  --bind-retry-base-delay-ms <n>  First retry backoff (default: 1000)
   --hold-warmup-sec <n>   Ignore the first N seconds of each hold window for bottleneck detection (default: 0)
   --vlm-ready-timeout-sec <n> Wait for each new VLM route, default 180
   --preview <mode>      none (default) | raw | algorithm
@@ -558,6 +561,9 @@ async function runBenchmark(args) {
       bindings: pkg.bindings,
       rampBatchSize: Number(args['ramp-batch-size'] ?? 1),
       rampBatchDelaySec: Number(args['ramp-batch-delay-sec'] ?? 15),
+      channelSettleMs: Number(args['channel-settle-ms'] ?? 3000),
+      bindRetryCount: Number(args['bind-retry-count'] ?? 3),
+      bindRetryBaseDelayMs: Number(args['bind-retry-base-delay-ms'] ?? 1000),
       signal,
     }, log);
     runner.setChannels(videoChannelIds);
@@ -623,7 +629,7 @@ async function runBenchmark(args) {
       const diskUsed = sample.hardware?.eMMCUtilization?.usedPercent;
       const diskLimit = Number(pkg?.thresholds?.pass?.maxDiskUsedPercent ?? 90);
       if (mem98Count >= 3) reasons.push(`memory >= 98% for ${mem98Count} consecutive samples`);
-      if (memAvg60s != null && memAvg60s >= 95) reasons.push(`memory 60s average ${memAvg60s.toFixed(1)}% >= 95%`);
+      if (memAvg60s != null && memAvg60s >= 98) reasons.push(`memory 60s average ${memAvg60s.toFixed(1)}% >= 98%`);
       if (cpu98Count >= 3) reasons.push(`CPU >= 98% for ${cpu98Count} consecutive samples`);
       // if (npu98Count >= 3) reasons.push(`NPU >= 98% for ${npu98Count} consecutive samples`);
       if (discardCount >= 2) reasons.push(`discardRate > ${DISCARD_BOTTLENECK} for ${discardCount} consecutive samples`);

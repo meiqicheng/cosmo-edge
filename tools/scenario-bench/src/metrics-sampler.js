@@ -173,6 +173,9 @@ export class MetricsSampler {
         processPeriod: actionProcessPeriod,
         discardPeriod: actionDiscardPeriod,
         periodMs: actionPeriodMs,
+        statusCode: a.statusCode != null ? String(a.statusCode) : null,
+        statusDesc: a.statusDesc ?? null,
+        statusDescKey: a.statusDescKey ?? null,
       });
 
       if (actionFps != null && actionProcessPeriod > 0 && throughputBearingAction) {
@@ -186,6 +189,12 @@ export class MetricsSampler {
         maxDiscardRate = Math.max(maxDiscardRate, actionDiscardPeriod / actionDiscardDen);
       }
     }
+
+    // Per-action error/exception state (e.g. "帧数据异常" = api.error.FrameDataInvalid).
+    // statusCode '0' is ErrorEnum::Success; any other value is an error condition.
+    const actionErrors = actionSummaries
+      .filter((s) => s.statusCode != null && s.statusCode !== '0')
+      .map((s) => ({ actionId: s.actionId, name: s.name, statusCode: s.statusCode, statusDesc: s.statusDesc, statusDescKey: s.statusDescKey }));
 
     // Qwen workers may batch and share up to several task bindings, so their
     // DA_00003 processCount is a worker-batch counter rather than a per-task
@@ -260,6 +269,8 @@ export class MetricsSampler {
       insertTotal, processTotal, discardTotal,
       holdCount, alarmCount,
       actionSummaries,
+      hasError: actionErrors.length > 0,
+      errorActions: actionErrors,
       nodeDurationInfos: Array.isArray(st.nodeDurationInfos) ? st.nodeDurationInfos : [],
     };
   }
