@@ -563,3 +563,4 @@ build_*/
 
 # RK3588 build cache is reproducibly prepared by scripts/prepare_rk3588_build_cache.sh.
 .rk3588-build-cache/
+tools/scenario-bench/results/
