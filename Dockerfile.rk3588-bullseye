@@ -6,8 +6,8 @@
 # missing). This image rebuilds the toolchain + third-party deps on the
 # bullseye glibc baseline so the produced cosmo-engine runs on the device.
 #
-# Frozen inputs (do not bump casually; update builder-lock-rk3588.json in
-# lockstep and record identities in /opt/cosmo/builder-versions.json):
+# Frozen inputs (do not bump casually; update config/rockchip-build/builder-lock.json
+# in lockstep and record identities in /opt/cosmo/builder-versions.json):
 #   - Base image: debian:bullseye pinned by digest.
 #   - RKNN runtime 2.3.2 headers/lib copied from the digest-pinned rk3576
 #     build image and verified by sha256 at build time.
@@ -19,15 +19,15 @@
 # SDK layout:
 #   /opt/rknn               RKNN Runtime 2.3.2 (include/rknn_api.h, lib/librknnrt.so)
 #   /opt/ffmpeg-debian11    {include,lib} Debian 11 arm64 FFmpeg + dep closure
-#   /opt/cosmo/rockchip-builder-lock-rk3588.json   builder lock consumed by
+#   /opt/cosmo/rockchip-builder-lock.json   builder lock consumed by
 #                           scripts/build_rockchip_package.sh --chip rk3588
 #                           (via COSMO_ROCKCHIP_BUILDER_LOCK)
 #
 # Targets:
-#   core         (default) RKNN + MPP/RGA + FFmpeg toolchain. No VLM runtime.
-#   rkllm        optional stage adding the user-supplied RKLLM runtime on top
-#                of core for Qwen3.5 VLM builds. Build explicitly with
-#                `docker build --target rkllm .`
+#   core         (default) RKNN + MPP/RGA + FFmpeg toolchain with the RKLLM
+#                runtime baked in, so the produced package always carries the
+#                Qwen3.5 VLM backend (rkllm_required=true). Single image; no
+#                separate core/rkllm split.
 FROM debian:bullseye@sha256:99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704ebc3ead2015675 AS core
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -195,11 +195,11 @@ RUN set -eux; \
     test -s "$root/share/licenses/rockchip-media/librga/COPYING"; \
     ls -la "$root/lib"
 
-# Step 7: builder lock for the rk3588 package flow. The package script selects
-# config/rockchip-build/builder-lock-rk3588.json from the repo tree and
-# byte-compares it against the image-side copy resolved through this env var.
-COPY config/rockchip-build/builder-lock-rk3588.json /opt/cosmo/rockchip-builder-lock-rk3588.json
-ENV COSMO_ROCKCHIP_BUILDER_LOCK=/opt/cosmo/rockchip-builder-lock-rk3588.json
+# Step 7: builder lock for the rk3588 package flow. All Rockchip targets share
+# config/rockchip-build/builder-lock.json; the package script byte-compares it
+# against the image-side copy resolved through this env var.
+COPY config/rockchip-build/builder-lock.json /opt/cosmo/rockchip-builder-lock.json
+ENV COSMO_ROCKCHIP_BUILDER_LOCK=/opt/cosmo/rockchip-builder-lock.json
 
 # Step 8: record frozen tool identities for evidence/reproducibility.
 RUN set -eux; \
@@ -231,12 +231,10 @@ PYEOF
 
 WORKDIR /workspace
 
-# Optional VLM overlay: adds the user-supplied RKLLM Runtime v1.3.0 (aarch64)
-# on top of core so cmake/rkllm.cmake auto-enables the Qwen3.5 VLM backend.
-# Not built by default; the core package never requires these files.
-FROM core AS rkllm
-COPY .rk3588-build-cache/rkllm-runtime/include/rkllm.h /opt/rknn/include/rkllm.h
-COPY .rk3588-build-cache/rkllm-runtime/lib/librkllmrt.so /opt/rknn/lib/librkllmrt.so
-COPY .rk3588-build-cache/rkllm-runtime/LICENSE /opt/rknn/LICENSE
-RUN test -f /opt/rknn/include/rkllm.h && test -f /opt/rknn/lib/librkllmrt.so \
-    && test -f /opt/rknn/LICENSE
+# RKLLM Runtime v1.3.0 (aarch64) baked into the single builder image so the
+# produced package always carries the Qwen3.5 VLM backend (rkllm_required=true).
+COPY .rk3588-build-cache/rkllm-runtime/include/rkllm.h /opt/rkllm/include/rkllm.h
+COPY .rk3588-build-cache/rkllm-runtime/lib/librkllmrt.so /opt/rkllm/lib/librkllmrt.so
+COPY .rk3588-build-cache/rkllm-runtime/LICENSE /opt/rkllm/LICENSE
+RUN test -f /opt/rkllm/include/rkllm.h && test -f /opt/rkllm/lib/librkllmrt.so \
+    && test -f /opt/rkllm/LICENSE

@@ -1037,11 +1037,6 @@ class PackageProfileTests(unittest.TestCase):
             )
         )
         builder_lock = json.loads(
-            (REPOSITORY / "config/rockchip-build/builder-lock-rk3588.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        shared_lock = json.loads(
             (REPOSITORY / "config/rockchip-build/builder-lock.json").read_text(
                 encoding="utf-8"
             )
@@ -1057,8 +1052,6 @@ class PackageProfileTests(unittest.TestCase):
         )
 
         # Platform profile: RKNN inference with Rockchip MPP/RGA media.
-        # The core package carries no VLM runtime; RKLLM is an optional
-        # overlay (builder target `rkllm`).
         self.assertEqual(profile["backend"], "rknn")
         self.assertEqual(profile["chip"], "rk3588")
         self.assertEqual(profile["conversion"]["target_platform"], "rk3588")
@@ -1069,35 +1062,30 @@ class PackageProfileTests(unittest.TestCase):
         )
         self.assertTrue(profile["qualification"]["requires_target_bound_evidence"])
 
-        # Dedicated lock: rk3588 only, glibc 2.31 policy, ffmpeg root set,
-        # and the shared rk3576/rv1126b lock stays untouched.
-        self.assertNotIn("rk3588", shared_lock["targets"])
+        # Shared lock: rk3588 now lives in builder-lock.json alongside
+        # rk3576/rv1126b, with glibc 2.31 + ffmpeg root as per-target policy.
+        self.assertIn("rk3588", builder_lock["targets"])
         target = builder_lock["targets"]["rk3588"]
-        self.assertEqual(list(builder_lock["targets"]), ["rk3588"])
         self.assertEqual(
             target["media_runtime_profile"], profile["media"]["runtime_profile"]
         )
-        self.assertFalse(target["rkllm_required"])
+        self.assertTrue(target["rkllm_required"])
         self.assertEqual(target["media_root"], "/opt/rockchip-media/rk3588")
-        self.assertEqual(builder_lock["common"]["glibc_max"], "2.31")
-        self.assertEqual(builder_lock["common"]["ffmpeg_root"], "/opt/ffmpeg-debian11")
-        self.assertNotIn("rkllm", builder_lock["common"])
+        self.assertEqual(target["glibc_max"], "2.31")
+        self.assertEqual(target["ffmpeg_root"], "/opt/ffmpeg-debian11")
+        self.assertNotIn("glibc_max", builder_lock["common"])
+        self.assertNotIn("ffmpeg_root", builder_lock["common"])
         self.assertIn("lib/libavcodec.so.58", target["required_package_paths"])
         self.assertIn("lib/librockchip_mpp.so.1", target["required_package_paths"])
         self.assertIn("lib/librga.so", target["required_package_paths"])
-        self.assertNotIn("lib/librkllmrt.so", target["required_package_paths"])
-        self.assertNotIn("share/licenses/rkllm/LICENSE", target["required_package_paths"])
+        self.assertIn("lib/librkllmrt.so", target["required_package_paths"])
+        self.assertIn("share/licenses/rkllm/LICENSE", target["required_package_paths"])
         self.assertEqual(target["forbidden_package_paths"], [])
-
-        # The VLM runtime moved to an explicit optional overlay identity.
-        overlay = builder_lock["optional_overlays"]["llm"]
-        self.assertEqual(overlay["image_target"], "rkllm")
-        self.assertEqual(overlay["version"], "1.3.0")
-        self.assertFalse(overlay["redistribution_allowed"])
+        self.assertNotIn("optional_overlays", builder_lock)
 
         # Builder image freezes the bullseye base by digest, verifies the
         # RKNN runtime sha256, assembles the FFmpeg root, and bakes in the
-        # dedicated builder lock behind the package-script env override.
+        # shared builder lock behind the package-script env override.
         self.assertIn(
             "debian:bullseye@sha256:"
             "99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704ebc3ead2015675",
@@ -1113,22 +1101,22 @@ class PackageProfileTests(unittest.TestCase):
             dockerfile,
         )
         self.assertIn("/opt/ffmpeg-debian11", dockerfile)
-        self.assertIn("COPY config/rockchip-build/builder-lock-rk3588.json", dockerfile)
+        self.assertIn("COPY config/rockchip-build/builder-lock.json", dockerfile)
         self.assertIn(
-            "COSMO_ROCKCHIP_BUILDER_LOCK=/opt/cosmo/"
-            "rockchip-builder-lock-rk3588.json",
+            "COSMO_ROCKCHIP_BUILDER_LOCK=/opt/cosmo/rockchip-builder-lock.json",
             dockerfile,
         )
         self.assertIn("builder-versions-rk3588.json", dockerfile)
 
-        # Core/VLM split: default target is core; RKLLM only in the overlay.
+        # Single image: RKLLM is baked in at /opt/rkllm; no core/rkllm split.
         self.assertIn(" AS core", dockerfile)
-        self.assertIn("FROM core AS rkllm", dockerfile)
-        self.assertIn("target: core", compose)
+        self.assertNotIn("FROM core AS rkllm", dockerfile)
+        self.assertIn("/opt/rkllm/include/rkllm.h", dockerfile)
+        # Single-stage image: no target selection needed in compose.
+        self.assertNotIn("target: core", compose)
 
-        # Package entry point selects the chip-specific lock and enforces
-        # the glibc gate for rk3588.
-        self.assertIn("builder-lock-rk3588.json", entrypoint)
+        # Package entry point uses the shared lock and enforces the glibc gate.
+        self.assertNotIn("builder-lock-rk3588.json", entrypoint)
         self.assertIn("glibc_gate.py", entrypoint)
         self.assertIn('command:\n      - --chip', compose)
         self.assertIn("${COSMO_TARGET_CHIP:-rk3588}", compose)
