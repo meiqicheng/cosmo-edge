@@ -498,7 +498,7 @@ function renderLongRunReport(locale, longRun, platforms) {
       ],
     ) +
     `<h2>${zh ? '平台详情' : 'Platform details'}</h2><ul>` +
-    platforms.map((platform) => `<li>${anchor(`../${platform.id}/dual-cv-72h/report${suffix}.html`, `${platform.name} · ${zh ? '72 小时报告' : '72-hour report'}`)}</li>`).join('') +
+    platforms.filter((platform) => observations.has(platform.id)).map((platform) => `<li>${anchor(`../${platform.id}/dual-cv-72h/report${suffix}.html`, `${platform.name} · ${zh ? '72 小时报告' : '72-hour report'}`)}</li>`).join('') +
     `</ul>` +
     `<details class="evidence-notes"><summary>${zh ? '执行与证据说明' : 'Execution and evidence notes'}</summary><ul>` +
     `<li>${zh

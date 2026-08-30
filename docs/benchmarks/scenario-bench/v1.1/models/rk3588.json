@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "platform": "RK3588",
+  "artifactFormat": ".rknn for CV; RKLLM-specific artifact for VLM",
+  "models": [
+    {
+      "publicId": "person-detector",
+      "name": "YOLOv8 detector",
+      "version": "V1.0.0",
+      "input": "1x3x640x640 RGB, scale 1/255, letterbox 114",
+      "output": "1x84x8400 candidate tensor",
+      "precision": "not recorded by device catalog; do not infer INT8/FP16",
+      "sha256": "bce9f86626678b0b8989b9218ee9e3bf583001810715973b414f48b15c6ca834",
+      "sizeBytes": 4279251,
+      "verification": "hash computed from the installed cosmo-V1.1.59 resource/models/prod_RK3588_9275710_YOLOV8_V1.0.0/model.rknn on the tested device",
+      "redistribution": "not included pending model-license decision"
+    },
+    {
+      "publicId": "safety-helmet-classifier",
+      "name": "Helmet classifier",
+      "version": "V1.0.0",
+      "input": "1x3x224x224 RGB, scale 1/255",
+      "output": "1x2 classification tensor",
+      "precision": "not recorded by device catalog; do not infer INT8/FP16",
+      "sha256": "e1ec3e335a4f2bd81059587e21d5ac731ae621a160f7b0ee2d869f8ee1378a1b",
+      "sizeBytes": 2012605,
+      "verification": "hash computed from the installed cosmo-V1.1.59 resource/models/prod_RK3588_7982161_helmet_V1.0.0/model.rknn on the tested device",
+      "redistribution": "not included pending model-license decision"
+    }
+  ]
+}
