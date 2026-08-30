@@ -1,5 +1,5 @@
-name: rk3588-event-verify-7463002
-displayName: RK3588 告警事件验证 7463002 默认参数 1路
+name: rk3588-event-verify-7463004
+displayName: RK3588 告警事件验证 7463004 默认参数 1路
 sampleIntervalSec: 3
 
 channels:
@@ -13,9 +13,9 @@ tasks:
   - id: no-safety-helmet
     displayName: 未戴安全帽分析
     type: cv
-    algorithmId: "7463002"
+    algorithmId: "7463004"
     scheduleId: "e89c6c6385e5454b35cde0d1653vg"
-    template: ../algorithm-template-7463002-fixed.json
+    template: ../algorithm-template-7463004.json
     targetFps: 5
     taskConfig:
       params: []
