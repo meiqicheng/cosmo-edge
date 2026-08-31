@@ -593,3 +593,89 @@ TEST_CASE("ForceHostFrameForClassifyPipeline leaves detect-only pipelines untouc
     CHECK_FALSE(ForceHostFrameForClassifyPipeline(task));
     CHECK_FALSE(channel->GetDecoderRequiresHostFrame());
 }
+
+// ---------------------------------------------------------------------------
+// 12. Full task graph eligibility (P1-1 remediation)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("AlgTasksNativeOnlyEligible rejects native-eligible action with pipeline host-frame requirement",
+          "[flow][native-inference][capability]") {
+    using cosmo::AlgTaskUnit;
+    using cosmo::AlgTasksNativeOnlyEligible;
+
+    AlgTaskUnit detector;
+    detector.actionId = std::string(cosmo::AADetect_Code);
+    CHECK(AlgTasksNativeOnlyEligible({detector}));
+
+    // A detect root action whose full pipeline contains a downstream action
+    // that needs a host frame must disable the native-only fast path.
+    detector.requires_host_frame = true;
+    CHECK_FALSE(AlgTasksNativeOnlyEligible({detector}));
+}
+
+// ---------------------------------------------------------------------------
+// 13. Decoder host-frame latch reset (P1-1 remediation)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Decoder host-frame latch resets when the requiring task is removed",
+          "[flow][native-inference][task-regist]") {
+    using cosmo::AlgChannel;
+    using cosmo::TaskAction;
+    using cosmo::TaskElement;
+
+    cosmo::test::MockServiceRegistry mocks;
+
+    auto task       = std::make_shared<TaskElement>();
+    task->channelId = "ch1";
+    task->taskId    = "t1";
+
+    TaskAction root;
+    root.action.actionId     = std::string(cosmo::BAStreamChannel_Code);
+    root.action.flowActionId = "root-flow";
+    root.actionInst          = std::make_shared<AlgChannel>("ch1", "t1", root.action);
+
+    auto* channel = dynamic_cast<AlgChannel*>(root.actionInst.get());
+    REQUIRE(channel);
+
+    // A classify task forces host-frame mode.
+    channel->SetDecoderRequiresHostFrame("t1", true);
+    CHECK(channel->GetDecoderRequiresHostFrame());
+
+    // Removing that task releases the latch.
+    channel->SetDecoderRequiresHostFrame("t1", false);
+    CHECK_FALSE(channel->GetDecoderRequiresHostFrame());
+}
+
+TEST_CASE("Decoder host-frame latch stays on while another task still requires it",
+          "[flow][native-inference][task-regist]") {
+    using cosmo::AlgChannel;
+    using cosmo::TaskAction;
+    using cosmo::TaskElement;
+
+    cosmo::test::MockServiceRegistry mocks;
+
+    auto task       = std::make_shared<TaskElement>();
+    task->channelId = "ch1";
+    task->taskId    = "t1";
+
+    TaskAction root;
+    root.action.actionId     = std::string(cosmo::BAStreamChannel_Code);
+    root.action.flowActionId = "root-flow";
+    root.actionInst          = std::make_shared<AlgChannel>("ch1", "t1", root.action);
+
+    auto* channel = dynamic_cast<AlgChannel*>(root.actionInst.get());
+    REQUIRE(channel);
+
+    // Two tasks require host frames.
+    channel->SetDecoderRequiresHostFrame("t1", true);
+    channel->SetDecoderRequiresHostFrame("t2", true);
+    CHECK(channel->GetDecoderRequiresHostFrame());
+
+    // Removing one keeps the latch on because the other still requires it.
+    channel->SetDecoderRequiresHostFrame("t1", false);
+    CHECK(channel->GetDecoderRequiresHostFrame());
+
+    // Removing the last one releases the latch.
+    channel->SetDecoderRequiresHostFrame("t2", false);
+    CHECK_FALSE(channel->GetDecoderRequiresHostFrame());
+}
