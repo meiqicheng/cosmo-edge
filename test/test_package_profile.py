@@ -984,7 +984,10 @@ class PackageProfileTests(unittest.TestCase):
                 profile["qualification"]["status"],
                 toolchain_lock["qualification"][chip]["status"],
             )
-        self.assertNotEqual(
+        # Both chips now share the same bullseye media runtime profile
+        # (MPP/RGA cross-built once on debian:bullseye and fanned out to every
+        # chip root), so their media runtime_profile is intentionally equal.
+        self.assertEqual(
             rk3576["media"]["runtime_profile"],
             rv1126b["media"]["runtime_profile"],
         )
@@ -1025,10 +1028,11 @@ class PackageProfileTests(unittest.TestCase):
                 profile["media"]["runtime_profile"], runtime_lock["runtimes"]
             )
         rv_runtime = runtime_lock["runtimes"][rv1126b["media"]["runtime_profile"]]
-        self.assertEqual(
-            rv_runtime["artifacts"]["lib/librockchip_mpp.so.0"]["sha256"],
-            "b3f15d57a7516bab1e6167b8244afaff8f27b0b7d34813328db8420a7019820b",
-        )
+        mpp_so = rv_runtime["artifacts"]["lib/librockchip_mpp.so.0"]
+        self.assertEqual(mpp_so["elf"]["machine"], "AArch64")
+        self.assertEqual(mpp_so["elf"]["soname"], "librockchip_mpp.so.1")
+        self.assertEqual(mpp_so["elf"]["glibcMax"], "2.31")
+        self.assertNotIn("sha256", mpp_so)
 
     def test_rk3588_preview_binds_rockchip_media_to_frozen_bullseye_builder(self) -> None:
         profile = json.loads(
@@ -1041,12 +1045,12 @@ class PackageProfileTests(unittest.TestCase):
                 encoding="utf-8"
             )
         )
-        dockerfile = (REPOSITORY / "Dockerfile.rk3588-bullseye").read_text(
+        dockerfile = (REPOSITORY / "Dockerfile.rockchip-bullseye").read_text(
             encoding="utf-8"
         )
-        compose = (REPOSITORY / "docker-compose.rk3588.yml").read_text(
-            encoding="utf-8"
-        )
+        compose = (
+            REPOSITORY / "docker-compose.rockchip-bullseye.yml"
+        ).read_text(encoding="utf-8")
         entrypoint = (REPOSITORY / "scripts/build_rockchip_package.sh").read_text(
             encoding="utf-8"
         )
@@ -1058,7 +1062,7 @@ class PackageProfileTests(unittest.TestCase):
         self.assertEqual(profile["media"]["default_backend"], "rockchip")
         self.assertEqual(
             profile["media"]["runtime_profile"],
-            "rk3588-mpp-1.1.0-rga-1.10.6-bullseye-v1",
+            "mpp-1.1.0-rga-1.10.6-bullseye-v1",
         )
         self.assertTrue(profile["qualification"]["requires_target_bound_evidence"])
 
@@ -1106,7 +1110,7 @@ class PackageProfileTests(unittest.TestCase):
             "COSMO_ROCKCHIP_BUILDER_LOCK=/opt/cosmo/rockchip-builder-lock.json",
             dockerfile,
         )
-        self.assertIn("builder-versions-rk3588.json", dockerfile)
+        self.assertIn("builder-versions.json", dockerfile)
 
         # Single image: RKLLM is baked in at /opt/rkllm; no core/rkllm split.
         self.assertIn(" AS core", dockerfile)
@@ -1120,7 +1124,7 @@ class PackageProfileTests(unittest.TestCase):
         self.assertIn("glibc_gate.py", entrypoint)
         self.assertIn('command:\n      - --chip', compose)
         self.assertIn("${COSMO_TARGET_CHIP:-rk3588}", compose)
-        self.assertIn("Dockerfile.rk3588-bullseye", compose)
+        self.assertIn("Dockerfile.rockchip-bullseye", compose)
 
     def test_glibc_gate_scans_verneed_and_enforces_policy(self) -> None:
         def elf64_verneed(version_names: list[bytes]) -> bytes:

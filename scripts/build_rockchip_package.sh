@@ -52,7 +52,10 @@ if [ -z "${PROJECT_ROOT_PATH:-}" ]; then
     PROJECT_ROOT_PATH=$(cd "$(dirname "$0")/.." && pwd -P)
 fi
 # All Rockchip targets (rk3576, rk3588, rv1126b) share one builder lock.
-builder_lock="${PROJECT_ROOT_PATH}/config/rockchip-build/builder-lock.json"
+# COSMO_BUILDER_LOCK_FILE lets a Debian 11 (bullseye) build select the
+# bullseye lock (builder-lock.bullseye.json) while the default lock stays
+# the Ubuntu 22.04 (glibc 2.35) legacy policy.
+builder_lock="${COSMO_BUILDER_LOCK_FILE:-${PROJECT_ROOT_PATH}/config/rockchip-build/builder-lock.json}"
 image_lock="${COSMO_ROCKCHIP_BUILDER_LOCK:-/opt/cosmo/rockchip-builder-lock.json}"
 if [ ! -f "${builder_lock}" ]; then
     echo "ERROR: Rockchip builder lock is missing: ${builder_lock}" >&2
