@@ -158,8 +158,14 @@ if(COSMO_NN_USE_RKNN_BACKEND)
             "RKNN builds require COSMO_TARGET_CHIP=rk3576, rk3588, or rv1126b")
     endif()
     string(TOUPPER "${COSMO_TARGET_CHIP_NORMALIZED}" COSMO_TARGET_CHIP_LABEL)
-    set(COSMO_PLATFORM_PROFILE
-        "${CMAKE_SOURCE_DIR}/config/rknn/platforms/${COSMO_TARGET_CHIP_NORMALIZED}.json")
+    set(COSMO_RKNN_PLATFORM_PROFILE "" CACHE FILEPATH
+        "RKNN platform profile JSON; defaults to config/rknn/platforms/<chip>.json")
+    if(COSMO_RKNN_PLATFORM_PROFILE)
+        set(COSMO_PLATFORM_PROFILE "${COSMO_RKNN_PLATFORM_PROFILE}")
+    else()
+        set(COSMO_PLATFORM_PROFILE
+            "${CMAKE_SOURCE_DIR}/config/rknn/platforms/${COSMO_TARGET_CHIP_NORMALIZED}.json")
+    endif()
     if(NOT EXISTS "${COSMO_PLATFORM_PROFILE}")
         message(FATAL_ERROR "RKNN platform profile not found: ${COSMO_PLATFORM_PROFILE}")
     endif()

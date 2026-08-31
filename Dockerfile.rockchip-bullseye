@@ -1,0 +1,393 @@
+# CosmoEdge multi-chip Rockchip Debian 11 (bullseye) cross-compilation build
+# environment.
+#
+# Purpose: the production Rockchip devices (RK3576 / RV1126B / RK3588) run
+# Debian 11 (glibc 2.31). The original cosmo_edge-build-env_rk3576 image is
+# Ubuntu 22.04 (glibc 2.35), so packages built with it cannot start on the
+# device (GLIBC_2.34/2.35 missing). This image rebuilds the toolchain +
+# third-party deps on the bullseye glibc baseline so the produced
+# cosmo-engine runs on the device. It builds all three Rockchip targets in one
+# image using a multi-stage git-clone + media-verify + RKLLM structure.
+#
+# Everything is assembled FROM SCRATCH on the bullseye base — no file is
+# copied from the legacy rk3576 image (no COPY --from=...rk3576...):
+#   - Node.js 20    downloaded from npmmirror, verified by SHASUMS256.txt
+#   - Rust 1.95.0   installed with rustup from rsproxy.cn
+#   - RKNN 2.3.2    downloaded from the pinned rknn-toolkit2 commit, sha256
+#                   verified against config/rknn/toolchain-lock.json
+#   - FFmpeg        Debian 11 arm64 dev packages assembled into
+#                   /opt/ffmpeg-debian11 (glibc 2.31)
+#   - MPP/RGA       cross-compiled from pinned sources (glibc 2.31)
+#   - RKLLM         downloaded by scripts/install_rkllm_sdk.py (sha256 pinned)
+#
+# Frozen inputs (do not bump casually; update config/rockchip-build/builder-lock.json
+# in lockstep and record identities in /opt/cosmo/builder-versions.json):
+#   - Base image: debian:bullseye pinned by digest.
+#   - Debian 11 arm64 FFmpeg dev packages assembled into a self-contained
+#     COSMO_FFMPEG_ROOT (/opt/ffmpeg-debian11) with their non-glibc
+#     dependency closure, so cross builds link against a glibc-2.31
+#     compatible media stack without touching prebuild/ffmpeg.
+#
+# SDK layout:
+#   /opt/rknn               RKNN Runtime 2.3.2 (include/rknn_api.h, lib/librknnrt.so)
+#   /opt/ffmpeg-debian11    {include,lib} Debian 11 arm64 FFmpeg + dep closure
+#   /opt/rockchip-media/<chip>   MPP/RGA media sysroot per chip (glibc 2.31)
+#   /opt/rkllm              RKLLM Runtime 1.3.0 (include/rkllm.h, lib/librkllmrt.so)
+#   /usr/local/node         Node.js 20 (Vue3/Vite frontend build)
+#   /usr/local/cargo+rustup Rust 1.95.0 (tokenizers-c build)
+#   /opt/cosmo/rockchip-builder-lock.json   builder lock consumed by
+#                           scripts/build_rockchip_package.sh --chip <chip>
+#                           (via COSMO_ROCKCHIP_BUILDER_LOCK)
+#
+# Targets (all three chips, one image; pick with --chip / COSMO_TARGET_CHIP):
+#   rk3576  rv1126b  rk3588
+#
+# The MPP/RGA media sysroot is chip-independent aarch64 (same source, same
+# aarch64-linux-gnu cross toolchain on bullseye), so it is compiled ONCE and
+# fanned out to the per-chip roots under the shared runtime profile
+# "mpp-1.1.0-rga-1.10.6-bullseye-v1" (ELF machine/soname + glibcMax 2.31).
+# The RV1126B root additionally carries a sealed manifest because its
+# platform profile requires one (require_sealed_sysroot=true).
+#
+# Stages:
+#   rockchip-toolchain         base toolchain + RKNN + FFmpeg root (glibc 2.31)
+#   media-build  git-clone + cross-build MPP/RGA -> /opt/rockchip-media/shared
+#   media-verify fan out media to 3 chip roots, seal RV1126B, verify each
+#   builder      (final) media + RKLLM + builder lock + version record
+
+
+ARG ROCKCHIP_LEGACY_BASE=debian:bullseye@sha256:99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704ebc3ead2015675
+
+FROM ${ROCKCHIP_LEGACY_BASE} AS rockchip-toolchain
+
+# Pinned source revisions. MPP/RGA match the shared bullseye runtime profile
+# "mpp-1.1.0-rga-1.10.6-bullseye-v1" in config/rockchip-media/runtime-lock.json.
+# RKNN_COMMIT is the rknn-toolkit2 v2.3.2 tag (config/rknn/toolchain-lock.json
+# source.tag_sha). Global ARGs so every stage can resolve them.
+ARG MPP_REVISION=c08762ebfadeb4e986d2fed993bc7a54862d3ebe
+ARG RGA_REVISION=2b32edcb97b601b25683e2941d888c8515da6d55
+ARG RKNN_COMMIT=42aa1d426c0a9e0869b6374edba009f7208a1926
+ARG NODE_VERSION=v20.11.0
+ARG RUST_VERSION=1.95.0
+
+
+FROM rockchip-toolchain AS rockchip-common
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# amd64 host + arm64 cross targets (multiarch for arm64 ffmpeg dev packages).
+# Use a China mirror (mirrors.tuna.tsinghua.edu.cn) for reliable downloads; the upstream
+# deb.debian.org frequently returns 502 on this network. HTTP (not HTTPS) is
+# used here because the base image has no ca-certificates yet; they are
+# installed in Step 1. Retries + longer timeout cope with flaky mirror links.
+# Slimming: merge every apt step into ONE layer and purge apt list/archive
+# caches inside the same RUN, so they are never baked into the image.
+# Step 1: host build tools (amd64). Step 2: aarch64 cross toolchain.
+# Step 3: Debian 11 arm64 FFmpeg dev packages (glibc 2.31 compatible).
+# liblzma5/libbz2 are linked by libavformat/libavcodec but, as required-
+# priority packages, apt does not pull their arm64 variants automatically
+# under multiarch; install them explicitly.
+RUN sed -i 's|http://deb.debian.org/debian-security|http://mirrors.tuna.tsinghua.edu.cn/debian-security|g; s|http://deb.debian.org/debian|http://mirrors.tuna.tsinghua.edu.cn/debian|g' /etc/apt/sources.list \
+    && printf 'Acquire::Retries "10";\nAcquire::http::Timeout "120";\nAcquire::http::ConnectionTimeout "60";\nAcquire::ftp::Timeout "120";\n' > /etc/apt/apt.conf.d/99-retries \
+    && printf 'path-exclude /usr/share/doc/*\npath-include /usr/share/doc/*/copyright\npath-exclude /usr/share/man/*\npath-exclude /usr/share/locale/*\npath-exclude /usr/share/info/*\n' > /etc/dpkg/dpkg.cfg.d/01-nodoc \
+    && dpkg --add-architecture arm64 \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg wget git make pkg-config \
+        autoconf automake libtool bison flex nasm yasm \
+        python3 python3-pip patch file \
+        binutils gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+        binutils-aarch64-linux-gnu libc6-dev-arm64-cross \
+    && apt-get install -y --no-install-recommends --fix-missing \
+        libavcodec-dev:arm64 libavdevice-dev:arm64 libavfilter-dev:arm64 \
+        libavformat-dev:arm64 libavutil-dev:arm64 \
+        libswresample-dev:arm64 libswscale-dev:arm64 \
+        liblzma5:arm64 libbz2-1.0:arm64 \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+
+# CMake: bullseye's 3.18.4 is too old for cryptopp (needs >= 3.20). Install a
+# newer CMake via pip (lands in /usr/local/bin, ahead of /usr/bin in PATH).
+RUN python3 -m pip install --no-cache-dir cmake==3.22.1 \
+    && cmake --version | head -1
+
+# Node.js 20 for the Vue3/Vite web frontend build (bullseye's node 12 is too
+# old for Vite 6). Downloaded from the npmmirror mirror (nodejs.org is flaky
+# on this network) and verified against the official SHASUMS256.txt. No
+# dependency on the legacy rk3576 build image.
+RUN set -eux; \
+    curl -fsSL -o /tmp/node.tar.xz \
+      "https://npmmirror.com/mirrors/node/${NODE_VERSION}/node-${NODE_VERSION}-linux-x64.tar.xz"; \
+    curl -fsSL "https://npmmirror.com/mirrors/node/${NODE_VERSION}/SHASUMS256.txt" \
+      | grep -F "node-${NODE_VERSION}-linux-x64.tar.xz" > /tmp/node.sha256; \
+    (cd /tmp && sha256sum -c node.sha256); \
+    mkdir -p /usr/local/node; \
+    tar -xJf /tmp/node.tar.xz -C /usr/local/node --strip-components=1; \
+    rm -f /tmp/node.tar.xz /tmp/node.sha256
+ENV NODE_HOME=/usr/local/node \
+    PATH=/usr/local/node/bin:$PATH
+RUN node --version && npm --version
+
+# Rust toolchain for tokenizers-c build. Installed from scratch with rustup
+# via the rsproxy.cn mirror (static.rust-lang.org is flaky on this network).
+# Pinned to the same toolchain version the legacy image shipped (1.95.0).
+RUN set -eux; \
+    curl -fsSL -o /tmp/rustup-init \
+      "https://rsproxy.cn/rustup/dist/x86_64-unknown-linux-gnu/rustup-init"; \
+    chmod +x /tmp/rustup-init; \
+    CARGO_HOME=/usr/local/cargo RUSTUP_HOME=/usr/local/rustup \
+    RUSTUP_DIST_SERVER=https://rsproxy.cn RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup \
+      /tmp/rustup-init -y --no-modify-path --profile minimal \
+      --default-toolchain "${RUST_VERSION}" \
+      --target x86_64-unknown-linux-gnu; \
+    rm -f /tmp/rustup-init
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH
+RUN rustc --version && cargo --version
+
+# Step 4: RKNN Runtime 2.3.2 downloaded from the pinned rknn-toolkit2 commit
+# (raw.githubusercontent.com; the same source the legacy image's copy came
+# from). The runtime is cross-chip (all Rockchip targets use the same
+# rknn_api.h / librknnrt.so); sha256 values must match
+# config/rknn/toolchain-lock.json (runtime.librknnrt_sha256 / rknn_api_header_sha256).
+RUN set -eux; \
+    mkdir -p /opt/rknn/include /opt/rknn/lib; \
+    curl -fsSL -o /opt/rknn/lib/librknnrt.so \
+      "https://raw.githubusercontent.com/airockchip/rknn-toolkit2/${RKNN_COMMIT}/rknpu2/runtime/Linux/librknn_api/aarch64/librknnrt.so"; \
+    curl -fsSL -o /opt/rknn/include/rknn_api.h \
+      "https://raw.githubusercontent.com/airockchip/rknn-toolkit2/${RKNN_COMMIT}/rknpu2/runtime/Linux/librknn_api/include/rknn_api.h"; \
+    echo "d31fc19c85b85f6091b2bd0f6af9d962d5264a4e410bfb536402ec92bac738e8  /opt/rknn/lib/librknnrt.so" | sha256sum -c -; \
+    echo "c48e11a6f41b451a5fd1e4ad774ea60252d3d94f78bee9b21ea3d21b21deba9a  /opt/rknn/include/rknn_api.h" | sha256sum -c -
+
+# Step 5: assemble a self-contained FFmpeg root for cross builds.
+#
+# Headers come from the multiarch dev packages; libraries are collected with
+# their transitive dependency closure (resolved via arm64 readelf NEEDED),
+# excluding glibc core libs and libstdc++/libgcc_s which the target device
+# provides itself (the device is Debian 11 bullseye, same distro release as
+# this build base, so its own copies are ABI-compatible).
+RUN set -eux; \
+    root=/opt/ffmpeg-debian11; \
+    inc=/usr/include/aarch64-linux-gnu; \
+    libdir=/usr/lib/aarch64-linux-gnu; \
+    mkdir -p "$root/include" "$root/lib/pkgconfig"; \
+    for h in libavcodec libavdevice libavfilter libavformat libavutil libswresample libswscale; do \
+        cp -r "$inc/$h" "$root/include/"; \
+    done; \
+    cp "$inc"/libav*.h "$inc"/libsw*.h "$root/include/" 2>/dev/null || true; \
+    cp "$libdir"/pkgconfig/libav*.pc "$libdir"/pkgconfig/libsw*.pc "$root/lib/pkgconfig/"; \
+    copy_lib() { \
+        name="$1"; \
+        if [ -e "$root/lib/$name" ]; then return 0; fi; \
+        src=""; \
+        for d in "$libdir" /lib/aarch64-linux-gnu "$libdir/pulseaudio"; do \
+            if [ -e "$d/$name" ]; then src="$d/$name"; break; fi; \
+        done; \
+        if [ -z "$src" ]; then echo "FATAL: arm64 library not found: $name" >&2; return 1; fi; \
+        cp -L "$src" "$root/lib/$name"; \
+        for dep in $(aarch64-linux-gnu-readelf -d "$root/lib/$name" | sed -n 's/.*Shared library: \[\(.*\)\]$/\1/p'); do \
+            case "$dep" in \
+                libc.so*|libm.so*|libdl.so*|libpthread.so*|librt.so*|libresolv.so*|libnsl.so*|libutil.so*|libanl.so*|libBrokenLocale.so*|libthread_db.so*|ld-linux-*|libgcc_s.so*|libstdc++.so*) ;; \
+                *) copy_lib "$dep" ;; \
+            esac; \
+        done; \
+    }; \
+    for s in libavcodec.so.58 libavdevice.so.58 libavfilter.so.7 libavformat.so.58 libavutil.so.56 libswresample.so.3 libswscale.so.5; do \
+        copy_lib "$s"; \
+    done; \
+    ln -sf libavcodec.so.58 "$root/lib/libavcodec.so"; \
+    ln -sf libavdevice.so.58 "$root/lib/libavdevice.so"; \
+    ln -sf libavfilter.so.7 "$root/lib/libavfilter.so"; \
+    ln -sf libavformat.so.58 "$root/lib/libavformat.so"; \
+    ln -sf libavutil.so.56 "$root/lib/libavutil.so"; \
+    ln -sf libswresample.so.3 "$root/lib/libswresample.so"; \
+    ln -sf libswscale.so.5 "$root/lib/libswscale.so"; \
+    test -f "$root/include/libavcodec/avcodec.h"; \
+    test -f "$root/lib/libavcodec.so.58"; \
+    echo "--- /opt/ffmpeg-debian11/lib ---"; ls -la "$root/lib"
+
+# Step 6: Rockchip MPP + RGA media sysroot (glibc 2.31 baseline).
+#
+# Versions are pinned by config/rockchip-media/runtime-lock.json shared
+# bullseye profile "mpp-1.1.0-rga-1.10.6-bullseye-v1", which all three chip
+# platform profiles (rk3576.json / rk3588.json / rv1126b.json) reference.
+# The same aarch64 media is built once and fanned out per chip:
+#   - MPP  tag 1.1.0, commit c08762ebfadeb4e986d2fed993bc7a54862d3ebe
+#     (same commit the RK3576 repro-v1 profile builds from; plain C++,
+#     builds cleanly against bullseye g++-aarch64).
+#   - librga official aarch64 prebuilt, commit 2b32edcb97b601b25683e2941d888c8515da6d55,
+#     api_version 1.10.6_[3] — byte-identical to the file used on RK3576.
+# Layout matches the media root convention: {include,lib,share/licenses}.
+# Sources are cloned from GitHub during the build at pinned commits/tags
+# (MPP_REVISION / RGA_REVISION are global ARGs declared above the first FROM,
+# visible to this stage).
+
+FROM rockchip-common AS media-build
+
+RUN set -eux; \
+    git clone --depth 1 --branch 1.1.0 \
+      https://github.com/rockchip-linux/mpp.git /tmp/src/mpp; \
+    test "$(git -C /tmp/src/mpp rev-parse HEAD)" = "${MPP_REVISION}"; \
+    git init /tmp/src/librga; \
+    git -C /tmp/src/librga remote add origin \
+      https://github.com/airockchip/librga.git; \
+    git -C /tmp/src/librga fetch --depth 1 \
+      origin "${RGA_REVISION}"; \
+    git -C /tmp/src/librga checkout --detach FETCH_HEAD; \
+    test "$(git -C /tmp/src/librga rev-parse HEAD)" = "${RGA_REVISION}"
+
+RUN set -eux; \
+    root=/opt/rockchip-media/shared; \
+    mkdir -p "$root/include/rockchip" "$root/include/rga" "$root/lib" "$root/share/licenses/rockchip-media/mpp" "$root/share/licenses/rockchip-media/librga"; \
+    cmake -S /tmp/src/mpp -B /tmp/src/mpp/build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_SYSTEM_NAME=Linux \
+        -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+        -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
+        -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++ \
+        -DBUILD_SHARED_LIBS=ON \
+        -DBUILD_TEST=OFF; \
+    cmake --build /tmp/src/mpp/build -j"$(nproc)"; \
+    cp /tmp/src/mpp/build/mpp/librockchip_mpp.so* "$root/lib/"; \
+    cd "$root/lib"; \
+    real="$(readlink -f librockchip_mpp.so.1)"; \
+    mv -f "$real" librockchip_mpp.so.0; \
+    rm -f librockchip_mpp.so.1 librockchip_mpp.so; \
+    ln -sf librockchip_mpp.so.0 librockchip_mpp.so.1; \
+    ln -sf librockchip_mpp.so.1 librockchip_mpp.so; \
+    cp /tmp/src/librga/libs/Linux/gcc-aarch64/librga.so "$root/lib/librga.so"; \
+    cp /tmp/src/librga/include/*.h "$root/include/rga/"; \
+    mkdir -p /tmp/src/mpp-headers && cp /tmp/src/mpp/inc/*.h /tmp/src/mpp-headers/; \
+    cp /tmp/src/mpp/inc/*.h "$root/include/rockchip/"; \
+    find /tmp/src/mpp/osal -name '*.h' | while read -r h; do rel="${h#/tmp/src/mpp/osal/}"; mkdir -p "$root/include/rockchip/$(dirname "$rel")"; cp "$h" "$root/include/rockchip/$rel"; done; \
+    test -f "$root/include/rockchip/rk_mpi.h"; \
+    test -f "$root/include/rga/im2d.h"; \
+    test -f "$root/include/rga/im2d_type.h"; \
+    test -L "$root/lib/librockchip_mpp.so.1"; \
+    test -f "$root/lib/librockchip_mpp.so.0"; \
+    aarch64-linux-gnu-readelf -d "$root/lib/librockchip_mpp.so.0" | grep -q 'soname.*librockchip_mpp\.so\.1'; \
+    cp -r /tmp/src/mpp/LICENSES/. "$root/share/licenses/rockchip-media/mpp/"; \
+    cp /tmp/src/librga/COPYING "$root/share/licenses/rockchip-media/librga/COPYING"; \
+    test -s "$root/share/licenses/rockchip-media/librga/COPYING"; \
+    ls -la "$root/lib"; \
+    git -C /tmp/src/mpp show -s --format=%ct HEAD > /opt/rockchip-media/mpp-source-date-epoch
+
+# Step 7: fan out the shared media to each chip root and verify against the
+# chip platform profile (shared runtime profile "mpp-1.1.0-rga-1.10.6-bullseye-v1",
+# ELF machine/soname + glibcMax 2.31). The checked-in platform profiles keep
+# the Ubuntu legacy runtime profiles, so this stage rewrites them to the
+# bullseye shared profile inside the image (COSMO_PLATFORM_PROFILE_DIR points
+# the package flow at these image-local copies). RV1126B's profile requires a
+# sealed sysroot (require_sealed_sysroot=true), so its root is sealed first
+# with the pinned MPP/RGA source revisions. The per-chip roots are what
+# build_rockchip_package.sh reads from builder-lock.bullseye.json.
+FROM rockchip-common AS media-verify
+
+COPY config/rknn/platforms/ /opt/cosmo/config/rknn/platforms/
+COPY config/rockchip-media/ /opt/cosmo/config/rockchip-media/
+COPY tools/rknn/media_sysroot_lock.py /usr/local/bin/cosmo-rockchip-media-lock
+COPY --from=media-build /opt/rockchip-media/ /opt/rockchip-media/
+
+# The checked-in platform profiles reference the Ubuntu legacy runtime
+# profiles. Generate bullseye copies that point at the shared bullseye
+# runtime profile so this Debian 11 builder's media can be verified.
+RUN python3 - <<'PY'
+import json
+from pathlib import Path
+
+shared = "mpp-1.1.0-rga-1.10.6-bullseye-v1"
+for chip in ("rk3576", "rk3588", "rv1126b"):
+    path = Path(f"/opt/cosmo/config/rknn/platforms/{chip}.json")
+    profile = json.loads(path.read_text(encoding="utf-8"))
+    profile["media"]["runtime_profile"] = shared
+    path.write_text(json.dumps(profile, indent=2) + "\n", encoding="utf-8")
+PY
+
+RUN set -eux; \
+    SOURCE_DATE_EPOCH="$(cat /opt/rockchip-media/mpp-source-date-epoch)"; \
+    export SOURCE_DATE_EPOCH; \
+    for chip in rk3576 rv1126b rk3588; do \
+        mkdir -p "/opt/rockchip-media/$chip"; \
+        cp -a /opt/rockchip-media/shared/. "/opt/rockchip-media/$chip/"; \
+    done; \
+    rm -rf /opt/rockchip-media/shared /opt/rockchip-media/mpp-source-date-epoch; \
+    python3 /usr/local/bin/cosmo-rockchip-media-lock seal \
+        --platform-profile /opt/cosmo/config/rknn/platforms/rv1126b.json \
+        --root /opt/rockchip-media/rv1126b \
+        --source "mpp=${MPP_REVISION}" \
+        --source "rga=${RGA_REVISION}"; \
+    for chip in rk3576 rk3588 rv1126b; do \
+        python3 /usr/local/bin/cosmo-rockchip-media-lock verify \
+            --platform-profile "/opt/cosmo/config/rknn/platforms/${chip}.json" \
+            --root "/opt/rockchip-media/${chip}"; \
+    done; \
+    for chip in rk3576 rv1126b rk3588; do \
+        test -f "/opt/rockchip-media/$chip/include/rockchip/rk_mpi.h"; \
+        test -f "/opt/rockchip-media/$chip/include/rga/im2d.h"; \
+        test -f "/opt/rockchip-media/$chip/lib/librockchip_mpp.so"; \
+        test -f "/opt/rockchip-media/$chip/lib/librga.so"; \
+    done
+
+# Step 8: final builder image carrying all three chip media roots + RKLLM +
+# builder lock + frozen version record.
+FROM rockchip-common AS builder
+
+COPY --from=media-verify /opt/rockchip-media/ /opt/rockchip-media/
+COPY --from=media-verify /opt/cosmo/config/ /opt/cosmo/config/
+
+# RKLLM Runtime v1.3.0 (aarch64) baked into the single builder image so every
+# chip's produced package can carry the Qwen3.5 VLM backend (rkllm_required
+# per target in builder-lock.json).
+COPY scripts/install_rkllm_sdk.py /tmp/install_rkllm_sdk.py
+RUN set -eux; \
+    python3 -I -B /tmp/install_rkllm_sdk.py --root /opt/rkllm; \
+    rm -f /tmp/install_rkllm_sdk.py; \
+    test -f /opt/rkllm/include/rkllm.h; \
+    test -f /opt/rkllm/lib/librkllmrt.so; \
+    test -f /opt/rkllm/LICENSE
+
+# Builder lock for the package flow. The Debian 11 builder uses the dedicated
+# bullseye lock (three chips -> shared bullseye media profile); the package
+# script byte-compares it against the image-side copy resolved through
+# COSMO_ROCKCHIP_BUILDER_LOCK, and COSMO_PLATFORM_PROFILE_DIR makes the
+# package flow read the image-local bullseye platform profiles instead of the
+# checked-in Ubuntu legacy ones.
+COPY config/rockchip-build/builder-lock.bullseye.json /opt/cosmo/rockchip-builder-lock.json
+ENV COSMO_ROCKCHIP_BUILDER_LOCK=/opt/cosmo/rockchip-builder-lock.json \
+    COSMO_PLATFORM_PROFILE_DIR=/opt/cosmo/config/rknn/platforms \
+    RKNN_ROOT=/opt/rknn \
+    RKLLM_ROOT=/opt/rkllm \
+    COSMO_FFMPEG_ROOT=/opt/ffmpeg-debian11 \
+    ROCKCHIP_MEDIA_ROOT=/opt/rockchip-media/rk3588 \
+    COSMO_TARGET_CHIP=rk3588
+
+# Record frozen tool identities for evidence/reproducibility.
+RUN set -eux; \
+    python3 - <<'PYEOF'
+import json, subprocess
+
+def out(cmd):
+    return subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout.strip()
+
+ffmpeg_ver = out("dpkg-query -W -f='${Version}' libavcodec58:arm64")
+record = {
+    "base_image": "debian:bullseye@sha256:99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704ebc3ead2015675",
+    "build_mode": "from-scratch",
+    "media_runtime_profile": "mpp-1.1.0-rga-1.10.6-bullseye-v1",
+    "rknn_runtime_sha256": "d31fc19c85b85f6091b2bd0f6af9d962d5264a4e410bfb536402ec92bac738e8",
+    "rknn_include_header": "/opt/rknn/include/rknn_api.h",
+    "ffmpeg_root": "/opt/ffmpeg-debian11",
+    "ffmpeg_deb_version_arm64": ffmpeg_ver,
+    "cmake": out("cmake --version | head -1"),
+    "cross_gcc": out("aarch64-linux-gnu-gcc --version | head -1"),
+    "node": out("node --version"),
+    "rustc": out("rustc --version"),
+    "cargo": out("cargo --version"),
+    "glibc_baseline": "2.31",
+}
+with open("/opt/cosmo/builder-versions.json", "w") as f:
+    json.dump(record, f, indent=2)
+print(json.dumps(record, indent=2))
+PYEOF
+
+WORKDIR /workspace

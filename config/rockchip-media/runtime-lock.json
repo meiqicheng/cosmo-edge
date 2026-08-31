@@ -130,9 +130,9 @@
         "lib/librockchip_mpp.so.1": "librockchip_mpp.so.0"
       }
     },
-    "rk3588-mpp-1.1.0-rga-1.10.6-bullseye-v1": {
+    "mpp-1.1.0-rga-1.10.6-bullseye-v1": {
       "architecture": "aarch64",
-      "provenance": "source-and-official-prebuilt-debian11-sysroot",
+      "provenance": "source-and-official-prebuilt-debian11-sysroot-shared-multichip",
       "sources": {
         "mpp": {
           "repository": "https://github.com/rockchip-linux/mpp",

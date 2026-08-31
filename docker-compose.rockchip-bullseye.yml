@@ -1,0 +1,62 @@
+# Rockchip Debian 11 (bullseye) multi-chip package build entry point
+# (RK3576 / RK3588 / RV1126B).
+#
+# Consumes the locally built Dockerfile.rockchip-bullseye image (digest-frozen
+# debian:bullseye base, everything assembled from scratch on glibc 2.31:
+# RKNN 2.3.2 downloaded from rknn-toolkit2, Node 20 from npmmirror, Rust via
+# rsproxy, Debian 11 arm64 FFmpeg assembled at /opt/ffmpeg-debian11,
+# MPP 1.1.0 + RGA 1.10.6 cross-built once and fanned out to every chip media
+# root) and runs the standard rockchip packaging flow, selecting the target
+# chip via COSMO_TARGET_CHIP:
+#
+#   docker compose -f docker-compose.rockchip-bullseye.yml build
+#   COSMO_TARGET_CHIP=rk3588 docker compose -f docker-compose.rockchip-bullseye.yml run \
+#     --rm cosmo-rockchip-bullseye-package
+#   COSMO_TARGET_CHIP=rk3576 docker compose -f docker-compose.rockchip-bullseye.yml run \
+#     --rm cosmo-rockchip-bullseye-package
+#   COSMO_TARGET_CHIP=rv1126b docker compose -f docker-compose.rockchip-bullseye.yml run \
+#     --rm cosmo-rockchip-bullseye-package
+#
+# The produced tar.gz lands in ./build_output/<chip>/ and must pass the
+# in-flow glibc gate (GLIBC <= 2.31, RK3588) and the package content audit
+# before verification succeeds.
+services:
+  cosmo-rockchip-bullseye-package:
+    build:
+      context: .
+      dockerfile: Dockerfile.rockchip-bullseye
+      # Single image: RKNN + MPP/RGA (all chips) + FFmpeg toolchain with the
+      # RKLLM/Qwen VLM runtime baked in (rkllm_required per chip).
+    image: ${COSMO_ROCKCHIP_BUILDER_IMAGE:-cosmo_edge-build-env_rockchip-bullseye:v1}
+    platform: linux/amd64
+    network_mode: host
+    volumes:
+      - .:/workspace
+      - ./build_output:/build_output
+      - cosmo-npm-cache:/root/.npm
+    working_dir: /workspace
+    environment:
+      COSMO_BUILD_JOBS: "${COSMO_BUILD_JOBS:-4}"
+      NPM_CONFIG_MAXSOCKETS: "${NPM_CONFIG_MAXSOCKETS:-1}"
+      NPM_CONFIG_PROGRESS: "${NPM_CONFIG_PROGRESS:-false}"
+      NPM_CONFIG_FETCH_RETRIES: "${NPM_CONFIG_FETCH_RETRIES:-3}"
+      NPM_CONFIG_FETCH_TIMEOUT: "${NPM_CONFIG_FETCH_TIMEOUT:-120000}"
+      NPM_CONFIG_PREFER_OFFLINE: "${NPM_CONFIG_PREFER_OFFLINE:-true}"
+      NPM_CONFIG_UPDATE_NOTIFIER: "${NPM_CONFIG_UPDATE_NOTIFIER:-false}"
+      COSMO_RKNN_ARTIFACT_MANIFEST: "${COSMO_RKNN_ARTIFACT_MANIFEST:-}"
+      COSMO_RKNN_MODELS_DIR: "${COSMO_RKNN_MODELS_DIR:-}"
+      COSMO_RKNN_RESOURCE_OVERLAY_DIR: "${COSMO_RKNN_RESOURCE_OVERLAY_DIR:-}"
+      # Debian 11 builder: use the image-local bullseye platform profiles and
+      # the dedicated bullseye builder lock instead of the checked-in Ubuntu
+      # legacy ones (see Dockerfile.rockchip-bullseye).
+      COSMO_PLATFORM_PROFILE_DIR: /opt/cosmo/config/rknn/platforms
+      COSMO_BUILDER_LOCK_FILE: /workspace/config/rockchip-build/builder-lock.bullseye.json
+    entrypoint: ["/workspace/scripts/build_rockchip_package.sh"]
+    command:
+      - --chip
+      - ${COSMO_TARGET_CHIP:-rk3588}
+      - --models
+      - ${COSMO_PACKAGE_MODELS:-include}
+
+volumes:
+  cosmo-npm-cache:

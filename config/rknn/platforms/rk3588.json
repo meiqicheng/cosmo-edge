@@ -14,7 +14,7 @@
   "media": {
     "default_backend": "rockchip",
     "cpu_fallback": true,
-    "runtime_profile": "rk3588-mpp-1.1.0-rga-1.10.6-bullseye-v1",
+    "runtime_profile": "mpp-1.1.0-rga-1.10.6-bullseye-v1",
     "runtime_lock": "../../rockchip-media/runtime-lock.json",
     "require_sealed_sysroot": false
   },
