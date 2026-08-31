@@ -3,6 +3,7 @@
 
 #include "flow/task/TaskBase.h"
 #include "flow/channel/AlgChannel.h"
+#include "flow/common/AlgTaskNativeCapability.h"
 #include "util/Log.h"
 #include "util/dto/ActionCodes.h"
 
@@ -57,6 +58,16 @@ bool ForceHostFrameForClassifyPipeline(TaskElementPtr task) {
     return false;
 }
 
+// True when any action in the task's full pipeline is not native-only eligible.
+// The decoder's native-only fast path must be disabled whenever a downstream
+// action (not just the root action registered on the channel) needs a
+// materialized host frame.
+bool TaskPipelineRequiresHostFrame(const TaskElementPtr& task) {
+    return std::any_of(task->actions.begin(), task->actions.end(), [](const TaskAction& taNode) {
+        return !ResolveAlgTaskNativeCapability(taNode.action.actionId).NativeOnlyEligible();
+    });
+}
+
 bool TaskBase::TaskRegist(TaskElementPtr task) {
     // Register task queues with parent actions
     for (auto& taNode : task->actions) {
@@ -69,6 +80,12 @@ bool TaskBase::TaskRegist(TaskElementPtr task) {
             param.flowActionId = taNode.action.flowActionId;
             param.fps          = taNode.action.initFps;
             param.que          = taNode.actionInst ? taNode.actionInst->GetQueue() : nullptr;
+            // The decoder's native-only eligibility must consider the full task
+            // pipeline, so the root action's registration carries whether any
+            // downstream action in this task still needs a host frame.
+            if (dynamic_cast<AlgChannel*>(taNode.fatherAction.get())) {
+                param.requires_host_frame = TaskPipelineRequiresHostFrame(task);
+            }
             if (taNode.actionInst) {
                 LOG_INFO("[{}-{} Create {}] Action: {} Regist To {}, Fps:{}", task->channelId, task->taskId,
                          task->GetAlgName(), taNode.action.actionId, taNode.fatherAction->GetName(),

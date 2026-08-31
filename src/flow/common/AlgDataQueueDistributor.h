@@ -17,6 +17,12 @@ struct AlgTaskUnit {
     float fps{-1.0};           // Frame rate of the registrant
     AlgDataType dataType{AlgDataType::ChannelDataDec};
     std::shared_ptr<AlgDataQueue<AlgDataPtr>> que;
+    // True when the full task pipeline (not just this root action) contains an
+    // action that requires a materialized host frame.  The decoder's native-only
+    // eligibility must consider the whole task graph, not only the direct
+    // downstream consumer, so a downstream action that needs host pixels
+    // disables the fast path even when the root action is native-eligible.
+    bool requires_host_frame{false};
 };
 struct AlgDataTask {
     float max_task_fps{0.0};
