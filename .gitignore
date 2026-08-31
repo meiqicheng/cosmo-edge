@@ -561,6 +561,5 @@ test/video/demo.mp4
 data/resource/aiboxresource_rk3588/models/prod_RK3588_7000001_qwen3_5_V1.0.0/
 build_*/
 
-# RK3588 build cache is reproducibly prepared by scripts/prepare_rk3588_build_cache.sh.
-.rk3588-build-cache/
+
 tools/scenario-bench/results/
