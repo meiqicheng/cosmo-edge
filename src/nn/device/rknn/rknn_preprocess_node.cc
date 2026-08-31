@@ -664,10 +664,10 @@ void RknnResizeNode::ResizeNativeWithCpu(const Blob& bottom, Blob& top) const {
         auto* dst = bgr.data() + static_cast<size_t>(row) * src_w * 3;
         for (int col = 0; col < src_w; ++col) {
             const int y = y_row[col] - 16;
-            const int u = uv_row[(col & ~1)] - 128;
+            const int u = nv12 ? uv_row[(col & ~1)] - 128 : uv_row[(col >> 1)] - 128;
             const int v = nv12 ? uv_row[(col & ~1) + 1] - 128
                                : chroma[static_cast<size_t>(src_h / 2 + row / 2) * native.width_stride +
-                                        col] -
+                                        (col >> 1)] -
                                      128;
             dst[col * 3 + 0] = static_cast<uint8_t>(std::clamp((298 * y + 516 * u + 128) >> 8, 0, 255));
             dst[col * 3 + 1] =

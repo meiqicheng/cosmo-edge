@@ -986,6 +986,52 @@ TEST_CASE("RKNN native CPU fallback reads I420 planes by stride, not source heig
     CHECK(output[2] == kYuv601LimitedMidChromaBgr[2]);
 }
 
+TEST_CASE("RKNN native CPU fallback reads I420 chroma at subsampled columns",
+          "[nn][rknn][fast-preprocess][native-fallback]") {
+    using namespace cosmo::nn;
+    ScopedEnvironment force_fail("COSMO_RKNN_RGA_FORCE_FAIL", "1");
+    SharedResource resource;
+    RknnResizeNode node = MakeDetectorResizeNode(resource);
+
+    // 4x4 I420, tightly packed (stride 4x4): luma[16] + U[4] + V[4]. The code
+    // reads U at chroma + (row/2)*width_stride and V at
+    // chroma + (src_h/2 + row/2)*width_stride, so place distinct chroma values
+    // in the second 2x2 block to catch the (col & ~1) vs (col >> 1)
+    // subsampling bug at columns 2-3.
+    ScopedMemfd dma_buf(32);
+    REQUIRE(dma_buf.get() >= 0);
+    for (size_t row = 0; row < 4; ++row)
+        for (size_t col = 0; col < 4; ++col)
+            dma_buf.Poke(row * 4 + col, 128);  // studio gray luma
+    dma_buf.Poke(16, 160);                     // U of the first 2x2 block
+    dma_buf.Poke(17, 200);                     // U of the second 2x2 block
+    dma_buf.Poke(24, 96);                      // V of the first 2x2 block
+    dma_buf.Poke(25, 40);                      // V of the second 2x2 block
+
+    auto bottom = std::make_shared<Blob>(
+        NativeSourceBlob(4, 4, IMAGE_I420, NativeImageColorSpace::Unspecified,
+                         NativeImageColorRange::Unspecified, 4, 4, dma_buf.get(), dma_buf.bytes()));
+    auto top = AllocResizeTop(node);
+    std::vector<std::shared_ptr<Blob>> bottoms{bottom};
+    std::vector<std::shared_ptr<Blob>> tops{top};
+    REQUIRE(bool(node.Forward(bottoms, tops)));
+    const auto* output = static_cast<const uint8_t*>(top->GetHandle().base);
+
+    // First 2x2 block (col 0): U=160, V=96 -> (195,144,79).
+    CHECK(output[0] == kYuv601LimitedMidChromaBgr[0]);
+    CHECK(output[1] == kYuv601LimitedMidChromaBgr[1]);
+    CHECK(output[2] == kYuv601LimitedMidChromaBgr[2]);
+
+    // Second 2x2 block (col 2): U=200, V=40 -> y=112,u=72,v=-88:
+    // B=(298*112+516*72+128)>>8=255, G=(298*112-100*72+208*88+128)>>8=174,
+    // R=(298*112-409*88+128)>>8=0. The buggy (col & ~1) index would read the
+    // zeroed byte 18 for U and produce B=0 instead.
+    const size_t second_block = (0 * 4 + 2) * 3;
+    CHECK(output[second_block + 0] == 255);
+    CHECK(output[second_block + 1] == 174);
+    CHECK(output[second_block + 2] == 0);
+}
+
 TEST_CASE("RKNN native CPU fallback rejects invalid descriptors without touching output",
           "[nn][rknn][fast-preprocess][native-fallback]") {
     using namespace cosmo::nn;
