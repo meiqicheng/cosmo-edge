@@ -4,6 +4,7 @@
 #include "flow/common/AlgDataRecord.h"
 #include "flow/detect/AiDetector.h"
 #include "util/GeometricPos.h"
+#include "util/Log.h"
 
 static constexpr const char* kTag = "AI-DETECTER ";
 namespace cosmo {
@@ -48,14 +49,17 @@ void AiDetector::TargetAddLine(AiDetectRstEl& target, TargetPosition pos, MsgTas
 // Mark area information on targets
 void AiDetector::SignTargetAreas(AlgDataPtr data_ptr, const std::string& taskId) {
     if (!data_ptr) {
+        LOG_ERRO("{}[{}] SignTargetAreas: null AlgData, skip area marking", kTag, taskId);
         return;
     }
 
     if (!data_ptr->chanDataDec.frame) {
+        LOG_ERRO("{}[{}] SignTargetAreas: null decoded frame, skip area marking", kTag, taskId);
         return;
     }
 
     if (!data_ptr->chanDataDetect.detRet) {
+        LOG_ERRO("{}[{}] SignTargetAreas: null detection result, skip area marking", kTag, taskId);
         return;
     }
 

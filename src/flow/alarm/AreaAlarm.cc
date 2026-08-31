@@ -188,7 +188,13 @@ void AreaAlarm::HandFrame(AlgDataPtr algData) {
         has_track_ = true;
     }
 
-    frame_index_ = algData->chanDataDec.frame ? algData->chanDataDec.frame->GetFrameIndex() : 0;
+    if (algData->chanDataDec.frame) {
+        frame_index_ = algData->chanDataDec.frame->GetFrameIndex();
+    } else {
+        LOG_WARN("{}[{}] {}/{} null decoded frame, frame_index fallback to 0", kTag, task_id,
+                 action_info_.actionName, GetName());
+        frame_index_ = 0;
+    }
     if ((AreaAlarmType::kTargetLimit == type_) || (AreaAlarmType::kTargetLimit1 == type_) ||
         (AreaAlarmType::kTargetLimitMultTargets == type_)) {
         HandAreaTargetLimit(algData, input);

@@ -129,6 +129,8 @@ CMsgOnEventsReq TaskAlarm::BuildBaseEventData(const AlgDataPtr& algData, const D
 void TaskAlarm::AttachAlarmMedia(CMsgOnEventsReq& eventData, const AlgDataPtr& algData,
                                  DataAlarmUnit& alarmUnit) {
     if (!algData->chanDataDec.frame) {
+        LOG_ERRO("{}[{}] AttachAlarmMedia: null decoded frame, alarm media skipped", kTag,
+                 alarmUnit.trackId);
         return;
     }
 
