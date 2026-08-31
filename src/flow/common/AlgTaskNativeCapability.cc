@@ -30,7 +30,8 @@ AlgTaskNativeCapability ResolveAlgTaskNativeCapability(std::string_view actionId
 
 bool AlgTasksNativeOnlyEligible(const std::vector<AlgTaskUnit>& tasks) {
     return !tasks.empty() && std::all_of(tasks.begin(), tasks.end(), [](const AlgTaskUnit& task) {
-        return ResolveAlgTaskNativeCapability(task.actionId).NativeOnlyEligible();
+        return !task.requires_host_frame &&
+               ResolveAlgTaskNativeCapability(task.actionId).NativeOnlyEligible();
     });
 }
 
