@@ -56,6 +56,54 @@ cosmo::nn::BlobDesc PackedImageDesc(int height, int width, cosmo::nn::ImageForma
     return desc;
 }
 
+// Some RK3588 boards ship a legacy RGA multicore driver whose scheduler rejects
+// small virtual-address jobs ("no core match"). Probing through the real
+// crop-resize node keeps the assertion honest on every driver instead of
+// hard-coding one board's behavior.
+bool RgaSmallSourceUpscaleAvailable() {
+    static const bool available = [] {
+        namespace nn = cosmo::nn;
+        nn::CropResize param;
+        param.h_top_crop    = {0.0f};
+        param.h_bottom_crop = {0.0f};
+        param.w_left_crop   = {0.0f};
+        param.w_right_crop  = {0.0f};
+        param.dsize         = {64, 64};
+        param.gravity       = 0;
+        param.color         = {114, 114, 114};
+        nn::SharedResource resource;
+        nn::RknnCropResizeNode node;
+        node.SetSharedResource(&resource);
+        node.LoadParam(&param);
+        if (!bool(node.InferTopShapes()))
+            return false;
+        auto image = std::make_shared<nn::Blob>(PackedImageDesc(16, 16, nn::IMAGE_BGR), true);
+        nn::BlobDesc rect_desc;
+        rect_desc.device_type = nn::DEVICE_NAIVE;
+        rect_desc.data_type   = nn::DATA_TYPE_INT32;
+        rect_desc.dims        = {1, 4};
+        auto rect             = std::make_shared<nn::Blob>(rect_desc, true);
+        auto* rect_data       = static_cast<int32_t*>(rect->GetHandle().base);
+        const std::array<int32_t, 4> full{0, 0, 16, 16};
+        std::copy(full.begin(), full.end(), rect_data);
+        nn::BlobDesc top_desc;
+        top_desc.device_type = nn::DEVICE_NAIVE;
+        top_desc.data_type   = nn::DATA_TYPE_UINT8;
+        top_desc.data_format = nn::DATA_FORMAT_NHWC;
+        top_desc.dims        = node.GetTopBlobShapes().front();
+        auto top             = std::make_shared<nn::Blob>(top_desc, true);
+        const auto before    = nn::GetInferencePipelineMetrics().Snapshot();
+        std::vector<std::shared_ptr<nn::Blob>> images{image};
+        std::vector<std::shared_ptr<nn::Blob>> rects{rect};
+        std::vector<std::shared_ptr<nn::Blob>> tops{top};
+        if (!bool(node.Forward(images, rects, tops)))
+            return false;
+        const auto after = nn::GetInferencePipelineMetrics().Snapshot();
+        return after.rknn_rga_crop_resize_calls > before.rknn_rga_crop_resize_calls;
+    }();
+    return available;
+}
+
 }  // namespace
 
 TEST_CASE("RKNN detector fast preprocessing contracts are exact", "[nn][rknn][fast-preprocess]") {
@@ -576,9 +624,11 @@ TEST_CASE("RKNN classifier crop-resize stages extreme scaling in RGA and emits p
     node.LoadParam(&crop);
     REQUIRE(bool(node.InferTopShapes()));
 
-    auto image   = std::make_shared<Blob>(PackedImageDesc(8, 8, IMAGE_BGR), true);
+    // Legacy RGA drivers reject BGR888 sources whose width stride is not
+    // 16-byte aligned, so the staged-scaling fixture uses a 16-wide image.
+    auto image   = std::make_shared<Blob>(PackedImageDesc(16, 16, IMAGE_BGR), true);
     auto* pixels = static_cast<uint8_t*>(image->GetHandle().base);
-    for (size_t pixel = 0; pixel < 64; ++pixel) {
+    for (size_t pixel = 0; pixel < 256; ++pixel) {
         pixels[pixel * 3]     = 10;
         pixels[pixel * 3 + 1] = 20;
         pixels[pixel * 3 + 2] = 30;
@@ -593,26 +643,36 @@ TEST_CASE("RKNN classifier crop-resize stages extreme scaling in RGA and emits p
     std::copy(crop_rect.begin(), crop_rect.end(), rect_data);
 
     BlobDesc top_desc;
-    top_desc.device_type = DEVICE_NAIVE;
-    top_desc.data_type   = DATA_TYPE_UINT8;
-    top_desc.data_format = DATA_FORMAT_NHWC;
-    top_desc.dims        = node.GetTopBlobShapes().front();
-    auto top             = std::make_shared<Blob>(top_desc, true);
-    const auto before    = GetInferencePipelineMetrics().Snapshot();
+    top_desc.device_type                = DEVICE_NAIVE;
+    top_desc.data_type                  = DATA_TYPE_UINT8;
+    top_desc.data_format                = DATA_FORMAT_NHWC;
+    top_desc.dims                       = node.GetTopBlobShapes().front();
+    auto top                            = std::make_shared<Blob>(top_desc, true);
+    const bool staged_upscale_available = RgaSmallSourceUpscaleAvailable();
+    const auto before                   = GetInferencePipelineMetrics().Snapshot();
     std::vector<std::shared_ptr<Blob>> images{image};
     std::vector<std::shared_ptr<Blob>> rects{rect};
     std::vector<std::shared_ptr<Blob>> tops{top};
     REQUIRE(bool(node.Forward(images, rects, tops)));
-    const auto after = GetInferencePipelineMetrics().Snapshot();
-    CHECK(after.rknn_rga_crop_resize_calls == before.rknn_rga_crop_resize_calls + 2);
-    CHECK(after.rknn_rga_crop_resize_failures == before.rknn_rga_crop_resize_failures);
-    CHECK(after.rknn_rga_crop_host_fallbacks == before.rknn_rga_crop_host_fallbacks + 1);
-    CHECK(after.rknn_cpu_crop_resize_fallback_calls == before.rknn_cpu_crop_resize_fallback_calls);
-    CHECK(top->GetBlobDesc().image_format == IMAGE_RGB);
+    const auto after   = GetInferencePipelineMetrics().Snapshot();
     const auto* output = static_cast<const uint8_t*>(top->GetHandle().base);
-    CHECK(output[0] == 30);
-    CHECK(output[1] == 20);
-    CHECK(output[2] == 10);
+    if (staged_upscale_available) {
+        CHECK(after.rknn_rga_crop_resize_calls == before.rknn_rga_crop_resize_calls + 2);
+        CHECK(after.rknn_rga_crop_resize_failures == before.rknn_rga_crop_resize_failures);
+        CHECK(after.rknn_rga_crop_host_fallbacks == before.rknn_rga_crop_host_fallbacks + 1);
+        CHECK(after.rknn_cpu_crop_resize_fallback_calls == before.rknn_cpu_crop_resize_fallback_calls);
+        CHECK(top->GetBlobDesc().image_format == IMAGE_RGB);
+        CHECK(output[0] == 30);
+        CHECK(output[1] == 20);
+        CHECK(output[2] == 10);
+    } else {
+        CHECK(after.rknn_rga_crop_resize_failures == before.rknn_rga_crop_resize_failures + 1);
+        CHECK(after.rknn_cpu_crop_resize_fallback_calls == before.rknn_cpu_crop_resize_fallback_calls + 1);
+        CHECK(top->GetBlobDesc().image_format == IMAGE_BGR);
+        CHECK(output[0] == 10);
+        CHECK(output[1] == 20);
+        CHECK(output[2] == 30);
+    }
 }
 
 TEST_CASE("RKNN classifier crop-resize keeps an exact CPU fallback", "[nn][rknn][rga][crop-resize]") {
@@ -722,5 +782,247 @@ TEST_CASE("RKNN RGA failure falls back once to CPU while preserving native input
     CHECK(native->GetBlobDesc().data_format == DATA_FORMAT_NHWC);
     CHECK(static_cast<const int8_t*>(native->GetHandle().base)[(320 * 640 + 320) * 3] == 0);
 }
+
+#if defined(__linux__) && defined(SYS_memfd_create)
+
+class ScopedMemfd {
+public:
+    explicit ScopedMemfd(size_t bytes) : bytes_(bytes) {
+        fd_ = static_cast<int>(syscall(SYS_memfd_create, "cosmo-native-fallback-test", 0));
+        if (fd_ >= 0 && ftruncate(fd_, static_cast<off_t>(bytes)) != 0) {
+            close(fd_);
+            fd_ = -1;
+        }
+    }
+    ~ScopedMemfd() {
+        if (fd_ >= 0)
+            close(fd_);
+    }
+    ScopedMemfd(const ScopedMemfd&)            = delete;
+    ScopedMemfd& operator=(const ScopedMemfd&) = delete;
+
+    int get() const {
+        return fd_;
+    }
+    size_t bytes() const {
+        return bytes_;
+    }
+
+    void Poke(size_t offset, uint8_t value) const {
+        void* mapped = mmap(nullptr, bytes_, PROT_WRITE, MAP_SHARED, fd_, 0);
+        REQUIRE(mapped != MAP_FAILED);
+        static_cast<uint8_t*>(mapped)[offset] = value;
+        munmap(mapped, bytes_);
+    }
+
+private:
+    size_t bytes_;
+    int fd_{-1};
+};
+
+cosmo::nn::Blob NativeSourceBlob(int height, int width, cosmo::nn::ImageFormat format,
+                                 cosmo::nn::NativeImageColorSpace color_space,
+                                 cosmo::nn::NativeImageColorRange color_range, int width_stride,
+                                 int height_stride, int fd, size_t bytes) {
+    cosmo::nn::BlobDesc desc = PackedImageDesc(height, width, format);
+    cosmo::nn::BlobHandle handle;
+    handle.native_image.fd            = fd;
+    handle.native_image.bytes         = bytes;
+    handle.native_image.width         = width;
+    handle.native_image.height        = height;
+    handle.native_image.width_stride  = width_stride;
+    handle.native_image.height_stride = height_stride;
+    handle.native_image.format        = format;
+    handle.native_image.color_space   = color_space;
+    handle.native_image.color_range   = color_range;
+    return cosmo::nn::Blob(desc, handle);
+}
+
+cosmo::nn::RknnResizeNode MakeDetectorResizeNode(cosmo::nn::SharedResource& resource) {
+    cosmo::nn::Resize resize;
+    resize.dsize   = {4, 4};
+    resize.gravity = 1;
+    resize.color   = {114, 114, 114};
+    cosmo::nn::RknnResizeNode node;
+    node.SetSharedResource(&resource);
+    node.LoadParam(&resize);
+    REQUIRE(bool(node.InferTopShapes()));
+    return node;
+}
+
+std::shared_ptr<cosmo::nn::Blob> AllocResizeTop(cosmo::nn::RknnResizeNode& node) {
+    cosmo::nn::BlobDesc desc;
+    desc.device_type = cosmo::nn::DEVICE_NAIVE;
+    desc.data_type   = node.GetTopBlobDataTypes().front();
+    desc.dims        = node.GetTopBlobShapes().front();
+    return std::make_shared<cosmo::nn::Blob>(desc, true);
+}
+
+// Expected BT.601 limited conversion of Y=128,U=160,V=96 (y=112,u=32,v=-32):
+// B=(298*112+516*32+128)>>8=195 G=(298*112-100*32+208*32+128)>>8=144 R=(298*112+409*-32+128)>>8=79
+constexpr uint8_t kYuv601LimitedMidChromaBgr[3] = {195, 144, 79};
+// Expected BT.709 limited conversion of the same input:
+// B=(298*112+541*32+128)>>8=198 G=(298*112-54*32+136*32+128)>>8=141 R=(298*112+459*-32+128)>>8=73
+constexpr uint8_t kYuv709LimitedMidChromaBgr[3] = {198, 141, 73};
+
+TEST_CASE("RKNN native CPU fallback converts NV12 with the default BT.601 limited matrix",
+          "[nn][rknn][fast-preprocess][native-fallback]") {
+    using namespace cosmo::nn;
+    ScopedEnvironment force_fail("COSMO_RKNN_RGA_FORCE_FAIL", "1");
+    SharedResource resource;
+    RknnResizeNode node = MakeDetectorResizeNode(resource);
+
+    // 4x4 NV12, stride 4x4: luma[16] + interleaved chroma[8].
+    ScopedMemfd dma_buf(24);
+    REQUIRE(dma_buf.get() >= 0);
+    for (size_t row = 0; row < 4; ++row)
+        for (size_t col = 0; col < 4; ++col)
+            dma_buf.Poke(row * 4 + col, 128);  // studio gray luma
+    dma_buf.Poke(16, 160);                     // U of the top-left 2x2 block
+    dma_buf.Poke(17, 96);                      // V of the top-left 2x2 block
+
+    auto bottom = std::make_shared<Blob>(
+        NativeSourceBlob(4, 4, IMAGE_NV12, NativeImageColorSpace::Unspecified,
+                         NativeImageColorRange::Unspecified, 4, 4, dma_buf.get(), dma_buf.bytes()));
+    auto top = AllocResizeTop(node);
+
+    const auto before = GetInferencePipelineMetrics().Snapshot();
+    std::vector<std::shared_ptr<Blob>> bottoms{bottom};
+    std::vector<std::shared_ptr<Blob>> tops{top};
+    REQUIRE(bool(node.Forward(bottoms, tops)));
+    const auto after = GetInferencePipelineMetrics().Snapshot();
+    CHECK(after.rknn_mpp_dmabuf_fallbacks == before.rknn_mpp_dmabuf_fallbacks + 1);
+
+    const auto* output = static_cast<const uint8_t*>(top->GetHandle().base);
+    CHECK(output[0] == kYuv601LimitedMidChromaBgr[0]);
+    CHECK(output[1] == kYuv601LimitedMidChromaBgr[1]);
+    CHECK(output[2] == kYuv601LimitedMidChromaBgr[2]);
+    // Bottom-right 2x2 block keeps neutral chroma: studio gray maps to 130.
+    const size_t gray_pixel = (3 * 4 + 3) * 3;
+    CHECK(output[gray_pixel + 0] == 130);
+    CHECK(output[gray_pixel + 1] == 130);
+    CHECK(output[gray_pixel + 2] == 130);
+}
+
+TEST_CASE("RKNN native CPU fallback selects BT.709 and full-range matrices from metadata",
+          "[nn][rknn][fast-preprocess][native-fallback]") {
+    using namespace cosmo::nn;
+    ScopedEnvironment force_fail("COSMO_RKNN_RGA_FORCE_FAIL", "1");
+    SharedResource resource;
+    RknnResizeNode node = MakeDetectorResizeNode(resource);
+
+    ScopedMemfd dma_buf(24);
+    REQUIRE(dma_buf.get() >= 0);
+    for (size_t row = 0; row < 4; ++row)
+        for (size_t col = 0; col < 4; ++col)
+            dma_buf.Poke(row * 4 + col, 128);
+    dma_buf.Poke(16, 160);
+    dma_buf.Poke(17, 96);
+
+    auto bottom = std::make_shared<Blob>(NativeSourceBlob(4, 4, IMAGE_NV12, NativeImageColorSpace::Bt709,
+                                                          NativeImageColorRange::Limited, 4, 4, dma_buf.get(),
+                                                          dma_buf.bytes()));
+    auto top    = AllocResizeTop(node);
+    std::vector<std::shared_ptr<Blob>> bottoms{bottom};
+    std::vector<std::shared_ptr<Blob>> tops{top};
+    REQUIRE(bool(node.Forward(bottoms, tops)));
+    const auto* output = static_cast<const uint8_t*>(top->GetHandle().base);
+    CHECK(output[0] == kYuv709LimitedMidChromaBgr[0]);
+    CHECK(output[1] == kYuv709LimitedMidChromaBgr[1]);
+    CHECK(output[2] == kYuv709LimitedMidChromaBgr[2]);
+
+    // Full range: luma is used directly, so black/white map exactly to 0/255.
+    ScopedMemfd full_range(24);
+    REQUIRE(full_range.get() >= 0);
+    for (size_t row = 0; row < 4; ++row) {
+        for (size_t col = 0; col < 4; ++col)
+            full_range.Poke(row * 4 + col, row == 0 ? 255 : 0);
+    }
+    full_range.Poke(16, 128);
+    full_range.Poke(17, 128);
+    auto full_bottom = std::make_shared<Blob>(NativeSourceBlob(4, 4, IMAGE_NV12, NativeImageColorSpace::Bt601,
+                                                               NativeImageColorRange::Full, 4, 4,
+                                                               full_range.get(), full_range.bytes()));
+    auto full_top    = AllocResizeTop(node);
+    std::vector<std::shared_ptr<Blob>> full_bottoms{full_bottom};
+    std::vector<std::shared_ptr<Blob>> full_tops{full_top};
+    REQUIRE(bool(node.Forward(full_bottoms, full_tops)));
+    const auto* full_output = static_cast<const uint8_t*>(full_top->GetHandle().base);
+    CHECK(full_output[0] == 255);
+    CHECK(full_output[1] == 255);
+    CHECK(full_output[2] == 255);
+    const size_t black_pixel = (3 * 4 + 3) * 3;
+    CHECK(full_output[black_pixel + 0] == 0);
+    CHECK(full_output[black_pixel + 1] == 0);
+    CHECK(full_output[black_pixel + 2] == 0);
+}
+
+TEST_CASE("RKNN native CPU fallback reads I420 planes by stride, not source height",
+          "[nn][rknn][fast-preprocess][native-fallback]") {
+    using namespace cosmo::nn;
+    ScopedEnvironment force_fail("COSMO_RKNN_RGA_FORCE_FAIL", "1");
+    SharedResource resource;
+    RknnResizeNode node = MakeDetectorResizeNode(resource);
+
+    // 4x4 I420 inside a 4x6-stride allocation: luma[24] + U[12] + V[12].
+    ScopedMemfd dma_buf(48);
+    REQUIRE(dma_buf.get() >= 0);
+    for (size_t row = 0; row < 4; ++row)
+        for (size_t col = 0; col < 4; ++col)
+            dma_buf.Poke(row * 4 + col, 128);
+    dma_buf.Poke(24, 160);  // first U byte
+    dma_buf.Poke(36, 96);   // first V byte (U plane ends at 24+12)
+
+    auto bottom = std::make_shared<Blob>(
+        NativeSourceBlob(4, 4, IMAGE_I420, NativeImageColorSpace::Unspecified,
+                         NativeImageColorRange::Unspecified, 4, 6, dma_buf.get(), dma_buf.bytes()));
+    auto top = AllocResizeTop(node);
+    std::vector<std::shared_ptr<Blob>> bottoms{bottom};
+    std::vector<std::shared_ptr<Blob>> tops{top};
+    REQUIRE(bool(node.Forward(bottoms, tops)));
+    const auto* output = static_cast<const uint8_t*>(top->GetHandle().base);
+    CHECK(output[0] == kYuv601LimitedMidChromaBgr[0]);
+    CHECK(output[1] == kYuv601LimitedMidChromaBgr[1]);
+    CHECK(output[2] == kYuv601LimitedMidChromaBgr[2]);
+}
+
+TEST_CASE("RKNN native CPU fallback rejects invalid descriptors without touching output",
+          "[nn][rknn][fast-preprocess][native-fallback]") {
+    using namespace cosmo::nn;
+    ScopedEnvironment force_fail("COSMO_RKNN_RGA_FORCE_FAIL", "1");
+    SharedResource resource;
+    RknnResizeNode node = MakeDetectorResizeNode(resource);
+
+    // Plane layout larger than the DMA-BUF: must fail closed.
+    ScopedMemfd undersized(10);
+    REQUIRE(undersized.get() >= 0);
+    auto bottom = std::make_shared<Blob>(
+        NativeSourceBlob(4, 4, IMAGE_NV12, NativeImageColorSpace::Unspecified,
+                         NativeImageColorRange::Unspecified, 4, 4, undersized.get(), undersized.bytes()));
+    auto top = AllocResizeTop(node);
+    std::memset(top->GetHandle().base, 0xAB, static_cast<size_t>(4) * 4 * 3);
+    const auto before = GetInferencePipelineMetrics().Snapshot();
+    std::vector<std::shared_ptr<Blob>> bottoms{bottom};
+    std::vector<std::shared_ptr<Blob>> tops{top};
+    CHECK_FALSE(bool(node.Forward(bottoms, tops)));
+    const auto after = GetInferencePipelineMetrics().Snapshot();
+    CHECK(after.rknn_mpp_dmabuf_fallbacks == before.rknn_mpp_dmabuf_fallbacks);
+    const auto* untouched = static_cast<const uint8_t*>(top->GetHandle().base);
+    CHECK(untouched[0] == 0xAB);
+    CHECK(untouched[static_cast<size_t>(4) * 4 * 3 - 1] == 0xAB);
+
+    // Unsupported pixel format: must fail closed instead of guessing a layout.
+    ScopedMemfd wrong_format(24);
+    REQUIRE(wrong_format.get() >= 0);
+    auto rgb_bottom = std::make_shared<Blob>(
+        NativeSourceBlob(4, 4, IMAGE_RGB, NativeImageColorSpace::Unspecified,
+                         NativeImageColorRange::Unspecified, 4, 4, wrong_format.get(), wrong_format.bytes()));
+    auto rgb_top = AllocResizeTop(node);
+    std::vector<std::shared_ptr<Blob>> rgb_bottoms{rgb_bottom};
+    std::vector<std::shared_ptr<Blob>> rgb_tops{rgb_top};
+    CHECK_FALSE(bool(node.Forward(rgb_bottoms, rgb_tops)));
+}
+
+#endif  // __linux__ && SYS_memfd_create
 
 #endif
