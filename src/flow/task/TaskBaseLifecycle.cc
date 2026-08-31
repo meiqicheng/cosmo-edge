@@ -47,7 +47,7 @@ bool ForceHostFrameForClassifyPipeline(TaskElementPtr task) {
     for (const auto& taNode : task->actions) {
         auto* channel = dynamic_cast<AlgChannel*>(taNode.actionInst.get());
         if (channel) {
-            channel->SetDecoderRequiresHostFrame(true);
+            channel->SetDecoderRequiresHostFrame(task->taskId, true);
             LOG_INFO("[{}-{} Create {}] Classify detected in pipeline, "
                      "decoder forced to host-frame mode",
                      task->channelId, task->taskId, task->GetAlgName());
@@ -109,6 +109,15 @@ void TaskBase::TaskUnRegist(TaskElementPtr task) {
             LOG_INFO("[{}-{} Remove {}] Action: {}  RemoveQueue From {}", task->channelId, task->taskId,
                      task->GetAlgName(), taNode.action.actionId, taNode.fatherAction->GetName());
             taNode.fatherAction->RemoveTaskQueue(param);
+        }
+    }
+    // Release this task's host-frame requirement so the decoder can return to
+    // native-only mode when no other task still needs a host frame (P1-1).
+    for (const auto& taNode : task->actions) {
+        auto* channel = dynamic_cast<AlgChannel*>(taNode.actionInst.get());
+        if (channel) {
+            channel->SetDecoderRequiresHostFrame(task->taskId, false);
+            break;
         }
     }
 }

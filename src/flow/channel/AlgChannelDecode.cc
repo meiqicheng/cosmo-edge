@@ -366,7 +366,7 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
         native_inference_buffer && native_inference_buffer->Valid() && task_plan.SupportsNativeInference();
     const bool skip_materialize =
         all_tasks_native && viewer_plan.empty() && !NeedsHostFrame(output_stream_index) &&
-        !requires_host_frame_;
+        !RequiresHostFrame();
 
     frame_index_ = video_frame->index;
     decode_count_++;
