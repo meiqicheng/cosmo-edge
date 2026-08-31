@@ -984,10 +984,11 @@ class PackageProfileTests(unittest.TestCase):
                 profile["qualification"]["status"],
                 toolchain_lock["qualification"][chip]["status"],
             )
-        # Both chips now share the same bullseye media runtime profile
-        # (MPP/RGA cross-built once on debian:bullseye and fanned out to every
-        # chip root), so their media runtime_profile is intentionally equal.
-        self.assertEqual(
+        # In the checked-in Ubuntu 22.04 builder lock, RK3576 uses the legacy
+        # image media profile and RV1126B the reproducible git-clone profile,
+        # so their media runtime_profile differs (the Debian 11 builder pages
+        # both chips onto one shared bullseye profile in-image, not in these files).
+        self.assertNotEqual(
             rk3576["media"]["runtime_profile"],
             rv1126b["media"]["runtime_profile"],
         )
@@ -1027,12 +1028,17 @@ class PackageProfileTests(unittest.TestCase):
             self.assertIn(
                 profile["media"]["runtime_profile"], runtime_lock["runtimes"]
             )
+        # RV1126B's checked-in profile is the reproducible git-clone sysroot,
+        # whose MPP .so is pinned by the exact reproducible sha256 (no glibc
+        # gate; the Debian 11 shared bullseye profile carries that gate).
         rv_runtime = runtime_lock["runtimes"][rv1126b["media"]["runtime_profile"]]
         mpp_so = rv_runtime["artifacts"]["lib/librockchip_mpp.so.0"]
         self.assertEqual(mpp_so["elf"]["machine"], "AArch64")
         self.assertEqual(mpp_so["elf"]["soname"], "librockchip_mpp.so.1")
-        self.assertEqual(mpp_so["elf"]["glibcMax"], "2.31")
-        self.assertNotIn("sha256", mpp_so)
+        self.assertEqual(
+            mpp_so["sha256"],
+            "b3f15d57a7516bab1e6167b8244afaff8f27b0b7d34813328db8420a7019820b",
+        )
 
     def test_rk3588_preview_binds_rockchip_media_to_frozen_bullseye_builder(self) -> None:
         profile = json.loads(
@@ -1095,7 +1101,9 @@ class PackageProfileTests(unittest.TestCase):
             "99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704ebc3ead2015675",
             dockerfile,
         )
-        self.assertIn(
+        # The bullseye builder image is assembled entirely FROM SCRATCH:
+        # it no longer COPYs from the legacy rk3576 toolchain image.
+        self.assertNotIn(
             "ghcr.io/cosmo-wander-ai/cosmo_edge-build-env_rk3576@sha256:"
             "135d25d0baf14e7918726f7efb040a0627926aedd5825f52fab6c1cd208da348",
             dockerfile,
@@ -1105,7 +1113,7 @@ class PackageProfileTests(unittest.TestCase):
             dockerfile,
         )
         self.assertIn("/opt/ffmpeg-debian11", dockerfile)
-        self.assertIn("COPY config/rockchip-build/builder-lock.json", dockerfile)
+        self.assertIn("COPY config/rockchip-build/builder-lock.bullseye.json", dockerfile)
         self.assertIn(
             "COSMO_ROCKCHIP_BUILDER_LOCK=/opt/cosmo/rockchip-builder-lock.json",
             dockerfile,
@@ -1113,7 +1121,7 @@ class PackageProfileTests(unittest.TestCase):
         self.assertIn("builder-versions.json", dockerfile)
 
         # Single image: RKLLM is baked in at /opt/rkllm; no core/rkllm split.
-        self.assertIn(" AS core", dockerfile)
+        self.assertIn(" AS rockchip-toolchain", dockerfile)
         self.assertNotIn("FROM core AS rkllm", dockerfile)
         self.assertIn("/opt/rkllm/include/rkllm.h", dockerfile)
         # Single-stage image: no target selection needed in compose.
