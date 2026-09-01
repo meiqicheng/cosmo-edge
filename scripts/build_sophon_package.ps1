@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("bm1688", "cv186x", "bm1684", "bm1684x")]
+    [ValidateSet("bm1688", "cv186x")]
     [string]$Chip = "bm1688"
 )
 
@@ -41,14 +41,12 @@ $PackageVariant = if ($BuildProfile -eq "public-runtime") { "Open" } else { "Pro
 
 function Write-Step { Write-Host "`n=== $args ===" -ForegroundColor Cyan }
 
-# Run a docker command via cmd.exe. Docker writes routine progress messages
-# (e.g. "Container ... Creating") to stderr; under PowerShell 5.1 with
-# $ErrorActionPreference = "Stop" those lines would be treated as terminating
-# NativeCommandError records even when the command succeeds. Merging stderr
-# into stdout keeps the real exit code authoritative.
+# Run a docker command via cmd.exe so PowerShell 5.1 does not see stderr
+# (which it would otherwise treat as a terminating error due to
+# $ErrorActionPreference = "Stop").
 function Invoke-Docker {
     $args_flat = $args -join ' '
-    cmd /c "docker $args_flat 2>&1"
+    cmd /c "docker $args_flat"
     if ($LASTEXITCODE -ne 0) {
         throw "docker $args_flat  failed (exit $LASTEXITCODE)"
     }
@@ -123,7 +121,7 @@ volumes:
 
 Push-Location $projectRoot
 try {
-    cmd /c "docker compose -f $ComposeFile -f $OverrideFile run --rm cosmo-sophon-package --chip $Chip 2>&1"
+    cmd /c "docker compose -f $ComposeFile -f $OverrideFile run --rm cosmo-sophon-package --chip $Chip"
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Docker build failed with exit code $LASTEXITCODE."
         exit $LASTEXITCODE

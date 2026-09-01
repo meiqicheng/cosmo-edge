@@ -87,12 +87,7 @@ namespace media {
                     if (bm_image_is_attached(*image)) {
                         bm_image_detach(*image);
                     }
-#ifdef COSMO_NN_SOPHON_1684X
-                    // libsophon 0.5.x (BM1684) takes bm_image by value.
-                    bm_image_destroy(*image);
-#else
                     bm_image_destroy(image);
-#endif
                     free(image);  // NOLINT: paired with malloc in CreateBMImage, RAII via unique_ptr
                 }
             }

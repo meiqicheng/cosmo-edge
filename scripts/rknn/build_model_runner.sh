@@ -9,15 +9,7 @@ fi
 
 runtime_root="$(cd "$1" && pwd)"
 output_dir="${2:-$PWD/build/rknn-model-runner}"
-# Use CXX if given, else auto-detect the aarch64 cross compiler (ARM GNU
-# Toolchain first, then the distro apt package).
-if [[ -n "${CXX:-}" ]]; then
-    cxx="$CXX"
-elif command -v aarch64-none-linux-gnu-g++ >/dev/null 2>&1; then
-    cxx=aarch64-none-linux-gnu-g++
-else
-    cxx=aarch64-linux-gnu-g++
-fi
+cxx="${CXX:-aarch64-linux-gnu-g++}"
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 source_file="$repo_root/tools/rknn/rknn_model_runner.cc"
 

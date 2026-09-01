@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.16)
 
 if(POLICY CMP0068)
     cmake_policy(SET CMP0068 NEW)
@@ -148,7 +148,7 @@ endif()
 set(COSMO_TARGET_CHIP "" CACHE STRING "Target accelerator chip recorded in release packages")
 if(COSMO_TARGET_CHIP)
     string(TOLOWER "${COSMO_TARGET_CHIP}" COSMO_TARGET_CHIP_NORMALIZED)
-    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(bm1688|cv186x|bm1684|bm1684x|rk3576|rk3588|rv1126b|ax650n|unspecified)$")
+    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(bm1688|cv186x|rk3576|rv1126b|ax650n|unspecified)$")
         message(FATAL_ERROR "Unsupported COSMO_TARGET_CHIP: ${COSMO_TARGET_CHIP}")
     endif()
 endif()
@@ -160,9 +160,9 @@ cosmo_configure_runtime_paths(
 message(STATUS "Cosmo mutable data root: ${COSMO_DEFAULT_DATA_DIR}")
 
 if(COSMO_NN_USE_RKNN_BACKEND)
-    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(rk3576|rk3588|rv1126b)$")
+    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(rk3576|rv1126b)$")
         message(FATAL_ERROR
-            "RKNN builds require COSMO_TARGET_CHIP=rk3576, rk3588, or rv1126b")
+            "RKNN builds require COSMO_TARGET_CHIP=rk3576 or rv1126b")
     endif()
     string(TOUPPER "${COSMO_TARGET_CHIP_NORMALIZED}" COSMO_TARGET_CHIP_LABEL)
     set(COSMO_PLATFORM_PROFILE
@@ -642,7 +642,7 @@ if(COSMO_NN_USE_AXERA_BACKEND OR COSMO_MEDIA_USE_AXERA_BACKEND)
         "-Wl,-rpath-link,${COSMO_AXERA_ROOT}/lib"
         "-Wl,--allow-shlib-undefined")
 endif()
-#Build order: OBJECT libs 鈫?third_build (explicit, see foreach above)
+#Build order: OBJECT libs -> third_build (explicit, see foreach above)
 target_link_libraries(${EXECUTABLE_NAME} PRIVATE ${COMMON_LIBS})
 
 if(COSMO_NN_USE_RKNN_BACKEND)

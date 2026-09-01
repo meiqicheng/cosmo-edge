@@ -30,7 +30,7 @@ while getopts "c:m:tT" opt; do
         m) RESOURCE_DIR="$OPTARG" ;;
         t) DEV_MODE=ON ;;
         T) BUILD_TESTS_FLAG=ON ;;
-        *) echo "Usage: $0 [-c <bm1688|cv186x|bm1684|bm1684x> | -m <resource_repo_path>] [-t] [-T]"; exit 1 ;;
+        *) echo "Usage: $0 [-c <bm1688|cv186x> | -m <resource_repo_path>] [-t] [-T]"; exit 1 ;;
     esac
 done
 
@@ -46,11 +46,11 @@ fi
 if [ -z "${RESOURCE_DIR}" ]; then
     CHIP_MODEL="${CHIP_MODEL:-bm1688}"
     case "${CHIP_MODEL}" in
-        bm1688|cv186x|bm1684|bm1684x)
+        bm1688|cv186x)
             RESOURCE_DIR="${PROJECT_ROOT_PATH}/data/resource/aiboxresource_${CHIP_MODEL}"
             ;;
         *)
-            echo "ERROR: unsupported Sophon chip '${CHIP_MODEL}'; expected bm1688, cv186x, bm1684 or bm1684x" >&2
+            echo "ERROR: unsupported Sophon chip '${CHIP_MODEL}'; expected bm1688 or cv186x" >&2
             exit 1
             ;;
     esac
@@ -113,21 +113,10 @@ fi
 cmake --build . "${build_targets[@]}" -j"$(nproc)"
 
 echo "Auditing installed AArch64 ELF paths..."
-# Auto-detect the aarch64 readelf (ARM GNU Toolchain first, then distro apt).
-if [[ -n "${CROSS_READELF:-}" ]]; then
-    readelf_bin="${CROSS_READELF}"
-elif command -v aarch64-none-linux-gnu-readelf >/dev/null 2>&1; then
-    readelf_bin=aarch64-none-linux-gnu-readelf
-elif command -v aarch64-linux-gnu-readelf >/dev/null 2>&1; then
-    readelf_bin=aarch64-linux-gnu-readelf
-else
-    echo "ERROR: no aarch64 readelf found (set CROSS_READELF)" >&2
-    exit 1
-fi
 unsafe_elf_path=0
 while IFS= read -r -d '' installed_file; do
-    if "${readelf_bin}" -hW "${installed_file}" >/dev/null 2>&1; then
-        dynamic_metadata=$("${readelf_bin}" -dW "${installed_file}")
+    if aarch64-linux-gnu-readelf -hW "${installed_file}" >/dev/null 2>&1; then
+        dynamic_metadata=$(aarch64-linux-gnu-readelf -dW "${installed_file}")
         if grep -Eq '/workspace|thirdparty_install|3rd/libsophon' \
                 <<<"${dynamic_metadata}"
         then

@@ -1,12 +1,12 @@
 {
   "model_type": "yolov12_det",
-  "chip_type": "BM1684",
+  "chip_type": "AX650N",
   "algorithm_code": "4000001",
   "version": "V1.0.0",
   "reduce": "",
   "models": [
     {
-      "name": "yolov8妫€娴?,
+      "name": "yolov8检测",
       "file_name": "",
       "file_md5": "",
       "max_batch": 4,

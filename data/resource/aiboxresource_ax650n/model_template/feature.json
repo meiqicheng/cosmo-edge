@@ -1,6 +1,6 @@
 {
   "model_type": "feature",
-  "chip_type": "BM1684",
+  "chip_type": "AX650N",
   "algorithm_code": "1000005",
   "version": "V1",
   "reduce": "concat",

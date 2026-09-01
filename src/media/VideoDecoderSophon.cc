@@ -11,15 +11,6 @@
 #include "util/TimingConstants.h"
 #include "util/VideoInfo.h"
 
-// libsophon 0.4.x (BM1688/CV186X) reports decoder success as
-// BMVidDecRetStatus::BM_ERR_VDEC_SUCCESS; libsophon 0.5.x (BM1684/BM1684X)
-// removed that enumerator — BM_SUCCESS (0) is the equivalent success code.
-#ifdef COSMO_NN_SOPHON_1684X
-#define COSMO_VDEC_SUCCESS BM_SUCCESS
-#else
-#define COSMO_VDEC_SUCCESS BM_ERR_VDEC_SUCCESS
-#endif
-
 // BM1688 VPU hardware decoder's create/delete share underlying hardware resources (VPU core, frame buffer
 // pool). Concurrent execution of bmvpu_dec_create and bmvpu_dec_delete may corrupt the active decoder's
 // handle, returning BM_ERR_VDEC_ILLEGAL_PARAM. This global lock serializes all VPU lifecycle operations.
@@ -42,12 +33,7 @@ namespace media {
                 if (bm_image_is_attached(*p)) {
                     bm_image_detach(*p);
                 }
-#ifdef COSMO_NN_SOPHON_1684X
-                // libsophon 0.5.x (BM1684) takes bm_image by value.
-                bm_image_destroy(*p);
-#else
                 bm_image_destroy(p);
-#endif
                 delete p;
             }
         }
@@ -56,14 +42,7 @@ namespace media {
     using BmImagePtr = std::unique_ptr<bm_image, BmImageDeleter>;
 
     VideoDecoderSophon::VideoDecoderSophon(size_t name, void* mediaHandle) : VideoDecoder(name) {
-        // libsophon 0.4.x (BM1688/CV186X) names the log level ERR; 0.5.x
-        // (BM1684/BM1684X) renamed it to ERROR and marks the header deprecated.
-        // The bmvpu_dec_* symbols themselves are unchanged across both families.
-#ifdef COSMO_NN_SOPHON_1684X
-        bmvpu_dec_set_logging_threshold(BmVpuDecLogLevel::BMVPU_DEC_LOG_LEVEL_ERROR);
-#else
         bmvpu_dec_set_logging_threshold(BmVpuDecLogLevel::BMVPU_DEC_LOG_LEVEL_ERR);
-#endif
 
         bm_handle_ = reinterpret_cast<bm_handle_t>(mediaHandle);
         stop_      = true;
@@ -130,7 +109,7 @@ namespace media {
             std::lock_guard<std::mutex> vpuLock(g_vpuLifecycleMutex);
             ret = bmvpu_dec_create(&next_handle, dec_params);
         }
-        if (ret != COSMO_VDEC_SUCCESS || next_handle == nullptr) {
+        if (ret != BM_ERR_VDEC_SUCCESS || next_handle == nullptr) {
             LOG_WARN("{} bmvpu_dec_create failed ret:{}", idx_name_, ret);
             return false;
         }
@@ -155,7 +134,7 @@ namespace media {
             std::lock_guard<std::mutex> vpuLock(g_vpuLifecycleMutex);
             if (code_handle_) {
                 const auto ret = bmvpu_dec_delete(code_handle_);
-                if (ret != COSMO_VDEC_SUCCESS) {
+                if (ret != BM_ERR_VDEC_SUCCESS) {
                     LOG_ERRO("{} bmvpu_dec_delete failed: {}", idx_name_, ret);
                     return false;
                 }
@@ -197,7 +176,7 @@ namespace media {
         constexpr int kMaxDecodeAttempts = 100;
         for (int attempt = 0; attempt < kMaxDecodeAttempts; ++attempt) {
             const auto ret = bmvpu_dec_decode(code_handle_, stream);
-            if (ret == BM_SUCCESS || ret == COSMO_VDEC_SUCCESS) {
+            if (ret == BMVidDecRetStatus::BM_ERR_VDEC_SUCCESS) {
                 return true;
             }
             if (ret != BMVidDecRetStatus::BM_ERR_VDEC_BUF_FULL &&
@@ -226,7 +205,7 @@ namespace media {
 
         const auto clear_output = [this]() {
             const auto ret = bmvpu_dec_clear_output(code_handle_, frame_.get());
-            if (ret != COSMO_VDEC_SUCCESS) {
+            if (ret != BM_ERR_VDEC_SUCCESS) {
                 LOG_ERRO("{} bmvpu_dec_clear_output failed: {}", idx_name_, ret);
                 return false;
             }
@@ -236,7 +215,7 @@ namespace media {
         // cppcheck-suppress knownConditionTrueFalse
         while (!stop_.load()) {
             auto ret = bmvpu_dec_get_output(code_handle_, frame_.get());
-            if (ret != BM_SUCCESS && ret != COSMO_VDEC_SUCCESS) {
+            if (ret != BMVidDecRetStatus::BM_ERR_VDEC_SUCCESS) {
                 if (ret == BMVidDecRetStatus::BM_ERR_VDEC_BUF_EMPTY) {
                     return nullptr;
                 }
