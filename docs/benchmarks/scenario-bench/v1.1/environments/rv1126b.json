@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 2,
+  "platform": "RV1126B",
+  "scope": "release-platform",
+  "deviceDescription": "RV1126B reference device",
+  "architecture": "aarch64",
+  "os": "Linux",
+  "memory": {
+    "sharedSystemMiB": 1990
+  },
+  "runtime": {
+    "inference": "RKNN",
+    "media": "Rockchip MPP / RGA"
+  },
+  "cosmoEdgeInstalledVersion": "V1.1.0.0",
+  "releaseSourceCommit": "89c73a7464a81ef378686447d7c1eeb88b988455",
+  "releaseSourceTree": "6857fbcce72c7af64e6cb23a27e66a405e9df9af",
+  "capturedAt": "2026-08-19"
+}

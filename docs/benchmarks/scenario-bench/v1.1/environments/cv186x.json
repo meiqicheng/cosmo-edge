@@ -1,32 +1,20 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "platform": "CV186X",
   "deviceDescription": "CV186X reference device",
-  "boardModel": "Sophon CV186X reference design; commercial enclosure name withheld",
+  "architecture": "aarch64",
+  "os": "Ubuntu 22.04.5 LTS",
   "memory": {
     "systemBytes": 2160451584,
     "acceleratorHeap0MiB": 1536,
     "acceleratorHeap1MiB": 4096
   },
-  "storage": {
-    "systemFilesystemBytes": 9260003328,
-    "dataFilesystemBytes": 49375051776
-  },
-  "os": "Ubuntu 22.04.5 LTS",
-  "architecture": "aarch64",
-  "bsp": "BSP package identity is not published in this benchmark",
   "runtime": {
     "inference": "libsophon/BMRT 0.4.12",
-    "media": "Sophon FFmpeg 2.0.0 / Sophon GStreamer 2.0.0",
-    "decoder": "bmvpu-decoder",
-    "encoder": "bmvpu-h264"
+    "media": "Sophon FFmpeg 2.0.0 / Sophon GStreamer 2.0.0"
   },
   "cosmoEdgeInstalledVersion": "V1.1.0.0",
-  "releaseSourceCommit": "209bc2b52849864a15bdad91beb61f5bc982c17f",
-  "releaseSourceTree": "f64a98bce05b9ee8dc64dda8e56ad50f9d15687f",
-  "packageProfile": "public-runtime",
-  "packageSha256": "8aee0bdb146d80647b4f517114c2920781ed6760e90e5bdf951fefd982dbecb2",
-  "runningEngineSha256": "bc7274327896384bcf68abf7fc42ce9e133f15131f3be21cb265b8e4deb55d11",
-  "packageBinding": "verified: packaged and running engine SHA-256 values match; package does not embed a source commit",
-  "capturedAt": "2026-08-12T16:10:00+08:00"
+  "releaseSourceCommit": "89c73a7464a81ef378686447d7c1eeb88b988455",
+  "releaseSourceTree": "6857fbcce72c7af64e6cb23a27e66a405e9df9af",
+  "capturedAt": "2026-08-19"
 }

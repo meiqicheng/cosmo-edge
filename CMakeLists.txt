@@ -153,6 +153,12 @@ if(COSMO_TARGET_CHIP)
     endif()
 endif()
 
+include(cmake/CosmoRuntimePaths.cmake)
+cosmo_configure_runtime_paths(
+    "${COSMO_TARGET_CHIP_NORMALIZED}"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/runtime-paths")
+message(STATUS "Cosmo mutable data root: ${COSMO_DEFAULT_DATA_DIR}")
+
 if(COSMO_NN_USE_RKNN_BACKEND)
     if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(rk3576|rk3588|rv1126b)$")
         message(FATAL_ERROR
@@ -590,7 +596,8 @@ set(EXECUTABLE_NAME "cosmo-engine")
 
 add_executable(${EXECUTABLE_NAME} ${APP_SRC} ${ALL_OBJECTS})
 target_include_directories(${EXECUTABLE_NAME} PRIVATE
-    ${CMAKE_SOURCE_DIR}/src)
+    ${CMAKE_SOURCE_DIR}/src
+    ${COSMO_RUNTIME_PATHS_INCLUDE_DIR})
 # Third-party headers come from IMPORTED targets via COMMON_LIBS + header-only libs
 target_link_libraries(${EXECUTABLE_NAME} PRIVATE nlohmann stb uWebSockets)
 if(COSMO_NN_USE_SOPHON_BACKEND)
@@ -685,7 +692,9 @@ if(BUILD_TESTS)
     add_executable(cosmo-tests ${APP_SRC_NO_MAIN} ${ALL_OBJECTS} ${TEST_SRC})
     add_dependencies(cosmo-tests third_build)
     target_include_directories(cosmo-tests PRIVATE
-        ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/test)
+        ${CMAKE_SOURCE_DIR}/src
+        ${CMAKE_SOURCE_DIR}/test
+        ${COSMO_RUNTIME_PATHS_INCLUDE_DIR})
     target_precompile_headers(cosmo-tests PRIVATE
         ${CMAKE_SOURCE_DIR}/test/catch_amalgamated.hpp
         ${CMAKE_SOURCE_DIR}/test/catch2/trompeloeil.hpp
@@ -751,6 +760,93 @@ include(cmake/web_frontend.cmake)
 # Install
 ##########################################################
 
+# Public binary archives are distributions of the Apache-2.0 work, not just
+# deployment payloads. Keep the project LICENSE/NOTICE at the archive root and
+# ship the exact license texts for the runtime dependencies inventoried by
+# NOTICE. Platform-specific SDK/model licenses are installed by their own
+# packaging paths below.
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE
+    ${CMAKE_CURRENT_SOURCE_DIR}/NOTICE
+    DESTINATION .
+    PERMISSIONS OWNER_WRITE OWNER_READ GROUP_READ WORLD_READ
+)
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE
+    ${CMAKE_CURRENT_SOURCE_DIR}/NOTICE
+    DESTINATION share/licenses/cosmo-edge
+    PERMISSIONS OWNER_WRITE OWNER_READ GROUP_READ WORLD_READ
+)
+
+function(cosmo_install_runtime_license component source_path)
+    if(NOT EXISTS "${source_path}")
+        message(FATAL_ERROR
+            "Runtime license source is missing for ${component}: ${source_path}")
+    endif()
+    install(FILES "${source_path}"
+        DESTINATION "share/licenses/third-party/${component}"
+        PERMISSIONS OWNER_WRITE OWNER_READ GROUP_READ WORLD_READ
+    )
+endfunction()
+
+cosmo_install_runtime_license(cryptopp
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/cryptopp-CRYPTOPP_8_9_0/License.txt")
+cosmo_install_runtime_license(cryptopp-cmake
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/cryptopp-cmake-CRYPTOPP_8_9_0/LICENSE")
+cosmo_install_runtime_license(curl
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/curl-8.17.0/COPYING")
+cosmo_install_runtime_license(eigen
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/eigen3-3.2.92/LICENSE.MPL2.0")
+cosmo_install_runtime_license(ffmpeg
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/srs-6.0-r0/trunk/3rdparty/ffmpeg-4-fit/LICENSE.md")
+cosmo_install_runtime_license(ffmpeg
+    "${CMAKE_CURRENT_SOURCE_DIR}/licenses/third-party/ffmpeg/COPYING.LGPLv2.1")
+cosmo_install_runtime_license(fmt
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/fmt-7.1.2/LICENSE.rst")
+cosmo_install_runtime_license(glog
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/glog/COPYING")
+cosmo_install_runtime_license(libevent
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/libevent-2.1.12-stable/LICENSE")
+cosmo_install_runtime_license(libsophon
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/libsophon-0.4.11/LICENSE")
+cosmo_install_runtime_license(libuuid
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/libuuid-1.0.3/COPYING")
+cosmo_install_runtime_license(mp4v2
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/mp4v2-2.0.0/COPYING")
+cosmo_install_runtime_license(onnxruntime
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/onnxruntime-linux-x64-1.26.0/LICENSE")
+cosmo_install_runtime_license(onnxruntime
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/onnxruntime-linux-x64-1.26.0/ThirdPartyNotices.txt")
+cosmo_install_runtime_license(openssl
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/openssl-3.5.3/LICENSE.txt")
+cosmo_install_runtime_license(paho-mqtt-c
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/paho.mqtt.c-1.3.15/LICENSE")
+cosmo_install_runtime_license(paho-mqtt-c
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/paho.mqtt.c-1.3.15/NOTICE")
+cosmo_install_runtime_license(srs
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/srs-6.0-r0/LICENSE")
+cosmo_install_runtime_license(sqlitecpp
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/SQLiteCpp-3.3.3/LICENSE.txt")
+cosmo_install_runtime_license(tokenizers-cpp
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/tokenizers-cpp/LICENSE")
+cosmo_install_runtime_license(usockets
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/uSockets/LICENSE")
+cosmo_install_runtime_license(uwebsockets
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/uWebSockets/LICENSE")
+cosmo_install_runtime_license(zlib
+    "${CMAKE_CURRENT_SOURCE_DIR}/3rd/zlib-1.3.1/LICENSE")
+
+if(COSMO_NN_USE_RKNN_BACKEND)
+    cosmo_install_runtime_license(rknn-runtime
+        "${CMAKE_CURRENT_SOURCE_DIR}/licenses/third-party/rknn-runtime/LICENSE")
+    cosmo_install_runtime_license(rockchip-mpp
+        "${CMAKE_CURRENT_SOURCE_DIR}/licenses/third-party/rockchip-mpp/Apache-2.0")
+    cosmo_install_runtime_license(rockchip-mpp
+        "${CMAKE_CURRENT_SOURCE_DIR}/licenses/third-party/rockchip-mpp/MIT")
+    cosmo_install_runtime_license(rockchip-librga
+        "${CMAKE_CURRENT_SOURCE_DIR}/licenses/third-party/rockchip-librga/COPYING")
+endif()
+
 # Binary
 install(TARGETS ${EXECUTABLE_NAME}
     DESTINATION bin
@@ -782,6 +878,13 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/data/
     PATTERN "*.pyc" EXCLUDE
     PATTERN "*.pyo" EXCLUDE
 )
+
+# Package-specific runtime roots. Launchers treat these as defaults and retain
+# explicit COSMO_DATA_DIR/COSMO_APP_DATA_DIR overrides.
+install(FILES "${COSMO_RUNTIME_PATHS_ENV}"
+    DESTINATION share/cosmo
+    PERMISSIONS OWNER_WRITE OWNER_READ GROUP_READ WORLD_READ
+)
 # Font
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/data/SOURCEHANSANSCN-REGULAR.OTF
     DESTINATION font
@@ -796,6 +899,7 @@ if(DEFINED RESOURCE_DIR AND IS_DIRECTORY "${RESOURCE_DIR}")
         FILE_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ
         PATTERN ".git" EXCLUDE
         PATTERN "models" EXCLUDE
+        PATTERN "model-artifacts" EXCLUDE
         PATTERN "__pycache__" EXCLUDE PATTERN "*.pyc" EXCLUDE PATTERN "*.pyo" EXCLUDE
     )
     if(DEFINED RESOURCE_OVERLAY_DIR AND IS_DIRECTORY "${RESOURCE_OVERLAY_DIR}")
@@ -805,6 +909,7 @@ if(DEFINED RESOURCE_DIR AND IS_DIRECTORY "${RESOURCE_DIR}")
             FILE_PERMISSIONS OWNER_WRITE OWNER_READ GROUP_WRITE GROUP_READ
             PATTERN ".git" EXCLUDE
             PATTERN "models" EXCLUDE
+            PATTERN "model-artifacts" EXCLUDE
             PATTERN "__pycache__" EXCLUDE PATTERN "*.pyc" EXCLUDE PATTERN "*.pyo" EXCLUDE
         )
     endif()
@@ -963,6 +1068,12 @@ if(COSMO_MODEL_GUARD)
     endif()
     install(FILES "${MODEL_GUARD_V2_HEADER}"
         DESTINATION share/cosmo-model-guard
+        PERMISSIONS OWNER_WRITE OWNER_READ GROUP_READ WORLD_READ
+    )
+    install(FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/prebuild/model-guard-v2/README.md"
+        DESTINATION share/licenses/cosmo-model-guard
+        RENAME ARTIFACT-TERMS.md
         PERMISSIONS OWNER_WRITE OWNER_READ GROUP_READ WORLD_READ
     )
     install(CODE [[

@@ -1,6 +1,0 @@
-# Public reproduction descriptor
-platform=bm1688
-workload=single-detector
-scenario=../../../scenarios/single-detector/
-# Resolve the public model reference, device-local layout, and schedule before running.
-node scenario-bench/src/cli.js run <resolved-scenario-directory> --output <result-directory>

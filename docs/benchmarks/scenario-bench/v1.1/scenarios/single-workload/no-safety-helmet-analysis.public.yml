@@ -1,0 +1,36 @@
+version: 2
+name: no-safety-helmet-analysis-fps-gradient
+displayName: No-safety-helmet analysis 24/10/7/5 FPS staircase
+sampleIntervalSec: 3
+
+channels:
+  mode: local
+  repeatCount: 0
+  sources:
+    - name: public-1080p24-sample
+      file: "../../dataset/controlled-1080p24-sample.mp4"
+
+tasks:
+  - id: no-safety-helmet-analysis
+    displayName: No-safety-helmet analysis
+    type: cv
+    modelRefs:
+      - "../../models/<platform>.json#person-detector"
+      - "../../models/<platform>.json#safety-helmet-classifier"
+    targetFps: "<24|10|7|5>"
+
+bindings:
+  - task: no-safety-helmet-analysis
+    channels: all
+
+loadProfile:
+  - channels: "1..<platform-maximum>"
+    holdSec: 30
+
+thresholds:
+  pass:
+    avgDiscardRate: 0.05
+  taskTypes:
+    cv:
+      minFpsRatio: 0.8
+      maxMissingRate: 0

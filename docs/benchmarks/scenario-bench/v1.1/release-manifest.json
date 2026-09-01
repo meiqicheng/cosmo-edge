@@ -1,117 +1,211 @@
 {
-  "schemaVersion": 1,
-  "manifestStatus": "frozen-publication-ready",
-  "doNotPublish": false,
+  "schemaVersion": 4,
+  "manifestStatus": "frozen-publication-candidate",
   "release": {
     "version": "1.1.0",
     "tag": "v1.1.0",
     "publicationState": "prepared-not-published",
-    "frozenAt": "2026-08-13T13:02:00+08:00"
+    "frozenAt": "2026-08-24T19:34:16+08:00"
   },
   "sourceBaseline": {
     "repository": "https://github.com/cosmo-wander-ai/cosmo-edge",
-    "branch": "feat/model-guard-v2.3",
-    "commit": "209bc2b52849864a15bdad91beb61f5bc982c17f",
-    "tree": "f64a98bce05b9ee8dc64dda8e56ad50f9d15687f",
-    "commitTime": "2026-08-13T12:04:09+08:00",
-    "commitSubject": "style(cpp): format candidate sources with clang-format",
-    "tagAtFreeze": null
+    "branch": "main",
+    "commit": "89c73a7464a81ef378686447d7c1eeb88b988455",
+    "tree": "6857fbcce72c7af64e6cb23a27e66a405e9df9af",
+    "commitTime": "2026-08-18T17:43:36+08:00",
+    "commitSubject": "Merge pull request #102 from cosmo-wander-ai/codex/rv1126b-submit-final"
   },
   "repositoryIntegration": {
-    "targetBranch": "feat/model-guard-v2.3",
-    "targetCommitAtPreparation": "209bc2b52849864a15bdad91beb61f5bc982c17f",
-    "targetTreeAtPreparation": "f64a98bce05b9ee8dc64dda8e56ad50f9d15687f",
-    "evidenceRebindingRequired": false,
-    "reason": "The release owner identified feat/model-guard-v2.3 at 209bc2b5 as the CosmoEdge 1.1 source baseline. Changes after the benchmarked RK3576 VLM baseline are limited to Web linkage and upgrade-cache behavior plus a formatting-only pass; they do not modify inference, media, or memory lifecycle semantics. The benchmark remains a workload report; per-device package provenance is recorded separately below."
-  },
-  "packageArtifacts": {
-    "open": {
-      "file": "cosmo-V1.1.0-3b0f4ebafd463eadf36e0d54918626dd.tar.gz",
-      "profile": "public-runtime",
-      "md5": "3b0f4ebafd463eadf36e0d54918626dd",
-      "sha256": "8aee0bdb146d80647b4f517114c2920781ed6760e90e5bdf951fefd982dbecb2",
-      "sizeBytes": 62915457,
-      "engineSha256": "bc7274327896384bcf68abf7fc42ce9e133f15131f3be21cb265b8e4deb55d11",
-      "status": "verified-on-bm1688-and-cv186x",
-      "verification": "The archive MD5 matches its filename; it contains plaintext CENN preset models and no provisioning binary, identifying the Open profile. The packaged engine SHA-256 equals the running engine SHA-256 on both Sophon reference devices."
-    },
-    "protected": {
-      "sha256": null,
-      "status": "commercial-release-artifact-not-in-public-benchmark",
-      "publicationImpact": "not a blocker for publishing this benchmark because no Protected package or protected model bytes are distributed here"
-    },
-    "evidenceBinding": {
-      "installedVersion": "V1.1.0.0",
-      "sourceBaselineDeclared": true,
-      "sourceCommitVerifiedFromPackage": false,
-      "packageSha256Verified": "bm1688-and-cv186x-open-package",
-      "status": "benchmark-binding-recorded-with-explicit-platform-gaps",
-      "reason": "BM1688 and CV186X are byte-bound to the recorded Open archive through the packaged/running engine digest. The archive predates the final source freeze and does not embed a source commit. RK3576 package bytes were not recovered, so RK3576 results remain bound to the reported installed version, model identities, environment and captured evidence rather than a package SHA-256."
-    }
+    "targetBranch": "main",
+    "documentationBaseCommit": "2f63ed254fe82d4e9903af9c5080fe5424143c35"
   },
   "benchmarkTool": {
     "name": "ScenarioBench",
     "version": "0.1.0",
+    "role": "current publication and future-run tool; execution provenance remains attached to each evidence set",
     "nodeRequirement": ">=20",
-    "cliSha256": "49d462975fb536eebe9c43436d1d72d725bff9b045523bfdc719a7cabb0e9f86",
-    "evaluatorSha256": "d3a73a2ca784ad0db9d79a8f3b87c697210e5925ffc28eea2177fe1814185f60",
-    "lockfileSha256": "8da33a2d1e27df0aac4e9ba5ec279f9d85ef7be1eb398cb555a0e3b45ca1a6a7"
+    "cliSha256": "3bdc34c65698d5e920eeffd6d8536ed14e8fc8bf54910d0887e53c2a5ac13c85",
+    "evaluatorSha256": "284874e838fa1a6f118105bb56770f75f7d8882e292a1d79028f6f1779963c3c",
+    "metricsSamplerSha256": "db1f753ff2810aec938f60f872cbc3fba92cc3403b0c38044ed6f79e7adc0e8d",
+    "reportWriterSha256": "538e3bb7fd1a4765bfa5e215eda1365c6add4eda9d66a3f756ab35a922c7017b",
+    "vlmReadinessSha256": "8d51827dc51df9be9c47e7219db5c3768b5091e78df2bf7e2d8374a1a76a890b",
+    "scenarioPackageSha256": "1779e426eeb82d230185166070192fea589a5b15bc64e74c574ef59ecf92da67",
+    "taskRunnerSha256": "43471a0a64943c41bc03386027079380f953712b11c85a041349c2c82678f2df",
+    "lockfileSha256": "8da33a2d1e27df0aac4e9ba5ec279f9d85ef7be1eb398cb555a0e3b45ca1a6a7",
+    "classifierFpsOverride": "detector and classifier nodes receive the same requested FPS",
+    "vlmCompletionCounter": "task-local completion queue, not shared Qwen worker batches",
+    "vlmReadiness": "each newly added VLM route must advance its task-local completion counter and expose Qwen latency before formal sampling"
   },
   "dataset": {
-    "id": "cosmoedge-safety-helmet-sample-v1",
-    "file": "Safety Helmet.mp4",
-    "sha256": "ec77182a264f3059a091b68c4973942dba3b80e93f20feaf4d7e146885caf9d2",
-    "sizeBytes": 20049063,
-    "durationSeconds": 15.018667,
+    "id": "cosmoedge-controlled-1080p24-v1",
+    "file": "controlled-1080p24-sample.mp4",
+    "sha256": "3e1c5b97cd5bcc081e47ec631f84c36e72f075c8b9da6a19de3d9705fb887f92",
+    "sizeBytes": 1300407,
+    "durationSeconds": 15,
     "video": {
-      "codec": "H.264",
+      "codec": "H.264 High",
       "width": 1920,
       "height": 1080,
       "pixelFormat": "yuv420p",
       "sourceFps": 24
     },
-    "audio": {
-      "codec": "AAC"
+    "distribution": "metadata and hash only"
+  },
+  "vlmDataset": {
+    "status": "2026-08-20 controlled refresh",
+    "card": "dataset/vlm-sample-card.md",
+    "sha256": "3e1c5b97cd5bcc081e47ec631f84c36e72f075c8b9da6a19de3d9705fb887f92"
+  },
+  "controls": {
+    "videoMode": "local infinite loop",
+    "channelRamp": "one channel per step",
+    "previewLoad": false,
+    "sampleIntervalSeconds": 3,
+    "smallModelHoldSecondsPerStep": 30,
+    "smallModelTargetFps": [24, 10, 7, 5],
+    "vlmHoldSecondsPerStep": 60,
+    "vlmTargetFpsPerChannel": 0.1,
+    "vlmFpsGateEnabled": true,
+    "vlmMaximumMissingRate": 0,
+    "vlmMaximumAverageDiscardRate": 0.05,
+    "cvGates": {
+      "minFpsRatio": 0.8,
+      "maxMissingRate": 0,
+      "maxAverageDiscardRate": 0.05,
+      "maxCriticalPathLatencyMs": 200,
+      "maxDetectorLatencyMs": 150
     },
-    "repositoryBlob": "88cfb35d0c7fc2be45ecc2ad4324e2470ab3c979",
-    "repositoryCommit": "daeda95ccaf0119d384ff90d5d20c3e90fde8ccb",
-    "licenseStatus": "not redistributed by this benchmark; hash and metadata are published for identification only"
+    "dualCv72Hour": {
+      "durationHours": 72,
+      "sampleIntervalSeconds": 60,
+      "expectedSamples": 4320,
+      "minimumCoverageRatio": 0.95,
+      "boundaryGraceSeconds": 180,
+      "maximumGapSeconds": 180,
+      "targetFpsPerTask": 5,
+      "minimumFpsRatio": 0.8,
+      "maximumDiscardRate": 0,
+      "businessTasksPerChannel": 2,
+      "modelStagesPerChannel": 3,
+      "diskPolicy": {
+        "executedIntegrityGateEnabled": false,
+        "projectionReportThresholdPercent": 99,
+        "futureSafeguardThresholdPercent": 90,
+        "futureSafeguardEffectiveAfterObservation": true,
+        "futureSafeguardAppliedRetroactively": false
+      },
+      "scheduledRestartPolicy": {
+        "initialStateDisabledOnAllPlatforms": true,
+        "controlledState": "disabled",
+        "restorationRequired": false,
+        "restartResilienceClaimAllowed": false
+      }
+    }
   },
   "platforms": [
     {
       "id": "bm1688",
+      "scope": "release-platform",
       "environment": "environments/bm1688.json",
       "models": "models/bm1688.json",
-      "results": "results/bm1688/"
+      "results": "results/bm1688/cases.json"
     },
     {
       "id": "cv186x",
+      "scope": "release-platform",
       "environment": "environments/cv186x.json",
       "models": "models/cv186x.json",
-      "results": "results/cv186x/"
+      "results": "results/cv186x/cases.json"
     },
     {
       "id": "rk3576",
+      "scope": "release-platform",
       "environment": "environments/rk3576.json",
       "models": "models/rk3576.json",
-      "results": "results/rk3576/"
+      "results": "results/rk3576/cases.json"
+    },
+    {
+      "id": "rv1126b",
+      "scope": "release-platform",
+      "environment": "environments/rv1126b.json",
+      "models": "models/rv1126b.json",
+      "results": "results/rv1126b/cases.json"
     }
   ],
   "workloads": {
-    "dualDetector": "scenarios/dual-detector/scenario.public.yml",
-    "singleDetector": "scenarios/single-detector/",
+    "personDetection": "scenarios/single-workload/person-detector.public.yml",
+    "noSafetyHelmetAnalysis": "scenarios/single-workload/no-safety-helmet-analysis.public.yml",
+    "concurrentMixed": "scenarios/concurrent-mixed/scenario.public.yml",
     "vlmObservation": "scenarios/vlm-observation/scenario.public.yml"
   },
+  "evidence": {
+    "smallModelCaseCount": 49,
+    "smallModelRefresh": "2026-08-19 controlled run",
+    "caseSchema": "results/cases.schema.json",
+    "canonicalSmallModelCases": [
+      "results/bm1688/cases.json",
+      "results/cv186x/cases.json",
+      "results/rk3576/cases.json",
+      "results/rv1126b/cases.json"
+    ],
+    "vlm": "2026-08-24 formal three-platform validation with one executed readiness and throughput-gate protocol",
+    "vlmObservations": "results/vlm-observations.json",
+    "dualCv72HourObservation": "results/dual-cv-72h.json",
+    "dualCv72HourRefresh": {
+      "status": "2026-08-24 completed controlled observation",
+      "sourceCommit": "44209759f450e96cda265acfa8bc6d17a1138888",
+      "sourceTree": "5cbdefeaefaf642407356c22c271ccc7d57935b0",
+      "runManifestSha256": "faaa6fd15c03843d44068b6da9ae7aee30f40f79442d694b7fe9c0a65de6afdb",
+      "suiteStateSha256": "9becf4cb17064ba515646d309b082136f9882f2d85d0449d651317116c21ccd7",
+      "suiteSummarySha256": "d28144149aeee9d693e7537b578c736d65daaecdf8d8c81be2047d7767167fb8",
+      "projectionToolSha256": "7305f6811b53f70eb0e2fd52ce14c194da0345205df306fc63e39ca783bf4448",
+      "projectionKind": "post-run deterministic projection",
+      "monitorLaunchBytesFrozen": false,
+      "rawEvidence": "private source artifacts referenced by hashes; not included in the repository",
+      "claimClass": "controlled-72h-local-loop-stability-observation",
+      "capacityClaimAllowed": false,
+      "rtspResilienceClaimAllowed": false,
+      "productReleaseQualified": false
+    },
+    "vlmValidation": {
+      "classification": "validated-vlm-short-run-capacity",
+      "targetFpsPerChannel": 0.1,
+      "minimumActiveRouteFpsRatio": 0.8,
+      "fpsGateExecuted": true,
+      "taskLocalReadinessRequired": true,
+      "taskLocalCompletionCounterRequired": true,
+      "sameInputPromptAndWindow": true,
+      "threePlatformEndToEndAccepted": true,
+      "maximumCapacityCertified": false,
+      "productionConfigurationCertified": false
+    },
+    "vlmRefresh": {
+      "status": "formal-validation-complete",
+      "evidenceDate": "2026-08-24",
+      "sourceCommit": "f4ec2fc51f1753231165f143d14522effbb77125",
+      "sourceTree": "2ed191ac67df2fc23c36ffa9933a387683f51732",
+      "crossPlatformComparable": true,
+      "protocolId": "cosmoedge-v1.1-vlm-controlled-1to8-20260824",
+      "rawEvidence": "private capacity and end-to-end artifacts referenced by SHA-256 in the canonical VLM file; not included in fullEvidenceArchive"
+    },
+    "fullEvidenceArchive": {
+      "artifactName": "original-v1.1-5ec280a9.tar.gz",
+      "scope": "49 canonical small-model cases only",
+      "sha256": "99535bd47cc0ed6193dbdca61cef37f5b6db47c04c1ad6ab5ec607131de75f50",
+      "sourceCommit": "5ec280a93071d66027a8f3ae10715dab5dae1424",
+      "sourceTree": "1d92976871185b16833f2efc9f8ac4f8eedce740",
+      "publicationState": "prepared-not-published",
+      "includedInRepository": false
+    }
+  },
   "qualification": {
-    "benchmarkPackComplete": true,
+    "canonicalBenchmarkDatasetComplete": true,
+    "generatedReportContractVerified": true,
+    "controlledLongRunConfiguredWorkloadVerified": true,
+    "validatedVlmPerformance": true,
+    "threePlatformVlmEndToEndAccepted": true,
     "publicAssetRedistributionSafe": true,
-    "benchmarkReadyToPublish": true,
-    "productReleaseQualificationComplete": false,
-    "remainingProductReleaseInputs": [
-      "Protected package SHA-256 and private build provenance",
-      "RK3576 final package SHA-256 and source provenance",
-      "RK3576 VLM model file SHA-256 for a byte-identical reproduction",
-      "repeat, soak, customer-journey and accuracy evidence before any recommended-profile claim"
-    ]
+    "readyForRepositoryReview": true,
+    "productReleaseQualified": false
   }
 }

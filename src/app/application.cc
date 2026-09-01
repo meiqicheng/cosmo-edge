@@ -148,7 +148,7 @@ void LogInit(const std::string& name, const std::string& basedir, const std::str
     // In production this is disabled to prevent log output from being captured by
     // systemd/journald and flooding /var/log/syslog (especially under high-concurrency
     // benchmark loads like scenario-bench). Application logs are still written to
-    // /data/cwaiuserdata/log/ via glog regardless of this setting.
+    // the configured runtime log directory via glog regardless of this setting.
     cosmo::log::SetLogCallback(
         [](const char*, const char*, int, const char* data, size_t) { printf("%s\r\n", data); });
 #endif

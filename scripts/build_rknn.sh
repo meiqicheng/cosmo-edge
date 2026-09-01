@@ -38,7 +38,7 @@ if [ ! -f "${PLATFORM_PROFILE}" ]; then
     echo "ERROR: unsupported RKNN platform profile: ${TARGET_CHIP}" >&2
     exit 1
 fi
-IFS=$'\t' read -r PROFILE_CHIP PROFILE_MEDIA_DEFAULT PROFILE_OVERLAY PROFILE_MODELS < <(
+IFS=$'\t' read -r PROFILE_CHIP PROFILE_MEDIA_DEFAULT PROFILE_OVERLAY PROFILE_MODELS PROFILE_ARTIFACT_MANIFEST < <(
     python3 - "${PLATFORM_PROFILE}" <<'PY'
 import json
 import pathlib
@@ -50,6 +50,7 @@ values = (
     profile["media"]["default_backend"],
     profile["packaging"]["resource_overlay_directory"],
     profile["packaging"]["legacy_models_directory"],
+    profile["packaging"].get("artifact_manifest", "-"),
 )
 if any("\t" in str(value) or "\n" in str(value) for value in values):
     raise SystemExit("platform profile values must be single-line fields")
@@ -96,17 +97,31 @@ fi
 
 RESOURCE_MODELS_DIR="${COSMO_RKNN_MODELS_DIR:-${PROJECT_ROOT_PATH}/${PROFILE_MODELS}}"
 RESOURCE_OVERLAY_DIR="${COSMO_RKNN_RESOURCE_OVERLAY_DIR:-${PROJECT_ROOT_PATH}/${PROFILE_OVERLAY}}"
-PACKAGE_MODELS="${COSMO_PACKAGE_MODELS:-include}"
-if [ "${PACKAGE_MODELS}" = "include" ] && [ ! -d "${RESOURCE_MODELS_DIR}" ]; then
-    echo "ERROR: target-specific model directory is missing: ${RESOURCE_MODELS_DIR}" >&2
-    echo "Convert and stage ${TARGET_CHIP} models first, or set COSMO_PACKAGE_MODELS=preserve for a code-only build." >&2
-    exit 1
+ARTIFACT_MANIFEST="${COSMO_RKNN_ARTIFACT_MANIFEST:-${PROFILE_ARTIFACT_MANIFEST}}"
+if [ "${ARTIFACT_MANIFEST}" = "none" ] || [ "${ARTIFACT_MANIFEST}" = "-" ]; then
+    ARTIFACT_MANIFEST=""
+elif [ "${ARTIFACT_MANIFEST#/}" = "${ARTIFACT_MANIFEST}" ]; then
+    ARTIFACT_MANIFEST="${PROJECT_ROOT_PATH}/${ARTIFACT_MANIFEST}"
 fi
+PACKAGE_MODELS="${COSMO_PACKAGE_MODELS:-include}"
 if [ "${PACKAGE_MODELS}" = "include" ]; then
-    python3 "${PROJECT_ROOT_PATH}/tools/rknn/stage_platform_resources.py" \
-        --platform-profile "${PLATFORM_PROFILE}" \
-        --output-dir "${RESOURCE_OVERLAY_DIR}" \
-        --verify
+    if [ -n "${ARTIFACT_MANIFEST}" ]; then
+        python3 "${PROJECT_ROOT_PATH}/tools/rknn/stage_platform_resources.py" \
+            --platform-profile "${PLATFORM_PROFILE}" \
+            --artifact-manifest "${ARTIFACT_MANIFEST}" \
+            --output-dir "${RESOURCE_OVERLAY_DIR}" \
+            --force
+    else
+        python3 "${PROJECT_ROOT_PATH}/tools/rknn/stage_platform_resources.py" \
+            --platform-profile "${PLATFORM_PROFILE}" \
+            --output-dir "${RESOURCE_OVERLAY_DIR}" \
+            --verify
+    fi
+    if [ ! -d "${RESOURCE_MODELS_DIR}" ]; then
+        echo "ERROR: target-specific model directory is missing: ${RESOURCE_MODELS_DIR}" >&2
+        echo "Provide a staged target model bundle, or set COSMO_PACKAGE_MODELS=preserve for a code-only build." >&2
+        exit 1
+    fi
 fi
 BUILD_DIR="${PROJECT_ROOT_PATH}/build_rknn"
 INSTALL_DIR="${BUILD_DIR}/install"

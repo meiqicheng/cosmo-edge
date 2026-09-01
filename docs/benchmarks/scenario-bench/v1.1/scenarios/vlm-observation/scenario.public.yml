@@ -1,14 +1,14 @@
 version: 2
-name: vlm-0p1fps-runtime-observation
-displayName: VLM 0.1 FPS per-channel runtime observation
-sampleIntervalSec: 10
+name: vlm-0p1fps-validated-performance
+displayName: VLM 0.1 FPS validated performance
+sampleIntervalSec: 3
 
 channels:
   mode: local
   repeatCount: 0
   sources:
     - name: public-1080p24-sample
-      file: "../../dataset/Safety Helmet.mp4"
+      file: "../../dataset/controlled-1080p24-sample.mp4"
 
 tasks:
   - id: vlm-observation
@@ -23,30 +23,34 @@ bindings:
 
 loadProfile:
   - channels: 1
-    holdSec: 120
+    holdSec: 60
   - channels: 2
-    holdSec: 120
+    holdSec: 60
   - channels: 3
-    holdSec: 120
+    holdSec: 60
   - channels: 4
-    holdSec: 120
+    holdSec: 60
   - channels: 5
-    holdSec: 120
+    holdSec: 60
   - channels: 6
-    holdSec: 120
+    holdSec: 60
   - channels: 7
-    holdSec: 120
+    holdSec: 60
   - channels: 8
-    holdSec: 120
+    holdSec: 60
 
 thresholds:
   pass:
     avgDiscardRate: 0.05
+    maxPacketDiscardRate: 0.01
+    maxDiskUsedPercent: 99
   taskTypes:
     vlm:
-      minFpsRatio: null
+      minFpsRatio: 0.8
       maxMissingRate: 0
+      avgDiscardRate: 0.05
 
-# Analysis FPS is observed but deliberately excluded from PASS/FAIL in this
-# historical evidence. Results must be labelled Experimental runtime observation,
-# never validated VLM capacity or an official supported-channel claim.
+# Before each formal hold window, the newly added route must advance its
+# task-local completion counter and expose direct Qwen latency. The 80% FPS
+# threshold is an executed gate. The last passing level and the adjacent first
+# gate failure form the short-run capacity boundary for the frozen candidate.

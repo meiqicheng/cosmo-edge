@@ -9,27 +9,21 @@
       "version": "V1.0.0",
       "input": "1x3x640x640 RGB, scale 1/255, letterbox 114",
       "output": "1x84x8400 candidate tensor",
-      "modelType": "yolov8_det",
       "precision": "target artifact precision not exposed by the device catalog",
       "sha256": "56b207ef2876da76505e403a049d3c44a411b9fe707ab73dc64f1cd9d9b6c5c8",
       "sizeBytes": 7023600,
-      "repositoryPath": "data/resource/aiboxresource_cv186x/models/prod_BM1688_6047042_YOLOV8n_V1.0.0",
-      "deviceBinding": "byte-identical artifact observed in the CV186X benchmark device catalog",
-      "redistribution": "device-verified copy included in the CV186X resource set and Open package under Apache-2.0"
+      "redistribution": "not included; preset model"
     },
     {
       "publicId": "safety-helmet-classifier",
       "name": "Helmet classifier",
       "version": "V1.0.0",
       "input": "1x3x224x224 RGB, scale 1/255",
-      "output": "1x2 classification tensor: helmet, nohelmet",
-      "modelType": "classify",
+      "output": "1x2 classification tensor",
       "precision": "target artifact precision not exposed by the device catalog",
       "sha256": "33b0fb4bcb29e41a92f9c1c518671aefc69cbf9207934deaba32ca7cd8cd7c8a",
       "sizeBytes": 6001416,
-      "repositoryPath": "data/resource/aiboxresource_cv186x/models/prod_BM1688_7486163_helmet_V1.0.0",
-      "deviceBinding": "byte-identical artifact observed in the CV186X benchmark device catalog",
-      "redistribution": "device-verified copy included in the CV186X resource set and Open package under Apache-2.0"
+      "redistribution": "not included; preset model"
     },
     {
       "publicId": "vlm-0.8b",
@@ -40,6 +34,7 @@
       "precision": "target artifact precision not exposed by the device catalog",
       "sha256": "8d258ab0d16bb8836fe8de4e66b241890d71e64f016961e7d63588b6f7f76f1b",
       "tokenizerSha256": "cb16258a9df7062f4c4d291a1501b07fb0750c9a8b247c5639dba0369e42f0cb",
+      "configSha256": "b2cdea93d82808d62e47b3abff616a9c13838f7c10af094f15138fda3f5d226b",
       "sizeBytes": 980885504,
       "redistribution": "not included; user-installed model"
     }

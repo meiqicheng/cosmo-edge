@@ -1,0 +1,8 @@
+#pragma once
+
+namespace cosmo::runtime {
+
+inline constexpr const char* kDefaultDataDir    = "@COSMO_DEFAULT_DATA_DIR@";
+inline constexpr const char* kDefaultAppDataDir = "@COSMO_DEFAULT_APP_DATA_DIR@";
+
+}  // namespace cosmo::runtime

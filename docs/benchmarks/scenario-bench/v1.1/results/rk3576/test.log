@@ -1,4 +1,0 @@
-benchmark=cosmoedge-1.1-multistream
-platform=RK3576
-device=RK3576 EVB
-publication=release-evidence

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "platform": "RV1126B",
+  "artifactFormat": ".rknn",
+  "models": [
+    {
+      "publicId": "person-detector",
+      "name": "YOLOv8 person detector",
+      "version": "V1.0.0",
+      "input": "1x3x640x640 RGB, scale 1/255, letterbox 114",
+      "output": "1x84x8400 candidate tensor",
+      "precision": "target artifact precision not exposed by the device catalog",
+      "sha256": "db6ddca0aacd01bea2e7f990834406c6a5d5965a131800279d8c0f77d4a396cf",
+      "redistribution": "not included"
+    },
+    {
+      "publicId": "safety-helmet-classifier",
+      "name": "Helmet classifier",
+      "version": "V1.0.0",
+      "input": "1x3x224x224 RGB, scale 1/255",
+      "output": "1x2 classification tensor",
+      "precision": "target artifact precision not exposed by the device catalog",
+      "sha256": "9468f6a465521966515f29e3eebede32af2bbb81069a5e36825fef89527d9eeb",
+      "redistribution": "not included"
+    }
+  ]
+}

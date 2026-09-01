@@ -88,6 +88,7 @@ loadProfile:
   assert.equal(params.find((param) => param.key === 'param.videoRepeatCount')?.value, '0');
   assert.equal(params.find((param) => param.key === 'param.videoReadFps')?.value, '0.1');
   assert.equal(pkg.loadProfile[0].holdSec, 120);
+  assert.equal(pkg.tasks[0].vlmCompletionActionId, 'DA_00003');
 });
 
 test('defaults omitted VLM hold seconds to 60', (t) => {
@@ -194,6 +195,10 @@ loadProfile:
         actionId: 'AA_00001',
         configObject: JSON.stringify({ params: [{ key: 'fps', value: '7' }] }),
       },
+      {
+        actionId: 'AA_00002',
+        configObject: { params: [{ key: 'fps', value: '7' }] },
+      },
     ]),
   }), 'utf8');
 
@@ -207,7 +212,7 @@ loadProfile:
   });
 
   assert.equal(pkg.targetFps, 5);
-  assert.deepEqual(fpsValues, ['5', '5']);
+  assert.deepEqual(fpsValues, ['5', '5', '5']);
 });
 
 test('merges explicit per-task config params for soak-safe workloads', (t) => {

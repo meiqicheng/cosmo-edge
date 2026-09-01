@@ -1,4 +1,0 @@
-benchmark=cosmoedge-1.1-multistream
-platform=BM1688
-device=BM1688 reference device
-publication=release-evidence

@@ -1,0 +1,41 @@
+version: 2
+name: concurrent-mixed-5fps-staircase
+displayName: Concurrent mixed workload with person detection and no-safety-helmet analysis at 5 FPS per business task
+sampleIntervalSec: 3
+
+channels:
+  mode: local
+  repeatCount: 0
+  sources:
+    - name: public-1080p24-sample
+      file: "../../dataset/controlled-1080p24-sample.mp4"
+
+tasks:
+  - id: person-detector
+    displayName: Person detector
+    type: cv
+    modelRef: "../../models/<platform>.json#person-detector"
+    targetFps: 5
+  - id: no-safety-helmet-analysis
+    displayName: No-safety-helmet analysis
+    type: cv
+    modelRef: "../../models/<platform>.json#safety-helmet-classifier"
+    targetFps: 5
+
+bindings:
+  - task: person-detector
+    channels: all
+  - task: no-safety-helmet-analysis
+    channels: all
+
+thresholds:
+  pass:
+    avgDiscardRate: 0.05
+  taskTypes:
+    cv:
+      minFpsRatio: 0.8
+      maxMissingRate: 0
+
+loadProfile:
+  - channels: "1..<platform-maximum>"
+    holdSec: 30

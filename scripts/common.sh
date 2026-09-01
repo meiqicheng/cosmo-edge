@@ -3,14 +3,84 @@
 # Sourced by: inte_run_start.sh, start.sh, run_start.sh, install.sh
 
 # ── Path constants ──
-COSMO_DATA_DIR="${COSMO_DATA_DIR:-/data/cwaiuserdata}"
-COSMO_LOG_DIR="${COSMO_DATA_DIR}/log/logs"
 COSMO_INSTALL_DIR="${COSMO_INSTALL_DIR:-/appfs/cosmo_wander/cwai_data}"
+COSMO_RUNTIME_PATHS_FILE="${COSMO_RUNTIME_PATHS_FILE:-${COSMO_INSTALL_DIR}/share/cosmo/runtime-paths.env}"
+if [ -f "${COSMO_RUNTIME_PATHS_FILE}" ]; then
+    # Generated from the package target chip. It provides defaults only;
+    # deployment-specific COSMO_* overrides remain authoritative.
+    # shellcheck disable=SC1090
+    . "${COSMO_RUNTIME_PATHS_FILE}"
+fi
+COSMO_DATA_DIR="${COSMO_DATA_DIR:-${COSMO_PACKAGE_DATA_DIR:-/data/cwaiuserdata}}"
+COSMO_APP_DATA_DIR="${COSMO_APP_DATA_DIR:-${COSMO_PACKAGE_APP_DATA_DIR:-${COSMO_INSTALL_DIR}}}"
+COSMO_LOG_DIR="${COSMO_DATA_DIR}/log/logs"
 COSMO_UPGRADE_DIR="${COSMO_DATA_DIR}/upgrade"
 COSMO_NGINX_TMP_DIR="${COSMO_DATA_DIR}/tmp"
 
 # Upgrade signal files
 COSMO_UPGRADE_SIGN="${COSMO_DATA_DIR}/mqttUpgradeApp"
+
+validate_runtime_root() {
+    local root="$1" label="$2"
+    case "$root" in
+        /*) ;;
+        *) echo "${label} must be an absolute path: ${root}" >&2; return 1 ;;
+    esac
+    if [ "$root" = / ] || [[ "$root" == *$'\n'* ]] || [[ "$root" == *$'\r'* ]]; then
+        echo "${label} is not a safe runtime root: ${root}" >&2
+        return 1
+    fi
+}
+
+render_runtime_template() {
+    local source_file="$1" output_file="$2" output_tmp line
+    output_tmp="${output_file}.tmp.$$"
+    [ -f "$source_file" ] || {
+        echo "Runtime configuration template is missing: ${source_file}" >&2
+        return 1
+    }
+    : >"$output_tmp"
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        line="${line//@COSMO_DATA_DIR@/${COSMO_DATA_DIR}}"
+        line="${line//@COSMO_APP_DATA_DIR@/${COSMO_APP_DATA_DIR}}"
+        printf '%s\n' "$line" >>"$output_tmp"
+    done <"$source_file"
+    mv -f -- "$output_tmp" "$output_file"
+}
+
+# Render package templates into the mutable data tree. Nginx and SRS do not
+# expand arbitrary environment variables in path directives themselves.
+render_runtime_configs() {
+    validate_runtime_root "$COSMO_DATA_DIR" COSMO_DATA_DIR
+    validate_runtime_root "$COSMO_APP_DATA_DIR" COSMO_APP_DATA_DIR
+
+    local runtime_root="${COSMO_DATA_DIR}/runtime"
+    local nginx_template_prefix="${COSMO_INSTALL_DIR}/bin/nginx_conf"
+    local srs_template="${COSMO_INSTALL_DIR}/bin/srs_conf/srs.conf"
+
+    COSMO_RUNTIME_NGINX_PREFIX="${runtime_root}/nginx_conf"
+    COSMO_RUNTIME_NGINX_CONF="${COSMO_RUNTIME_NGINX_PREFIX}/conf/nginx.conf"
+    COSMO_RUNTIME_NGINX_UPSTREAM_CONF="${COSMO_RUNTIME_NGINX_PREFIX}/conf/conf.d/default.conf"
+    COSMO_RUNTIME_SRS_CONF="${runtime_root}/srs.conf"
+
+    [ -d "$nginx_template_prefix" ] || {
+        echo "Nginx configuration template directory is missing: ${nginx_template_prefix}" >&2
+        return 1
+    }
+
+    mkdir -p "$runtime_root"
+    rm -rf -- "$COSMO_RUNTIME_NGINX_PREFIX"
+    mkdir -p "$COSMO_RUNTIME_NGINX_PREFIX"
+    cp -a -- "${nginx_template_prefix}/." "${COSMO_RUNTIME_NGINX_PREFIX}/"
+    render_runtime_template \
+        "${nginx_template_prefix}/conf/nginx.conf" \
+        "$COSMO_RUNTIME_NGINX_CONF"
+    render_runtime_template \
+        "${nginx_template_prefix}/conf/conf.d/default.conf" \
+        "$COSMO_RUNTIME_NGINX_UPSTREAM_CONF"
+    render_runtime_template "$srs_template" "$COSMO_RUNTIME_SRS_CONF"
+}
 
 # ── Log helpers ──
 # Rotate launcher/script logs independently from the application's internal

@@ -1,25 +1,20 @@
-# Model identity and redistribution record
+# Model identity
 
-BM1688 and CV186X use the same byte-identical Open Sophon detector/classifier artifacts in this benchmark. RK3576 uses platform-specific RKNN artifacts that are not proven to be equivalent conversions of the same frozen source checkpoint and precision. The report therefore describes typical workload capacity and does not rank chips.
+The small-model benchmark uses a 640×640 person detector and a 224×224 helmet classifier. The BM1688 and CV186X artifacts are byte-identical. RK3576 and RV1126B use platform-specific RKNN artifacts with the same public input/output contracts.
 
-| Platform | Public model | Version | Input contract | Target artifact identity | Redistribution |
-| --- | --- | --- | --- | --- | --- |
-| BM1688 | YOLOv8n detector | V1.0.0 | `1x3x640x640`, RGB, `1/255`, letterbox 114 | SHA-256 `56b207ef…b6c5c8` | Included in `data/resource/aiboxresource_bm1688/models/` |
-| BM1688 | Helmet classifier | V1.0.0 | `1x3x224x224`, RGB, `1/255` | SHA-256 `33b0fb4b…cd7c8a` | Included in `data/resource/aiboxresource_bm1688/models/` |
-| BM1688 | CosmoEdge VL Judge 0.8B | V1.0.0 | image plus text prompt/tokenizer | SHA-256 `31a03f48…4bd767` | Not included; preset model |
-| CV186X | YOLOv8n detector | V1.0.0 | `1x3x640x640`, RGB, `1/255`, letterbox 114 | SHA-256 `56b207ef…b6c5c8` | Device-verified copy in `data/resource/aiboxresource_cv186x/models/` |
-| CV186X | Helmet classifier | V1.0.0 | `1x3x224x224`, RGB, `1/255`, two classes | SHA-256 `33b0fb4b…cd7c8a` | Device-verified copy in `data/resource/aiboxresource_cv186x/models/` |
-| CV186X | Qwen 0.8B device VLM | V1.0.0 | image plus text prompt/tokenizer | SHA-256 `8d258ab0…f76f1b` | Not included; user-installed model |
-| RK3576 | YOLOv8 detector | V1.0.0 | `1x3x640x640`, RGB, `1/255`, letterbox 114 | SHA-256 `26ed82e0…541e0` | Not included pending license decision |
-| RK3576 | Helmet classifier | V1.0.0 | `1x3x224x224`, RGB, `1/255` | SHA-256 `471d1de3…d67ea` | Not included pending license decision |
-| RK3576 | Qwen 0.8B RKLLM VLM | V1.0.0 | image plus text prompt/tokenizer | Device catalog identity only; file SHA unavailable | Not included |
+| Platform | Public model | Version | Format | SHA-256 | Size |
+| --- | --- | --- | --- | --- | ---: |
+| BM1688 | YOLOv8n person detector | V1.0.0 | `.nn` | `56b207ef…b6c5c8` | 7,023,600 B |
+| BM1688 | Helmet classifier | V1.0.0 | `.nn` | `33b0fb4b…cd7c8a` | 6,001,416 B |
+| CV186X | YOLOv8n person detector | V1.0.0 | `.nn` | `56b207ef…b6c5c8` | 7,023,600 B |
+| CV186X | Helmet classifier | V1.0.0 | `.nn` | `33b0fb4b…cd7c8a` | 6,001,416 B |
+| RK3576 | YOLOv8 person detector | V1.0.0 | `.rknn` | `26ed82e0…541e0` | 6,305,107 B |
+| RK3576 | Helmet classifier | V1.0.0 | `.rknn` | `471d1de3…d67ea` | 3,024,125 B |
+| RV1126B | YOLOv8 person detector | V1.0.0 | `.rknn` | `db6ddca0…396cf` | see platform JSON |
+| RV1126B | Helmet classifier | V1.0.0 | `.rknn` | `9468f6a4…d9eeb` | see platform JSON |
 
-Full hashes and per-platform notes are in `bm1688.json`, `cv186x.json`, and `rk3576.json`.
+The no-safety-helmet workload is a two-stage detector-plus-classifier pipeline. Both stages receive the requested 24, 10, 7, or 5 FPS setting.
 
-## Accuracy scope
+VLM identities remain in the BM1688, CV186X, and RK3576 platform JSON files. The formal validation also freezes each installed model, tokenizer, config, runtime, and candidate-package hash in `results/vlm-observations.json`. The RK3576 RKLLM model SHA-256 was recomputed after candidate installation. RV1126B is outside this VLM validation.
 
-The present package contains capacity and stability evidence, not a business-accuracy qualification. Precision, recall, F1, fixed-recall false-positive rate, source-to-target drift, hard-case evaluation, and production dynamic-set results must be published separately before claiming model accuracy.
-
-## Reproduction rule
-
-BM1688 and CV186X used byte-identical open Sophon detector/classifier files. Each target resource set contains its own device/package copy so the build path is explicit. Other model binaries remain outside this benchmark pack. A reproducer must use the matching platform resource artifact or another licensed artifact matching the public input/output contract and record its own SHA-256. If the hash differs from this card, the run is a community reproduction and must not be presented as a byte-identical rerun of the release evidence.
+Model binaries are not redistributed by this benchmark. Full hashes and contracts are recorded in `bm1688.json`, `cv186x.json`, `rk3576.json`, and `rv1126b.json`.

@@ -7,7 +7,9 @@ const sourceRoot = path.join(repositoryRoot, 'docs', 'benchmarks', 'scenario-ben
 const outputRoot = path.join(repositoryRoot, 'docs', '.vitepress', 'dist', 'benchmarks', 'scenario-bench');
 const copied = [];
 
-for (const version of ['v1.0', 'current', 'v1.1']) {
+// v1.1 has a canonical-data-only source layout and its static/public artifacts
+// are emitted by generate-v1.1-benchmark-pages.mjs after VitePress completes.
+for (const version of ['v1.0', 'current']) {
   const source = path.join(sourceRoot, version);
   if (!fs.existsSync(source)) continue;
   for (const file of walk(source)) {

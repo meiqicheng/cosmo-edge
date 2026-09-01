@@ -11,7 +11,7 @@ Build and operate video analytics, VLM, and event workflows through a consistent
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](LICENSE)
 [![Runtime](https://img.shields.io/badge/runtime-C%2B%2B17-orange?style=flat-square)](#core-capabilities)
-[![Release](https://img.shields.io/badge/release-v1.1.0-green?style=flat-square)](https://github.com/cosmo-wander-ai/cosmo-edge/releases)
+[![Release](https://img.shields.io/badge/release-v1.1.0-2ea44f?style=flat-square)](https://github.com/cosmo-wander-ai/cosmo-edge/releases/tag/v1.1.0)
 
 [![Website](https://img.shields.io/badge/website-cosmowander.ai-3B82F6?style=flat-square)](https://www.cosmowander.ai/)
 [![Docs](https://img.shields.io/badge/docs-online-2563EB?style=flat-square)](https://www.cosmowander.ai/docs/)
@@ -33,16 +33,15 @@ CosmoEdge goes beyond model serving with a complete application layer for model 
 
 ## CosmoEdge 1.1
 
-> This branch is the CosmoEdge 1.1 source line. Platform capacity varies by model and workload; use the linked evidence rather than treating a short-run maximum as a deployment recommendation.
-
-- **Multi-platform release:** BM1688, CV186X, and RK3576 use the same video-ingest, orchestration, event, and observability workflow with target-specific model artifacts.
-- **Public benchmark pack:** the [CosmoEdge 1.1 multi-platform report](docs/benchmarks/scenario-bench/v1.1/README.md) covers single-detector, dual-detector, and Experimental VLM workloads with sanitized reproducibility attachments.
-- **Rockchip RK3576:** cross-build, board operation, RKNN inference, and MPP/RGA media paths are integrated. A 4-channel single-detector profile has 12-hour evidence; higher short-run points remain measured boundaries rather than recommended profiles.
+- **Multi-platform release:** BM1688, CV186X, RK3576, and RV1126B use the same video-ingest, orchestration, event, and observability workflow with target-specific model artifacts.
+- **Public benchmark pack:** the [CosmoEdge 1.1 multi-platform report](docs/benchmarks/scenario-bench/v1.1/README.md) covers single workloads, concurrent mixed workloads, a controlled 72-hour dual-CV profile, and validated VLM performance with sanitized, traceable benchmark artifacts.
+- **Rockchip release platforms:** RK3576 and RV1126B both include cross-build, board operation, RKNN inference, and MPP/RGA media paths in the same v1.1 release tier; their models and measured evidence remain bound separately.
 - **Sophon model handling:** chip-aware validation supports target-specific `.nn` artifacts for BM1688 and CV186X. The benchmark records an exact Open-package and running-engine binding for both reference devices.
 - **RKNN data path:** targeted DMA-BUF-to-RGA input, persistent bound-input, native quantized output, and direct YOLOv8 tensor decoding paths with explicit fallbacks.
 - **Agent-assisted development:** a repository-guided path for handing model porting, integration, and UI tasks to the coding agent you already use and receiving verifiable deliverables.
 - **Model Guard 2.3:** protects commercial preset-model distribution in Sophon Protected packages. Open and Protected expose the same application features, with no SKU-gated software functionality; they differ in model encryption and device-provisioning tooling.
-- **macOS Docker Preview:** an isolated `linux/amd64` candidate for one local-video workflow on Apple Silicon. Two consecutive end-to-end acceptance runs are still required before publication; it does not enable Model Guard or represent native/NPU performance.
+- **macOS Docker Preview:** an isolated `linux/amd64` path for one local-video workflow on Apple Silicon, validated through multiple end-to-end lab rounds.
+- **Benchmark scope:** VLM figures are exact short-run gate boundaries for the recorded protocol. The separate 72-hour test covers the listed fixed-channel profiles using controlled local-loop input; detailed conditions are documented in the benchmark report.
 
 ## Choose a Platform
 
@@ -50,9 +49,9 @@ CosmoEdge provides one engine architecture and orchestration experience, but eac
 
 | Platform | Status | Runtime / model artifact | Current scope and evidence |
 | --- | --- | --- | --- |
-| Sophon BM1688 | v1.1 supported / primary | BMRT / `.nn` | Production deployment path with [v1.1 workload evidence](docs/benchmarks/scenario-bench/v1.1/README.md) and published [v1.0 baselines](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.0/) |
-| Rockchip RK3576 | v1.1 supported | RKNN / `.rknn` | Cross-build and board paths validated; see the [integration guide](docs/en/guide/rk3576-rknn-development.md) and [v1.1 workload evidence](docs/benchmarks/scenario-bench/v1.1/README.md) |
-| Sophon CV186X | v1.1 supported | BMRT / target-specific `.nn` | Model import and device workload evidence included in the [v1.1 benchmark](docs/benchmarks/scenario-bench/v1.1/README.md) |
+| Sophon BM1688 | v1.1 supported / primary; VLM supported | BMRT / `.nn` | Validated VLM at 0.1 FPS/ch through 6 channels, plus [v1.1 workload evidence](docs/benchmarks/scenario-bench/v1.1/README.md) |
+| Rockchip RK3576 / RV1126B | v1.1 supported; RK3576 VLM supported | RKNN / target-specific `.rknn`; RKLLM on RK3576 | RK3576 validates VLM at 0.1 FPS/ch through 4 channels; RV1126B VLM is outside this release claim. Other platform-specific results remain separate in the [v1.1 report](docs/benchmarks/scenario-bench/v1.1/README.md) |
+| Sophon CV186X | v1.1 supported; VLM supported | BMRT / target-specific `.nn` | Validated VLM at 0.1 FPS/ch through 6 channels, plus model-import and workload evidence in the [v1.1 benchmark](docs/benchmarks/scenario-bench/v1.1/README.md) |
 | x86 Linux / Windows; Apple Silicon macOS | Linux / Windows supported; macOS Preview | ONNX Runtime / `.onnx` | Mac uses amd64 emulation for one local-video developer workflow, not native performance evidence |
 | Sophon BM1684X | Planned | — | Not part of the current release scope |
 
@@ -83,9 +82,9 @@ Apple Silicon macOS uses a separate amd64-emulation Preview path:
 # Open http://127.0.0.1:8080
 ```
 
-The Mac Preview is for local, single-video evaluation. It is not a native macOS
-binary, an NPU deployment, or production performance evidence. Read the full
-[macOS Docker Preview](docs/en/guide/macos-docker-preview.md) boundaries first.
+The Mac Preview provides a local, single-video workflow under `linux/amd64`
+emulation on Apple Silicon. Read the full
+[macOS Docker Preview](docs/en/guide/macos-docker-preview.md) scope first.
 
 After startup, use the [Scenario Configuration tutorial](https://www.cosmowander.ai/docs/tutorials/02-scenario-config/scenario-config) to create your first AI detection task. Docker Compose V1 users can replace `docker compose` with `docker-compose`.
 
@@ -181,38 +180,44 @@ Start with [Agent-Assisted Development](docs/en/development/agent-assisted-devel
 
 ### CosmoEdge 1.1 multi-platform performance report
 
-The publication-ready v1.1 material covers BM1688, CV186X, and RK3576 with a concise public report plus linked single-detector, dual-detector, and Experimental VLM attachments. Results are short-run workload evidence unless a longer duration is explicitly stated; they are not theoretical chip limits or automatic deployment recommendations.
+The v1.1 report covers BM1688, CV186X, RK3576, and RV1126B. It includes 49 independent small-model case reports for person detection, no-safety-helmet analysis, and a concurrent mixed workload at 5 FPS per business task, a controlled 72-hour dual-CV configured profile, and validated VLM performance for BM1688, CV186X, and RK3576.
 
 - [English benchmark index](docs/benchmarks/scenario-bench/v1.1/README.md)
 - [中文基准报告索引](docs/benchmarks/scenario-bench/v1.1/README.zh-CN.md)
 - [English primary report (rendered documentation site)](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/report.html)
+- [72-hour dual-CV report (rendered documentation site)](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/dual-cv-72h/report.html)
 - [Methodology and reproduction](docs/benchmarks/scenario-bench/v1.1/methodology.md)
 
-The release-branch preparation baseline is `feat/model-guard-v2.3` commit `209bc2b52849864a15bdad91beb61f5bc982c17f`, tree `f64a98bce05b9ee8dc64dda8e56ad50f9d15687f`. BM1688 and CV186X are byte-bound to the recorded Open package and running engine; that package does not embed a source commit and therefore is not claimed as a reproducible build of the preparation baseline. The RK3576 package digest and Protected-package provenance are not distributed in this public benchmark, so the report does not make package-qualified claims for them. See the [release manifest](docs/benchmarks/scenario-bench/v1.1/release-manifest.json) for the exact evidence boundary.
+The short-run capacity refresh uses source commit `89c73a7464a81ef378686447d7c1eeb88b988455`, tree `6857fbcce72c7af64e6cb23a27e66a405e9df9af`, one fixed 1080p24 input, 30-second steps, and the gates recorded in the [release manifest](docs/benchmarks/scenario-bench/v1.1/release-manifest.json). The 72-hour observation uses source commit `44209759f450e96cda265acfa8bc6d17a1138888`, tree `5cbdefeaefaf642407356c22c271ccc7d57935b0`, and the same controlled input.
 
-The following table preserves the previously published **v1.0 baseline** for historical comparison:
+| Platform | 72-hour configured channels | Task bindings | Sample coverage | Min / avg FPS | Result |
+| --- | ---: | ---: | ---: | --- | --- |
+| BM1688 | 8 | 16 | 4316 / 4320 | 4.68 / 5.086 | PASS |
+| CV186X | 8 | 16 | 4316 / 4320 | 4.54 / 5.085 | PASS |
+| RK3576 | 8 | 16 | 4316 / 4320 | 5.00 / 5.098 | PASS |
+| RV1126B | 4 | 8 | 4316 / 4320 | 4.85 / 5.230 | PASS |
 
-| ScenarioBench workload | Hardware | Max verified channels | Target FPS | Result | Evidence |
-| --- | --- | ---: | ---: | --- | --- |
-| No Safety Helmet | YY-16T01-Preview / NPU | 16 | 3/channel | PASS | [report](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.0/helmet-7463-npu/report.html) |
-| Pedestrian Detection | YY-16T01-Preview / NPU | 16 | 5/channel | PASS | [report](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.0/pedestrian-45626-npu/report.html) |
-| Pedestrian + No Safety Helmet | YY-16T01-Preview / NPU | 16 | 3/channel/task | PASS | [report](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.0/pedestrian-helmet-mixed-npu/report.html) |
-| VLM Review | YY-16T01-Preview / NPU | 8 | 0.1/channel | PASS | [report](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.0/vlm-55009-npu/report.html) |
-| No Safety Helmet x86 baseline | x86 CPU | 7 | 3/channel | LIMITED; 8 channels exceeded latency limits | [report](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.0/helmet-7463-x86/report.html) |
+These results describe the tested fixed-channel profiles under controlled local-loop input; they are not maximum-capacity or RTSP-resilience measurements. Execution details are documented in the [methodology](docs/benchmarks/scenario-bench/v1.1/methodology.md).
 
-See the [v1.0 benchmark manifest](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.0/manifest.json), [environment notes](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.0/environment), and [current refresh notes](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/current/) for the legacy methodology and publication boundaries.
+Each channel concurrently runs two business tasks across three model stages: person detection has one detector stage, while no-safety-helmet analysis has a detector followed by a classifier.
 
-### RK3576 long-duration validation context
+| Platform | Workload per channel | Model stages/ch | Target FPS/task | Passing channels | Business-task bindings |
+| --- | --- | ---: | ---: | ---: | ---: |
+| BM1688 | Person detection + no-safety-helmet analysis | 3 | 5 | ≥16 | 32/32 |
+| CV186X | Person detection + no-safety-helmet analysis | 3 | 5 | ≥8 | 16/16 |
+| RK3576 | Person detection + no-safety-helmet analysis | 3 | 5 | ≥8 | 16/16 |
+| RV1126B | Person detection + no-safety-helmet analysis | 3 | 5 | ≥4 | 8/8 |
 
-This earlier long-duration evidence remains bound to source [`8f8b4b8e`](https://github.com/cosmo-wander-ai/cosmo-edge/commit/8f8b4b8e793172963ef92da7fc9942a1c860534b) (tree `fd1b646f`), engine SHA-256 `bc829d9513334c4520fad1b58439bb3e6e31338c664e93eb15babdaaa564d886`, RKNN Runtime `2.3.2-429f97ae6b`, driver `0.9.8`, RGA `1.10.1_[4]`, and MPP `1.5.0-1`.
+The three VLM platforms use one final protocol: each newly added route completes task-local readiness before a 60-second measurement window, and every active route must pass the executed 80% threshold against the 0.1 FPS-per-channel target. Each platform's fixed candidate package also passed model load, task creation, valid inference, event/alarm output, and task recovery after service restart; these claims do not extend to later rebuilt packages.
 
-| ScenarioBench workload | Hardware | Max verified channels | Target FPS | Result |
-| --- | --- | ---: | ---: | --- |
-| No Safety Helmet | Rockchip RK3576 EVB1 V10 / RKNN | 8 | 5/channel | PASS |
+| Platform | Target FPS/ch | Last passing channels | First failure |
+| --- | ---: | ---: | --- |
+| BM1688 | 0.1 | 6 channels | 7-channel FPS ratio 69.5%, below the 80% gate |
+| CV186X | 0.1 | 6 channels | 7-channel FPS ratio 69.2%, below the 80% gate |
+| RK3576 | 0.1 | 4 channels | 5-channel FPS ratio 69.7%, below the 80% gate |
+| RV1126B | — | — | Outside this VLM validation |
 
-The 1 / 2 / 4 / 8-channel steps all passed with zero discarded frames or inference, RGA, or MPP failures. Single-channel Detect average decreased from 142.3 ms to 58.2 ms (-59.1%). A separate 12-hour run at 4 channels and 5 FPS, with four algorithm previews, recorded 720 continuous hold samples, CPU avg/P95/max of 33.92% / 39% / 43%, and zero discarded frames or runtime/preview failures.
-
-The four-channel, 5 FPS profile completed the 12-hour run. The 8-channel step records engineering headroom and is not a release capacity guarantee. This historical evidence is retained as long-duration context and is not silently rebound to the newer v1.1 source baseline.
+The capacity values are exact short-run gate boundaries under the recorded conditions—not maximum-capacity certification or production recommendations. The separate 72-hour table verifies only its configured profile. See the [v1.1 benchmark](docs/benchmarks/scenario-bench/v1.1/README.md) for the complete matrices. Previously published data remains available through one [v1.0 historical archive](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.0/) link.
 
 ## Architecture
 
@@ -251,7 +256,9 @@ One build selects one inference backend. Model artifacts are generated for the t
 
 Certified devices add preconfigured acceleration, validated commercial model packages, and dedicated deployment support; they do not unlock separate software features. Devices are available in mainland China from the [Taobao store](https://item.taobao.com/item.htm?id=1066672051450); contact <hello@cosmowander.ai> for other regions or project support.
 
-Contributions are welcome through scoped bug reports, documentation improvements, scenarios, and integration notes. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Community support is available through [GitHub Discussions](https://github.com/cosmo-wander-ai/cosmo-edge/discussions) and [Gitee Issues](https://gitee.com/cosmo-wander-ai/cosmo-edge/issues); report vulnerabilities through [SECURITY.md](SECURITY.md).
+Contributions are welcome through scoped bug reports, documentation improvements, scenarios, and integration notes. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+
+[GitHub Discussions](https://github.com/cosmo-wander-ai/cosmo-edge/discussions) is the official searchable English Q&A and community-support channel for v1.1, and general reproducible defects belong in [GitHub Issues](https://github.com/cosmo-wander-ai/cosmo-edge/issues). Users in mainland China can use [Gitee Issues](https://gitee.com/cosmo-wander-ai/cosmo-edge/issues) for repository access, installation, usage, release downloads, and device-adaptation questions. Code changes and pull requests remain on GitHub; report vulnerabilities privately through [SECURITY.md](SECURITY.md). No Discord channel is operated for this release.
 
 ## FAQ
 
@@ -279,7 +286,7 @@ Yes. Use the model-porting path to validate the tensor, preprocessing, post-proc
 <details>
 <summary><b>How production-ready is CosmoEdge?</b></summary>
 
-`v1.1.0` is the multi-platform release line for BM1688, CV186X, RK3576, and x86. The linked report records measured workload boundaries and explicit evidence gaps; production sizing still requires validation with your own models, streams, accuracy requirements, and deployment conditions.
+`v1.1.0` is the multi-platform release line for BM1688, CV186X, RK3576, RV1126B, and x86, with VLM support validated on BM1688, CV186X, and RK3576 plus a scoped macOS Docker Preview. The linked report records measured workload boundaries, validated VLM performance, and controlled 72-hour fixed-profile results. Production sizing still requires validation with your own models, streams, accuracy requirements, and deployment conditions.
 
 </details>
 
@@ -295,6 +302,6 @@ An open-source project by Cosmo Wander AI and the CosmoEdge contributors.
 
 Turn video AI models into deployable edge applications.
 
-📦 This repository is mirrored read-only to [Gitee](https://gitee.com/cosmo-wander-ai/cosmo-edge) for mainland China access. See [MIRRORING.md](MIRRORING.md).
+📦 GitHub remains the development and pull-request source of truth. [Gitee](https://gitee.com/cosmo-wander-ai/cosmo-edge) automatically mirrors the code and provides release access and a Chinese issue channel for users in mainland China. See [MIRRORING.md](MIRRORING.md).
 
 </div>

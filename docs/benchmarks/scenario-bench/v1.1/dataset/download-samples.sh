@@ -1,17 +1,11 @@
 #!/usr/bin/env sh
 set -eu
 
-expected='ec77182a264f3059a091b68c4973942dba3b80e93f20feaf4d7e146885caf9d2'
-output=${1:-'Safety Helmet.mp4'}
-url='https://raw.githubusercontent.com/cosmo-wander-ai/cosmo-edge/daeda95ccaf0119d384ff90d5d20c3e90fde8ccb/data/test-video/Safety%20Helmet.mp4'
+expected='3e1c5b97cd5bcc081e47ec631f84c36e72f075c8b9da6a19de3d9705fb887f92'
+output=${1:-'controlled-1080p24-sample.mp4'}
 
-echo 'The sample is not bundled. Confirm the provenance note in dataset-card.md before redistribution.' >&2
-if command -v curl >/dev/null 2>&1; then
-  curl -fL --retry 3 -o "$output" "$url"
-elif command -v wget >/dev/null 2>&1; then
-  wget -O "$output" "$url"
-else
-  echo 'curl or wget is required' >&2
+if [ ! -f "$output" ]; then
+  echo "Provide the licensed sample as $output, then rerun this verifier." >&2
   exit 1
 fi
 

@@ -62,6 +62,7 @@ export class TaskRunner {
           taskKey: task.id,
           taskDisplayName: task.displayName,
           taskType: task.type,
+          vlmCompletionActionId: task.vlmCompletionActionId,
           algorithmId: task.algorithmId,
           algorithmCode: task.algorithmCode,
           targetFps: task.targetFps,
@@ -122,7 +123,8 @@ export class TaskRunner {
    * @param {() => Promise<{stop:boolean, reason?:string}|void>} [hooks.onSample]
    * @param {(step:object, active:string[], entries:object[]) => Promise<{stop:boolean, reason?:string}|void>} [hooks.onStepEnd]
    * @param {number} sampleIntervalSec
-   * @returns {Promise<{bottleneckStep?:number, bottleneckReason?:string}>}
+   * @returns {Promise<{bottleneckStep?:number, bottleneckReason?:string,
+   *   bottleneckSource?:string, bottleneckGates?:object[]}>}
    */
   async runStaircase(loadProfile, hooks, sampleIntervalSec) {
     let active = [];
@@ -157,6 +159,7 @@ export class TaskRunner {
               bottleneckStep: i,
               bottleneckChannels: active.length,
               bottleneckPhase: 'ramp',
+              bottleneckSource: 'task-binding',
               bottleneckReason: `任务绑定失败 (可能达到设备并发授权上限): ${failedIds}`,
             };
             return bottleneck;
@@ -172,6 +175,8 @@ export class TaskRunner {
                 bottleneckStep: i,
                 bottleneckChannels: active.length,
                 bottleneckPhase: 'ramp',
+                bottleneckSource: decision.source ?? 'quick-fuse',
+                bottleneckGates: decision.gates ?? [],
                 bottleneckReason: decision.reason ?? 'ramp fuse tripped',
               };
               return bottleneck;
@@ -205,6 +210,8 @@ export class TaskRunner {
                   bottleneckStep: i,
                   bottleneckChannels: active.length,
                   bottleneckPhase: 'hold',
+                  bottleneckSource: decision.source ?? 'quick-fuse',
+                  bottleneckGates: decision.gates ?? [],
                   bottleneckReason: decision.reason ?? 'hold fuse tripped',
                 };
                 return bottleneck;
@@ -228,6 +235,8 @@ export class TaskRunner {
               bottleneckStep: i,
               bottleneckChannels: step.channels,
               bottleneckPhase: 'hold',
+              bottleneckSource: decision.source ?? 'runtime-threshold',
+              bottleneckGates: decision.gates ?? [],
               bottleneckReason: decision.reason ?? 'threshold breached',
             };
             break;
@@ -273,6 +282,7 @@ function normalizeTasks(ctx) {
       id: String(task.id ?? `task-${index + 1}`),
       displayName: task.displayName ?? task.id ?? `task-${index + 1}`,
       type: task.type ?? 'cv',
+      vlmCompletionActionId: task.vlmCompletionActionId ?? null,
       algorithmId: String(task.algorithmId),
       algorithmCode: String(task.algorithmCode ?? task.algorithmId),
       scheduleId: task.scheduleId,
@@ -285,6 +295,7 @@ function normalizeTasks(ctx) {
     id: 'default',
     displayName: 'default',
     type: 'cv',
+    vlmCompletionActionId: ctx.vlmCompletionActionId ?? null,
     algorithmId: String(ctx.algorithmId),
     algorithmCode: String(ctx.algorithmCode ?? ctx.algorithmId),
     scheduleId: ctx.scheduleId,

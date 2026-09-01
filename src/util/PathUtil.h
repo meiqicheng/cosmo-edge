@@ -29,7 +29,7 @@ void OverrideRootPaths(const std::string& dataPath, const std::string& appDataPa
 
 /// Test-only: override the root data paths to isolate unit tests from the
 /// real filesystem.  Must be called before any path accessor.
-/// @param dataPath    Replaces the default /data/cwaiuserdata
+/// @param dataPath    Replaces the package-specific mutable data root
 /// @param appDataPath Replaces the default /appfs/cosmo_wander/cwai_data
 void OverrideRootPathForTest(const std::string& dataPath, const std::string& appDataPath);
 

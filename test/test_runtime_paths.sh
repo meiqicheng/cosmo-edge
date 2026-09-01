@@ -1,0 +1,108 @@
+#!/bin/bash
+set -euo pipefail
+
+repo="$(cd "$(dirname "$0")/.." && pwd -P)"
+root="$(mktemp -d)"
+trap 'rm -rf -- "$root"' EXIT
+unset COSMO_DATA_DIR COSMO_APP_DATA_DIR COSMO_PACKAGE_DATA_DIR COSMO_PACKAGE_APP_DATA_DIR
+
+make_runtime_defaults() {
+    local install_root="$1" data_dir="$2"
+    mkdir -p "${install_root}/share/cosmo"
+    cat >"${install_root}/share/cosmo/runtime-paths.env" <<EOF
+COSMO_PACKAGE_DATA_DIR=${data_dir}
+COSMO_PACKAGE_APP_DATA_DIR=/appfs/cosmo_wander/cwai_data
+EOF
+}
+
+rk_install="${root}/rk-install"
+sophon_install="${root}/sophon-install"
+make_runtime_defaults "$rk_install" /userdata/cwaiuserdata
+make_runtime_defaults "$sophon_install" /data/cwaiuserdata
+
+resolve_paths() {
+    local install_root="$1"
+    (
+        COSMO_INSTALL_DIR="$install_root"
+        # shellcheck source=../scripts/common.sh
+        . "${repo}/scripts/common.sh"
+        printf '%s\n%s\n' "$COSMO_DATA_DIR" "$COSMO_APP_DATA_DIR"
+    )
+}
+
+rk_paths=()
+while IFS= read -r resolved_path; do
+    rk_paths[${#rk_paths[@]}]="$resolved_path"
+done < <(resolve_paths "$rk_install")
+test "${rk_paths[0]}" = /userdata/cwaiuserdata
+test "${rk_paths[1]}" = /appfs/cosmo_wander/cwai_data
+
+sophon_paths=()
+while IFS= read -r resolved_path; do
+    sophon_paths[${#sophon_paths[@]}]="$resolved_path"
+done < <(resolve_paths "$sophon_install")
+test "${sophon_paths[0]}" = /data/cwaiuserdata
+test "${sophon_paths[1]}" = /appfs/cosmo_wander/cwai_data
+
+override_paths=()
+while IFS= read -r resolved_path; do
+    override_paths[${#override_paths[@]}]="$resolved_path"
+done < <(
+    COSMO_DATA_DIR=/mnt/cosmo-data \
+        COSMO_APP_DATA_DIR=/opt/cosmo-app \
+        resolve_paths "$rk_install"
+)
+test "${override_paths[0]}" = /mnt/cosmo-data
+test "${override_paths[1]}" = /opt/cosmo-app
+
+assert_generated_defaults() {
+    local chip="$1" expected_data_dir="$2" output_dir
+    output_dir="${root}/generated-${chip}"
+    cmake \
+        -DTEST_TARGET_CHIP="$chip" \
+        -DTEST_OUTPUT_DIR="$output_dir" \
+        -P "${repo}/test/test_runtime_paths.cmake"
+    grep -Fxq "COSMO_PACKAGE_DATA_DIR=${expected_data_dir}" "${output_dir}/runtime-paths.env"
+    grep -Fxq "COSMO_PACKAGE_APP_DATA_DIR=/appfs/cosmo_wander/cwai_data" \
+        "${output_dir}/runtime-paths.env"
+    grep -Fq "\"${expected_data_dir}\"" "${output_dir}/RuntimePathsConfig.h"
+    grep -Fq '"/appfs/cosmo_wander/cwai_data"' "${output_dir}/RuntimePathsConfig.h"
+}
+
+assert_generated_defaults bm1688 /data/cwaiuserdata
+assert_generated_defaults cv186x /data/cwaiuserdata
+assert_generated_defaults x86 /data/cwaiuserdata
+assert_generated_defaults rk3576 /userdata/cwaiuserdata
+assert_generated_defaults rv1126b /userdata/cwaiuserdata
+
+render_install="${root}/render-install"
+mkdir -p "${render_install}/bin/nginx_conf" "${render_install}/bin/srs_conf"
+cp -R "${repo}/nginx/conf" "${render_install}/bin/nginx_conf/"
+cp "${repo}/cmake/srs.conf.in" "${render_install}/bin/srs_conf/srs.conf"
+
+render_data_dir="${root}/userdata/cwaiuserdata"
+(
+    unset COSMO_PACKAGE_DATA_DIR COSMO_PACKAGE_APP_DATA_DIR
+    # shellcheck disable=SC2034  # consumed by sourced common.sh
+    COSMO_INSTALL_DIR="$render_install"
+    COSMO_DATA_DIR="$render_data_dir"
+    # shellcheck source=../scripts/common.sh
+    . "${repo}/scripts/common.sh"
+    render_runtime_configs
+
+    test "$COSMO_RUNTIME_NGINX_PREFIX" = "${render_data_dir}/runtime/nginx_conf"
+    test "$COSMO_RUNTIME_SRS_CONF" = "${render_data_dir}/runtime/srs.conf"
+    grep -Fq "error_log  ${render_data_dir}/log/logs/nginx_error.log warn;" \
+        "$COSMO_RUNTIME_NGINX_CONF"
+    grep -Fq "alias ${render_data_dir}/event;" "$COSMO_RUNTIME_NGINX_UPSTREAM_CONF"
+    grep -Fq "pid                 ${render_data_dir}/log/logs/srs.pid;" \
+        "$COSMO_RUNTIME_SRS_CONF"
+    if grep -R -Fq '@COSMO_DATA_DIR@' "$COSMO_RUNTIME_NGINX_PREFIX" "$COSMO_RUNTIME_SRS_CONF"; then
+        exit 1
+    fi
+    if grep -R -Fq '/data/cwaiuserdata' "$COSMO_RUNTIME_NGINX_PREFIX" "$COSMO_RUNTIME_SRS_CONF"; then
+        exit 1
+    fi
+)
+
+echo "runtime path resolution tests passed"

@@ -4,6 +4,25 @@ import test from 'node:test';
 import { ShutdownSignalError } from '../src/shutdown-signal.js';
 import { TaskRunner } from '../src/task-runner.js';
 
+test('task runner preserves the VLM completion counter contract in expected bindings', () => {
+  const runner = new TaskRunner({}, {
+    tasks: [{
+      id: 'vlm',
+      type: 'vlm',
+      algorithmId: '89336',
+      algorithmCode: '89336',
+      scheduleId: 'always',
+      vlmCompletionActionId: 'PDA_00003',
+    }],
+  });
+  runner.setChannels(['channel-1']);
+
+  assert.equal(
+    runner.expectedTaskEntries(['channel-1'])[0].vlmCompletionActionId,
+    'PDA_00003',
+  );
+});
+
 test('task runner aborts when a hold sample cannot be captured', async () => {
   const client = {
     async taskApplyParamsBatch() {
@@ -55,9 +74,45 @@ test('task runner stops and disables tasks when a hold fuse trips', async () => 
   );
 
   assert.equal(result.bottleneckPhase, 'hold');
+  assert.equal(result.bottleneckSource, 'quick-fuse');
   assert.equal(result.bottleneckReason, 'disk 90% >= 90%');
   assert.equal(switches.length, 1);
   assert.equal(switches[0][0].enable, 0);
+});
+
+test('task runner preserves runtime-threshold gate identity at a completed hold', async () => {
+  const client = {
+    async taskApplyParamsBatch() {
+      return { failedList: [] };
+    },
+    async taskBatchSwitch() {
+      return { failedList: [] };
+    },
+  };
+  const runner = new TaskRunner(client, {
+    algorithmId: '7463',
+    scheduleId: 'always',
+    rampBatchDelaySec: 0,
+  });
+  runner.setChannels(['channel-1']);
+  const gates = [{ taskKey: 'vlm', name: 'minFpsRatio', actual: 0.7, threshold: 0.8 }];
+
+  const result = await runner.runStaircase(
+    [{ channels: 1, holdSec: 0.001 }],
+    {
+      onSample: async () => ({ stop: false }),
+      onStepEnd: async () => ({
+        stop: true,
+        source: 'runtime-threshold',
+        reason: 'vlm fpsRatio 0.700 < 0.8',
+        gates,
+      }),
+    },
+    0.001,
+  );
+
+  assert.equal(result.bottleneckSource, 'runtime-threshold');
+  assert.deepEqual(result.bottleneckGates, gates);
 });
 
 test('task runner interrupts a hold and disables active tasks on SIGTERM', async () => {

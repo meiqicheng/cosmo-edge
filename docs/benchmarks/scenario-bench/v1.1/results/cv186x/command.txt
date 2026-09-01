@@ -1,1 +1,0 @@
-See dual-detector/, single-detector/, and vlm-observation/ for workload-specific reproduction descriptors.

@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cosmoedge.dev/schemas/scenario-bench-v1.1-cases.schema.json",
+  "title": "CosmoEdge 1.1 canonical small-model benchmark cases",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "benchmark",
+    "platformId",
+    "platform",
+    "scope",
+    "evidenceDate",
+    "caseCount",
+    "gates",
+    "cases"
+  ],
+  "properties": {
+    "$schema": { "const": "../cases.schema.json" },
+    "schemaVersion": { "const": 3 },
+    "benchmark": { "const": "CosmoEdge 1.1 small-model capacity benchmark" },
+    "platformId": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "platform": { "type": "string", "minLength": 1 },
+    "scope": { "enum": ["release-platform", "additional-experimental-platform"] },
+    "evidenceDate": { "type": "string", "format": "date" },
+    "caseCount": { "type": "integer", "minimum": 1 },
+    "gates": { "$ref": "#/$defs/gates" },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/case" }
+    }
+  },
+  "$defs": {
+    "nonNegativeNumber": { "type": "number", "minimum": 0 },
+    "nullableNonNegativeNumber": {
+      "type": ["number", "null"],
+      "minimum": 0
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minFpsRatio",
+        "maxMissingRate",
+        "maxAverageDiscardRate",
+        "maxCriticalPathLatencyMs",
+        "maxDetectorLatencyMs"
+      ],
+      "properties": {
+        "minFpsRatio": { "$ref": "#/$defs/nonNegativeNumber" },
+        "maxMissingRate": { "$ref": "#/$defs/nonNegativeNumber" },
+        "maxAverageDiscardRate": { "$ref": "#/$defs/nonNegativeNumber" },
+        "maxCriticalPathLatencyMs": { "$ref": "#/$defs/nonNegativeNumber" },
+        "maxDetectorLatencyMs": { "$ref": "#/$defs/nonNegativeNumber" }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "caseId",
+        "sourceCaseId",
+        "workload",
+        "targetFps",
+        "configuredChannels",
+        "outcome",
+        "boundaryKind",
+        "lastPassingChannels",
+        "firstBlockedChannels",
+        "blockedReason",
+        "sourceSummarySha256",
+        "steps"
+      ],
+      "properties": {
+        "caseId": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "sourceCaseId": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "workload": {
+          "enum": ["person-detector", "no-safety-helmet-analysis", "concurrent-mixed"]
+        },
+        "targetFps": { "type": "number", "exclusiveMinimum": 0 },
+        "configuredChannels": { "type": "integer", "minimum": 1 },
+        "outcome": { "enum": ["completed", "stopped", "setup-blocked"] },
+        "boundaryKind": {
+          "enum": ["lower-bound", "performance-stop", "binding-blocked", "storage-blocked"]
+        },
+        "lastPassingChannels": { "type": "integer", "minimum": 1 },
+        "firstBlockedChannels": { "type": ["integer", "null"], "minimum": 1 },
+        "blockedReason": { "type": ["string", "null"] },
+        "sourceSummarySha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/step" }
+        }
+      }
+    },
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "channels",
+        "holdSeconds",
+        "result",
+        "tasks",
+        "minimumProcessingFps",
+        "maximumDetectorLatencyMs",
+        "maximumCriticalPathLatencyMs",
+        "averageDiscardRate",
+        "maximumChannelDiscardRate",
+        "acceleratorPeakPercent",
+        "acceleratorMemoryPeakPercent",
+        "cpuPeakPercent",
+        "memoryPeakPercent",
+        "failureReason"
+      ],
+      "properties": {
+        "channels": { "type": "integer", "minimum": 1 },
+        "holdSeconds": { "type": "number", "exclusiveMinimum": 0 },
+        "result": { "enum": ["PASS", "FAIL", "STOP"] },
+        "tasks": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 2,
+          "items": { "$ref": "#/$defs/task" }
+        },
+        "minimumProcessingFps": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "maximumDetectorLatencyMs": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "maximumCriticalPathLatencyMs": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "averageDiscardRate": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "maximumChannelDiscardRate": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "acceleratorPeakPercent": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "acceleratorMemoryPeakPercent": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "cpuPeakPercent": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "memoryPeakPercent": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "failureReason": { "type": ["string", "null"] }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "targetFps",
+        "minimumProcessingFps",
+        "minimumFpsRatio",
+        "missingRate",
+        "averageDiscardRate",
+        "maximumDetectorLatencyMs",
+        "maximumCriticalPathLatencyMs"
+      ],
+      "properties": {
+        "name": { "enum": ["person-detector", "no-safety-helmet-analysis"] },
+        "targetFps": { "type": "number", "exclusiveMinimum": 0 },
+        "minimumProcessingFps": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "minimumFpsRatio": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "missingRate": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "averageDiscardRate": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "maximumDetectorLatencyMs": { "$ref": "#/$defs/nullableNonNegativeNumber" },
+        "maximumCriticalPathLatencyMs": { "$ref": "#/$defs/nullableNonNegativeNumber" }
+      }
+    }
+  }
+}

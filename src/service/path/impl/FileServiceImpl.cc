@@ -8,7 +8,9 @@
 #include <algorithm>
 #include <array>
 #include <filesystem>
+#include <fstream>
 #include <limits>
+#include <sstream>
 #include <string_view>
 
 #include "media/EncodedImageInfo.h"
@@ -32,11 +34,45 @@ constexpr int kMaxUrlSize       = 512;
 namespace {
     constexpr std::uint64_t kImageMemoryReserveBytes   = 256ULL * 1024 * 1024;
     constexpr std::uint32_t kImageMemoryReservePercent = 10;
+    constexpr std::uint64_t kBytesPerKibibyte          = 1024;
 
-    std::size_t ImageDownloadBudgetBytes() {
+    struct MemoryAvailability {
+        bool valid{false};
+        std::uint64_t total_bytes{0};
+        std::uint64_t available_bytes{0};
+    };
+
+    MemoryAvailability ReadProcMemoryAvailability() {
+        std::ifstream file("/proc/meminfo");
+        std::string line;
+        MemoryAvailability result;
+        bool has_total     = false;
+        bool has_available = false;
+        while (std::getline(file, line)) {
+            std::istringstream stream(line);
+            std::string key;
+            std::string unit;
+            std::uint64_t value_kib = 0;
+            if (!(stream >> key >> value_kib >> unit) || unit != "kB" ||
+                value_kib > std::numeric_limits<std::uint64_t>::max() / kBytesPerKibibyte) {
+                continue;
+            }
+            if (key == "MemTotal:") {
+                result.total_bytes = value_kib * kBytesPerKibibyte;
+                has_total          = true;
+            } else if (key == "MemAvailable:") {
+                result.available_bytes = value_kib * kBytesPerKibibyte;
+                has_available          = true;
+            }
+        }
+        result.valid = has_total && has_available;
+        return result;
+    }
+
+    MemoryAvailability ReadSysinfoMemoryAvailability() {
         struct sysinfo status {};
         if (sysinfo(&status) != 0 || status.mem_unit == 0) {
-            return 0;
+            return {};
         }
         const auto multiply = [unit = static_cast<std::uint64_t>(status.mem_unit)](unsigned long value) {
             const auto max_value = std::numeric_limits<std::uint64_t>::max();
@@ -44,20 +80,22 @@ namespace {
                        ? max_value
                        : static_cast<std::uint64_t>(value) * unit;
         };
-        const auto total     = multiply(status.totalram);
-        const auto free      = multiply(status.freeram);
-        const auto buffers   = multiply(status.bufferram);
-        const auto available = free > std::numeric_limits<std::uint64_t>::max() - buffers
-                                   ? std::numeric_limits<std::uint64_t>::max()
-                                   : free + buffers;
-        const auto percentage_reserve =
-            total > std::numeric_limits<std::uint64_t>::max() / kImageMemoryReservePercent
-                ? std::numeric_limits<std::uint64_t>::max() / 100
-                : total * kImageMemoryReservePercent / 100;
-        const auto reserve = std::max(kImageMemoryReserveBytes, percentage_reserve);
-        const auto usable  = available > reserve ? available - reserve : available / 2;
-        return static_cast<std::size_t>(std::min<std::uint64_t>(
-            {usable, media::kVideoFrameMaxSize, std::numeric_limits<std::size_t>::max()}));
+        const auto free    = multiply(status.freeram);
+        const auto buffers = multiply(status.bufferram);
+        return {true, multiply(status.totalram),
+                free > std::numeric_limits<std::uint64_t>::max() - buffers
+                    ? std::numeric_limits<std::uint64_t>::max()
+                    : free + buffers};
+    }
+
+    std::size_t ImageDownloadBudgetBytes() {
+        auto memory = ReadProcMemoryAvailability();
+        if (!memory.valid) {
+            memory = ReadSysinfoMemoryAvailability();
+        }
+        return memory.valid
+                   ? detail::CalculateImageDownloadBudgetBytes(memory.total_bytes, memory.available_bytes)
+                   : 0;
     }
 
     bool ContainsControlCharacter(std::string_view value) {
@@ -124,6 +162,16 @@ namespace {
         return actual_extension == cosmo::util::ToLower(extension);
     }
 }  // namespace
+
+std::size_t detail::CalculateImageDownloadBudgetBytes(std::uint64_t total_bytes,
+                                                      std::uint64_t available_bytes) {
+    const auto percentage_reserve =
+        total_bytes / 100 * kImageMemoryReservePercent + total_bytes % 100 * kImageMemoryReservePercent / 100;
+    const auto reserve = std::max(kImageMemoryReserveBytes, percentage_reserve);
+    const auto usable  = available_bytes > reserve ? available_bytes - reserve : 0;
+    return static_cast<std::size_t>(std::min<std::uint64_t>(
+        {usable, media::kVideoFrameMaxSize, std::numeric_limits<std::size_t>::max()}));
+}
 
 FileServiceImpl::FileServiceImpl(size_t worker_queue_capacity) {
     worker_threads_.reserve(kWorkerThreadCount);

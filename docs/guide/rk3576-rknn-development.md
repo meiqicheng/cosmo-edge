@@ -22,9 +22,10 @@ RK3576 集成增加了面向生产的 CV 后端，不改变 CPU、CUDA 或 Sopho
 - RGA 执行预览与 OSD 路径所需的 Rockchip 图像处理操作。
 - 完整 DMA-BUF 零拷贝不属于当前稳定版支持边界。
 
-推荐部署起点为已完成 12 小时验证的 4 路 × 5 FPS 单算法配置。最新短时阶梯中，
-单算法覆盖到 16 路 × 5 FPS，双算法覆盖到 8 路 × 每任务 5 FPS；这些是指定模型与
-门禁下的实测边界，不直接替代推荐配置。详见 [ScenarioBench v1.1](/benchmarks/scenario-bench/v1.1/report.zh-CN.html)。
+推荐部署起点为已完成 12 小时验证的 4 路 × 5 FPS 人员检测配置。最新短时阶梯中，
+人员检测单任务覆盖到 16 路 × 5 FPS；并发混合任务覆盖到 8 路 × 每任务 5 FPS，
+其中每路同时运行人员检测，以及由检测与分类组成的未佩戴安全帽分析。这些是指定
+模型与门禁下的实测边界，不直接替代推荐配置。详见 [ScenarioBench v1.1](https://www.cosmowander.ai/zh/docs/benchmarks/scenario-bench/v1.1/report.zh-CN.html)。
 
 ## 仓库与证据边界
 
@@ -143,13 +144,13 @@ RKLLM Runtime 会随安装包发布，但 Qwen3.5 模型文件不随 Open 包分
 构建时依赖解析使用宿主机网络；一次性构建服务不发布或监听应用端口。
 
 RK3576 的板端网络由系统 NetworkManager 管理，不由 CosmoEdge 的 Sophon netplan 路径
-接管。清空 `/data/cwaiuserdata` 会重新生成默认 JSON，但不会把现有 NetworkManager
+接管。清空 `/userdata/cwaiuserdata` 会重新生成默认 JSON，但不会把现有 NetworkManager
 连接改成 `192.168.100.1`；部署和恢复时应以 `ip -4 addr`/`nmcli` 的实际地址为准。
 
 运行时应隔离可变数据目录和包内应用目录：
 
 ```bash
-export COSMO_DATA_DIR=/data/cwaiuserdata
+export COSMO_DATA_DIR=/userdata/cwaiuserdata
 export COSMO_APP_DATA_DIR=/appfs/cosmo_wander/cwai_data
 export LD_LIBRARY_PATH="$COSMO_APP_DATA_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 ```
@@ -178,7 +179,7 @@ export LD_LIBRARY_PATH="$COSMO_APP_DATA_DIR/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_P
 再在设备上运行：
 
 ```bash
-MODEL_DIR=/data/cwaiuserdata/resource/models/<qwen3.5-model-directory>
+MODEL_DIR=/userdata/cwaiuserdata/resource/models/<qwen3.5-model-directory>
 export LD_LIBRARY_PATH=./lib
 ./demo smoke.jpg "$MODEL_DIR/vision.rknn" "$MODEL_DIR/model.rkllm" \
   64 4096 2 rk3576 \
@@ -196,8 +197,9 @@ export LD_LIBRARY_PATH=./lib
   对应 CPU 实测值保留在该次历史证据记录中。
 - 真实原始与算法播放、硬件解码/编码、OSD、重连和任务重启恢复在被测产物上通过。
 - 延迟 Copy-out 会在宿主拷贝前丢弃无需处理的帧，是本版本选定的优化方案。
-- v1.1 公开报告记录了单算法 5 FPS 的 16 路阶梯和双算法 5 FPS 的 8 路阶梯；两者
-  均为短时实测边界，尚未升级为官方推荐配置。
+- v1.1 公开报告记录了人员检测单任务 5 FPS 的 16 路阶梯，以及每路包含人员检测与
+  两阶段安全帽分析的 5 FPS 并发混合任务 8 路阶梯；两者均为短时实测边界，尚未
+  升级为官方推荐配置。
 - RK3576 NPU 指标使用 `/sys/kernel/debug/rknpu/load` 的厂商忙碌时间计数器；健康卡片
   展示最忙核心，加速器 payload 保留所有核心。启动脚本仅将该只读文件暴露到
   `/run/cosmo-edge/metrics/rknpu-load`；devfreq governor 信号不会被当作 NPU 负载。

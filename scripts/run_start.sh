@@ -12,6 +12,13 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Resolve the active package before loading common defaults so side-by-side
+# validation installs read their own target-specific runtime-path declaration.
+if [ -z "${INSTALLPATH:-}" ]; then
+    INSTALLPATH="$(cd "${SCRIPT_DIR}/../" && pwd)"
+fi
+COSMO_INSTALL_DIR="${INSTALLPATH}"
+
 # shellcheck source=common.sh
 . "${SCRIPT_DIR}/common.sh"
 
@@ -19,12 +26,7 @@ logTag="RUN_START"
 logFile="$2"
 
 cosmo_log "$logTag" "Start, action=$1" "$logFile"
-
-# Set INSTALLPATH if not already set
-if [ -z "${INSTALLPATH}" ]; then
-    INSTALLPATH="$(cd "${SCRIPT_DIR}/../" && pwd)"
-    cosmo_log "$logTag" "INSTALLPATH=${INSTALLPATH}" "$logFile"
-fi
+cosmo_log "$logTag" "Install path=${INSTALLPATH}" "$logFile"
 
 # Keep mutable runtime data separate from packaged, read-only resources.  The
 # application root must follow the actual installation path, including
@@ -71,12 +73,18 @@ export LD_LIBRARY_PATH="${IED_LIB}:${LD_LIBRARY_PATH:-}:/usr/lib"
 
 # Main process binary file path
 BINPATH="${INSTALLPATH}/bin"
-NGINX_PREFIX="${BINPATH}/nginx_conf"
-NGINX_CONF="${NGINX_PREFIX}/conf/nginx.conf"
-NGINX_UPSTREAM_CONF="${NGINX_PREFIX}/conf/conf.d/default.conf"
 
 export COSMO_HTTP_PORT="${COSMO_HTTP_PORT:-8000}"
 export COSMO_WEBSOCKET_PORT="${COSMO_WEBSOCKET_PORT:-9000}"
+
+if ! render_runtime_configs; then
+    cosmo_log "$logTag" "Runtime config render failed" "$logFile"
+    exit 1
+fi
+NGINX_PREFIX="${COSMO_RUNTIME_NGINX_PREFIX}"
+NGINX_CONF="${COSMO_RUNTIME_NGINX_CONF}"
+NGINX_UPSTREAM_CONF="${COSMO_RUNTIME_NGINX_UPSTREAM_CONF}"
+SRS_CONF="${COSMO_RUNTIME_SRS_CONF}"
 
 # Validate the reverse-proxy/backend contract before stopping the currently
 # running service. A bad override or stale Nginx config must fail closed.
@@ -128,7 +136,7 @@ nginx -p "${NGINX_PREFIX}" -c "${NGINX_CONF}"
 PLAY_MODE="${COSMO_STREAM_PLAY_MODE}"
 if [ "$PLAY_MODE" = "srs" ] || [ "$PLAY_MODE" = "webrtc" ] || [ "$PLAY_MODE" = "srs-flv" ] || [ "$PLAY_MODE" = "httpflv-srs" ]; then
     cosmo_log "$logTag" "Starting SRS media server (mode: ${PLAY_MODE})..." "$logFile"
-    ./srs -c srs_conf/srs.conf &
+    ./srs -c "${SRS_CONF}" &
 fi
 
 # Start cosmo-engine (foreground, managed by systemd)

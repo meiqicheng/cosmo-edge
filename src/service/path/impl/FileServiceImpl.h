@@ -5,6 +5,8 @@
 #pragma once
 
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <list>
 #include <map>
 #include <memory>
@@ -23,6 +25,13 @@ namespace cosmo::service {
 
 /// Number of worker threads for file upload operations.
 static constexpr int kWorkerThreadCount = 4;
+
+namespace detail {
+
+    [[nodiscard]] std::size_t CalculateImageDownloadBudgetBytes(std::uint64_t total_bytes,
+                                                                std::uint64_t available_bytes);
+
+}  // namespace detail
 
 class FileServiceImpl final : public IFileService {
 public:

@@ -1,114 +1,92 @@
 # CosmoEdge 1.1 Multi-Platform Video Analytics Benchmark
 
-> Person detection, safety-helmet detection, and concurrent multi-task workloads on BM1688, CV186X, and RK3576
+> Person detection, no-safety-helmet analysis, and concurrent mixed-workload results on BM1688, CV186X, RK3576, and RV1126B.
 
-Entry points: [English report](report.html) · [中文报告](report.zh-CN.html) · [methodology](methodology.md) · [machine-readable results index](results/index.json)
+Entry points: [English report](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/report.html) · [中文报告](https://www.cosmowander.ai/zh/docs/benchmarks/scenario-bench/v1.1/report.zh-CN.html) · [72-hour report](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/dual-cv-72h/report.html) · [methodology](methodology.md) · [canonical case schema](results/cases.schema.json)
 
-## Summary
+The HTML reports and aggregate indexes linked from this page are generated during the documentation build. The repository keeps the canonical measurements, not duplicate report payloads.
 
-> **Status: release-candidate public performance material. Repository and PR preparation are complete; external publication has not started.**
+## 72-hour dual-CV configured workload
 
-We validated CosmoEdge 1.1 multi-stream video analytics on three edge-AI platforms. Under the model, video, device, and runtime conditions defined by this report, the short staircase runs completed 16 channels with two detectors at 5 FPS on BM1688, and 8 channels with two detectors at 5 FPS on CV186X and RK3576. These are measured workload results for the stated configurations, not theoretical chip limits.
+All four platforms completed one continuous 72-hour controlled local-loop observation. Each channel ran person detection plus no-safety-helmet analysis at 5 FPS per business task. The 72-hour endpoint contains the full observation, so 24- and 48-hour intermediate milestones are not published as separate results.
 
-## Recommended profiles and observed boundaries
+| Platform | Configured channels | Task bindings | Samples | Min / avg / max FPS | Max discard | Peak CPU / memory / disk | Result |
+| --- | ---: | ---: | ---: | --- | ---: | --- | --- |
+| BM1688 | 8 | 16 | 4316 / 4320 | 4.68 / 5.086 / 5.49 | 0 | 30% / 44% / 96% | PASS |
+| CV186X | 8 | 16 | 4316 / 4320 | 4.54 / 5.085 / 5.29 | 0 | 43% / 44% / 96% | PASS |
+| RK3576 | 8 | 16 | 4316 / 4320 | 5.00 / 5.098 / 5.17 | 0 | 46% / 30% / 15% | PASS |
+| RV1126B | 4 | 8 | 4316 / 4320 | 4.85 / 5.230 / 5.37 | 0 | 41% / 41% / 47% | PASS |
 
-| Platform | Recommended profile | Short-run observed boundary | Hold per step | Status |
-| --- | --- | --- | ---: | --- |
-| BM1688 reference device | Pending repeat and soak validation | 16 channels, two detectors, 5 FPS each | 15 s | Preliminary |
-| CV186X reference device | Pending repeat and soak validation | 8 channels, two detectors, 5 FPS each | 30 s | Preliminary |
-| RK3576 EVB | Pending repeat and soak validation | 8 channels, two detectors, 5 FPS each | 15 s | Preliminary |
+All four platforms retained 4316 of 4320 expected one-minute samples (99.91%). The largest sampling gap was 60.067 seconds, below the 180-second integrity limit, with zero observed discard, collection errors, missing task bindings, or open critical incidents.
 
-An observed boundary is the highest tested channel count that passed the configured gates. It is neither an official recommended profile nor proof of the absolute platform limit.
+Scope: These results apply to the listed channel counts and controlled local-loop input. Maximum capacity, RTSP resilience, and restart recovery were not measured in this run. Disk observations, restart-state handling, evidence identity, and cleanup limitations are documented in the [methodology](methodology.md). See also the generated [72-hour report](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/dual-cv-72h/report.html) and [canonical observation](results/dual-cv-72h.json).
 
-## Public workload
+## Concurrent mixed-workload matrix
 
-- Each channel runs person detection and safety-helmet detection concurrently.
-- Each task targets 5 analysis FPS per channel.
-- Input is a fixed local 1080p, 24 FPS video sample.
-- Channels are added one at a time from one channel upward.
-- Pass gates: minimum FPS ratio at least 80% for each task, zero missing telemetry, and average discard rate no greater than 5%.
-- No preview client load was enabled; results represent background video analysis.
+Each channel runs two business tasks across three model stages: person detection has one detector stage, while no-safety-helmet analysis has a detector followed by a classifier. Both business tasks are configured at 5 FPS.
 
-## Last passing points
+| Platform | Workload per channel | Model stages/ch | Target FPS/task | Passing channels | Business-task bindings |
+| --- | --- | ---: | ---: | ---: | ---: |
+| BM1688 | Person detection + no-safety-helmet analysis | 3 | 5 | ≥16 | 32/32 |
+| CV186X | Person detection + no-safety-helmet analysis | 3 | 5 | ≥8 | 16/16 |
+| RK3576 | Person detection + no-safety-helmet analysis | 3 | 5 | ≥8 | 16/16 |
+| RV1126B | Person detection + no-safety-helmet analysis | 3 | 5 | ≥4 | 8/8 |
 
-| Platform | Channels | Person minimum FPS | Helmet minimum FPS | Average discard | Accelerator peak | CPU peak | Memory peak |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| BM1688 reference device | 16 | 4.92 | 4.90 | 0% | 60% | 61% | 46% |
-| CV186X reference device | 8 | 5.00 | 5.00 | 0% | 60% | 19% | 42% |
-| RK3576 EVB | 8 | 5.15 | 5.11 | 0% | 41% | 47% | 30% |
+## Single-task capacity matrix
 
-## Single-detector capacity matrix
+Values are the last passing channel count. `≥` means the highest configured count passed. `*` means the next channel was blocked during task binding. `†` means the expansion run was blocked by its storage precondition before measurement.
 
-Values are the last passing channel counts in short-run staircases. “≥” means the highest configured point passed. “*” means the next step was blocked by task binding and is not a measured performance limit.
+| Platform | Task | 24 FPS | 10 FPS | 7 FPS | 5 FPS |
+| --- | --- | ---: | ---: | ---: | ---: |
+| BM1688 | Person detection | ≥8 | ≥16 | ≥16 | ≥16 |
+| BM1688 | No-safety-helmet analysis | ≥7* | ≥14* | ≥16 | ≥16 |
+| CV186X | Person detection | ≥8* | ≥15* | ≥16 | ≥16 |
+| CV186X | No-safety-helmet analysis | 6 | ≥13* | ≥16 | ≥16 |
+| RK3576 | Person detection | 6 | 12 | ≥16 | ≥8† |
+| RK3576 | No-safety-helmet analysis | 6 | 10 | 12 | ≥16 |
+| RV1126B | Person detection | 2 | ≥4 | ≥4 | ≥4 |
+| RV1126B | No-safety-helmet analysis | 2 | ≥4 | ≥4 | ≥4 |
 
-| Platform | Single-detector workload | 24 FPS | 10 FPS | 7 FPS | 5 FPS | Status |
-| --- | --- | ---: | ---: | ---: | ---: | --- |
-| BM1688 | Person detection | 7 | 15 | ≥16 | ≥16 | Preliminary |
-| BM1688 | Safety-helmet detection | 7 | ≥12* | ≥16 | ≥16 | Preliminary |
-| CV186X | Person detection | ≥3* | ≥8* | ≥11* | ≥15* | Preliminary |
-| CV186X | Safety-helmet detection | ≥3* | ≥8* | ≥11* | ≥15* | Preliminary |
-| RK3576 | Person detection | 6 | 12 | 15 | ≥16 | Preliminary |
-| RK3576 | Safety-helmet detection | 5 | 10 | 12 | 15 | Preliminary |
+## Small-model controlled setup
 
-## Comparability statement
+- Small-model CosmoEdge source: `89c73a7464a81ef378686447d7c1eeb88b988455`, tree `6857fbcce72c7af64e6cb23a27e66a405e9df9af`.
+- Input: fixed local-loop H.264 1920×1080, 24 FPS sample, SHA-256 `3e1c5b97cd5bcc081e47ec631f84c36e72f075c8b9da6a19de3d9705fb887f92`.
+- Add one channel per step; hold 30 seconds; sample about every 3 seconds; preview disabled.
+- Gates: 80% FPS compliance, zero telemetry missing rate, and at most 5% average discard.
+- The no-safety-helmet task is a two-stage detector-plus-classifier pipeline; both nodes receive the same target FPS.
 
-The three platforms used platform-specific converted and validated artifacts. Internal algorithm identifiers are not public model identities and do not support a chip-performance ranking. Until model source and version, input shape, quantization, preprocessing, postprocessing, video, codec configuration, warm-up, steady-state duration, and repetition count are fully aligned, these results describe representative workloads per platform rather than a cross-chip benchmark ranking.
+BM1688 and CV186X use byte-identical detector/classifier artifacts. RK3576 and RV1126B use platform-specific RKNN artifacts with the same public I/O contracts. Full hashes are in the [model card](models/model-card.md).
 
-## Experimental VLM results
+## Canonical data and generated reports
 
-VLM results are excluded from the primary capacity claims. All three platforms used a 1→8 channel staircase with 120 seconds per step and a target of 0.1 FPS per channel. Analysis FPS was observed but excluded from PASS/FAIL; passing refers only to non-FPS gates such as discard rate, telemetry completeness, and system protection.
+The 49 small-model cases are stored once in four platform-level canonical JSON files. The 72-hour observation and validated VLM performance each have one additional sanitized canonical file. Each source retains hashes that trace back to its private frozen evidence. Bilingual case pages, platform/workload/long-run summaries, indexes, and matrices are generated from these files; they are not additional evidence copies.
 
-| Platform | Last non-FPS pass | Equivalent FPS/channel at that point | First stop | Status |
-| --- | ---: | ---: | --- | --- |
-| BM1688 | ≥8 | 0.040 | Highest configured point observed | Experimental |
-| CV186X | ≥8 | 0.080 | Highest configured point observed | Experimental |
-| RK3576 | 7 | 0.063 | Channel 8 average discard reached 22.75% | Experimental |
+| Platform | Canonical cases | Generated overview | Generated case pages | Generated workload reports | 72-hour dual-CV | Validated VLM |
+| --- | --- | --- | --- | --- | --- | --- |
+| BM1688 | [JSON](results/bm1688/cases.json) | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/bm1688/report.html">open</a> | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/bm1688/cases/report.html">open</a> | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/bm1688/single-workload/report.html">single</a> · <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/bm1688/concurrent-mixed/report.html">mixed</a> | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/bm1688/dual-cv-72h/report.html">open</a> | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/bm1688/vlm-observation/report.html">open</a> |
+| CV186X | [JSON](results/cv186x/cases.json) | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/cv186x/report.html">open</a> | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/cv186x/cases/report.html">open</a> | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/cv186x/single-workload/report.html">single</a> · <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/cv186x/concurrent-mixed/report.html">mixed</a> | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/cv186x/dual-cv-72h/report.html">open</a> | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/cv186x/vlm-observation/report.html">open</a> |
+| RK3576 | [JSON](results/rk3576/cases.json) | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/rk3576/report.html">open</a> | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/rk3576/cases/report.html">open</a> | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/rk3576/single-workload/report.html">single</a> · <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/rk3576/concurrent-mixed/report.html">mixed</a> | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/rk3576/dual-cv-72h/report.html">open</a> | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/rk3576/vlm-observation/report.html">open</a> |
+| RV1126B | [JSON](results/rv1126b/cases.json) | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/rv1126b/report.html">open</a> | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/rv1126b/cases/report.html">open</a> | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/rv1126b/single-workload/report.html">single</a> · <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/rv1126b/concurrent-mixed/report.html">mixed</a> | <a href="https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/rv1126b/dual-cv-72h/report.html">open</a> | — |
 
-BM1688 and CV186X use device-provided per-channel observations. RK3576 exposes a shared task counter, so its attachment freezes the reviewed one-to-eight-channel equivalent series: `0.100 / 0.120 / 0.116 / 0.115 / 0.091 / 0.076 / 0.063 / 0.057`. VLM remains outside the formal capacity table until target-FPS, completion-count, missing-rate, and latency gates are enabled and passed.
+## Validated VLM performance
 
-## Test environment
+BM1688, CV186X, and RK3576 were retested on the frozen V1.1.0 candidate with the same controlled 1080p24 input, prompt, and 60-second step window. Each newly added route completed task-local readiness before formal sampling, and the 80% FPS threshold was an executed PASS/FAIL gate.
 
-The CosmoEdge 1.1 source baseline is frozen to `feat/model-guard-v2.3` commit `209bc2b52849864a15bdad91beb61f5bc982c17f`, tree `f64a98bce05b9ee8dc64dda8e56ad50f9d15687f`. It includes the RK3576 VLM inference path and performance changes used for this release line; subsequent changes at the freeze point affect Web linkage and upgrade-cache behavior plus formatting only, not inference, media, or memory lifecycle semantics.
+| Platform | Target FPS/ch | Executed FPS gate | Last passing channels | First failure |
+| --- | ---: | ---: | ---: | --- |
+| BM1688 | 0.1 | ≥80% | 6 channels | 7-channel FPS ratio 69.5% |
+| CV186X | 0.1 | ≥80% | 6 channels | 7-channel FPS ratio 69.2% |
+| RK3576 | 0.1 | ≥80% | 4 channels | 5-channel FPS ratio 69.7% |
+| RV1126B | — | — | — | Outside this VLM validation |
 
-BM1688 and CV186X were tested with the same Open package, SHA-256 `8aee0bdb146d80647b4f517114c2920781ed6760e90e5bdf951fefd982dbecb2`. The packaged `cosmo-engine` and both running engines share SHA-256 `bc7274327896384bcf68abf7fc42ce9e133f15131f3be21cb265b8e4deb55d11`. The package does not embed a source commit and predates the final source freeze; this is therefore an explicit device/package binding, not a claim that the package was reproducibly built from the final source commit. The original RK3576 package was not recovered, so those results are bound to the installed version, model identity, environment, and captured evidence rather than a package digest.
+BM1688, CV186X, and RK3576 also pass the minimum end-to-end sequence: model load, VLM task creation, valid inference, event/alarm output, and task recovery after service restart. Each platform used the same fixed candidate package as its capacity run. CosmoEdge 1.1 therefore declares VLM support on these three platforms within the recorded package, model, and protocol scope.
 
-| Platform | Public device | OS | Runtime / media | Memory and storage |
-| --- | --- | --- | --- | --- |
-| BM1688 | BM1688 reference device | Ubuntu 22.04.5 LTS | libsophon/BMRT 0.4.12; Sophon FFmpeg/GStreamer 2.0.0 | 2,160,271,360 B system; 1,536 + 4,096 MiB accelerator heaps; 9,260,003,328 / 49,366,970,368 B system/data filesystems |
-| CV186X | CV186X reference device | Ubuntu 22.04.5 LTS | libsophon/BMRT 0.4.12; Sophon FFmpeg/GStreamer 2.0.0 | 2,160,451,584 B system; 1,536 + 4,096 MiB accelerator heaps; 9,260,003,328 / 49,375,051,776 B system/data filesystems |
-| RK3576 | Rockchip RK3576 EVB1 V10 | distribution not exposed by the read-only API | exact RKNN/Driver/RGA/MPP versions not exposed; Rockchip MPP/RGA media paths confirmed | 7,917 MiB shared system memory; device API reported 11.56 GB used and 2.13 GB available storage |
+The result is an exact short-run gate boundary under this controlled protocol, not maximum-capacity or production-configuration certification. The method, package/model/runtime identities, and end-to-end evidence hashes are consolidated in the [canonical VLM file](results/vlm-observations.json) and [methodology](methodology.md).
 
-See `models/` for artifact identities, I/O contracts, platform-scoped repository paths, and available SHA-256 values. The byte-identical BM1688 and CV186X detector/classifier files are distributed under `data/resource/aiboxresource_bm1688/models/` and `data/resource/aiboxresource_cv186x/models/` respectively. The video SHA-256 is `ec77182a264f3059a091b68c4973942dba3b80e93f20feaf4d7e146885caf9d2`; ScenarioBench version and source-file hashes are in `release-manifest.json`. Unknown RKNN/Driver/RGA/MPP versions and the RK VLM artifact hash remain explicit unknowns rather than inferred values.
+## Reproduction files
 
-## Limitations
-
-- Results apply only to the bound models, video, device, runtime, and package.
-- The multi-task staircases are short runs; they are not official recommended channel counts until repeat and soak validation passes.
-- Results are not theoretical chip compute limits.
-- Different model artifacts cannot be compared directly.
-- A metric with a disabled gate does not count as a performance pass.
-- A task-binding failure is a blocked test, not a performance limit.
-- Any environment, model, media-path, or package change requires revalidation.
-
-## Reproduction
-
-The public pack contains the methodology, sanitized scenarios, machine-readable results, environment templates, and checksums. Device serial numbers, internal channel IDs, internal algorithm IDs, local absolute paths, customer media, and full debugging logs remain in the private evidence archive.
-
-GitHub's Code view displays checked-in HTML as source. The `open` links below use the same rendered documentation-site pattern as v1.0; they open as standalone reports after the documentation site is deployed and are expected to return 404 before that publication step.
-
-The release material includes separate `summary.json`, `metrics.json`, `command.txt`, sanitized log, and HTML attachments for single-detector, dual-detector, and VLM workloads. Before execution, resolve the public model references to device-local identifiers as described in `methodology.md`; device addresses, credentials, and internal identifiers are intentionally absent.
-
-| Platform | Single-detector staircase | Dual-detector staircase | VLM observation | Machine-readable summary |
-| --- | --- | --- | --- | --- |
-| BM1688 | [open](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/bm1688/single-detector/report.html) | [open](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/bm1688/dual-detector/report.html) | [open](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/bm1688/vlm-observation/report.html) | [summary.json](results/bm1688/summary.json) |
-| CV186X | [open](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/cv186x/single-detector/report.html) | [open](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/cv186x/dual-detector/report.html) | [open](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/cv186x/vlm-observation/report.html) | [summary.json](results/cv186x/summary.json) |
-| RK3576 | [open](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/rk3576/single-detector/report.html) | [open](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/rk3576/dual-detector/report.html) | [open](https://www.cosmowander.ai/docs/benchmarks/scenario-bench/v1.1/results/rk3576/vlm-observation/report.html) | [summary.json](results/rk3576/summary.json) |
-
-## Product-release evidence boundary
-
-- final Protected package SHA-256 and controlled build provenance;
-- final RK3576 package SHA-256 and source provenance;
-- SHA-256 for the final RK3576 VLM artifact;
-- repeat, soak, customer-journey, and accuracy qualification before any recommended-profile claim.
-
-These items do not block publication of this performance report. They do prevent the short-run boundary from being marketed as a recommended profile, and this report does not replace a complete product qualification report. The open detector/classifier files are present in the BM1688 and CV186X platform resource sets; the sample video and all other model binaries are not redistributed by this benchmark. Recorded SHA-256 values identify the exact artifacts.
+- [release-manifest.json](release-manifest.json): source, tool, input, and platform identities.
+- [dual-cv-72h.json](results/dual-cv-72h.json): sanitized 72-hour configured-workload observations and private-source hashes.
+- [methodology.md](methodology.md): procedure and result interpretation.
+- [scenarios](scenarios/README.md): sanitized public workload descriptors.
+- <a href="./SHA256SUMS">SHA256SUMS</a>: hashes for the canonical repository source; the generated public output receives its own complete checksum inventory at build time.

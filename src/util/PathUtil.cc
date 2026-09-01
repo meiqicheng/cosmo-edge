@@ -9,6 +9,7 @@
 #include <system_error>
 #include <vector>
 
+#include "RuntimePathsConfig.h"
 #include "util/DateTimeFormat.h"
 #include "util/FileUtil.h"
 #include "util/FormatString.h"
@@ -27,8 +28,8 @@ namespace {
 
     // Root paths — mutable so OverrideRootPathForTest() can redirect them.
     // NOLINTBEGIN(cppcoreguidelines-avoid-non-const-global-variables)
-    std::string g_dataPath{"/data/cwaiuserdata"};
-    std::string g_appDataPath{"/appfs/cosmo_wander/cwai_data"};
+    std::string g_dataPath{cosmo::runtime::kDefaultDataDir};
+    std::string g_appDataPath{cosmo::runtime::kDefaultAppDataDir};
     // NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)
 
     // Derived-path accessors (recomputed on every call so they reflect overrides)

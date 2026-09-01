@@ -11,6 +11,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <future>
@@ -19,6 +20,7 @@
 #include <utility>
 
 #include "LoopbackHttpServer.h"
+#include "media/EncodedImageInfo.h"
 #include "mock/MockServiceRegistry.h"
 #include "network/http/HttpRequest.h"
 #include "network/http/HttpRequestHandler.h"
@@ -214,6 +216,30 @@ TEST_CASE("FileServiceImpl: download rejects non-HTTP URLs and clears stale outp
     std::vector<uint8_t> data{1, 2, 3};
     REQUIRE_FALSE(sut.DownloadFile("file:///etc/passwd", data));
     REQUIRE(data.empty());
+}
+
+TEST_CASE("FileServiceImpl: image download budget is monotonic at the memory reserve",
+          "[FileService][boundary]") {
+    constexpr std::uint64_t kTotalBytes   = 2ULL * 1024 * 1024 * 1024;
+    constexpr std::uint64_t kReserveBytes = 256ULL * 1024 * 1024;
+    constexpr std::uint64_t kBodySize     = 17ULL * 1024 * 1024 + 123;
+
+    CHECK(cosmo::service::detail::CalculateImageDownloadBudgetBytes(kTotalBytes, kReserveBytes - 1) == 0);
+    CHECK(cosmo::service::detail::CalculateImageDownloadBudgetBytes(kTotalBytes, kReserveBytes) == 0);
+    CHECK(cosmo::service::detail::CalculateImageDownloadBudgetBytes(kTotalBytes, kReserveBytes + kBodySize) ==
+          kBodySize);
+    CHECK(cosmo::service::detail::CalculateImageDownloadBudgetBytes(kTotalBytes, kTotalBytes) ==
+          static_cast<std::size_t>(cosmo::media::kVideoFrameMaxSize));
+}
+
+TEST_CASE("FileServiceImpl: image download budget honors percentage reserve", "[FileService][boundary]") {
+    constexpr std::uint64_t kTotalBytes      = 4ULL * 1024 * 1024 * 1024;
+    constexpr std::uint64_t kReserveBytes    = kTotalBytes / 10;
+    constexpr std::uint64_t kAvailableBeyond = 8ULL * 1024 * 1024;
+
+    CHECK(cosmo::service::detail::CalculateImageDownloadBudgetBytes(kTotalBytes, kReserveBytes) == 0);
+    CHECK(cosmo::service::detail::CalculateImageDownloadBudgetBytes(
+              kTotalBytes, kReserveBytes + kAvailableBeyond) == kAvailableBeyond);
 }
 
 TEST_CASE("FileServiceImpl: resource budget permits HTTP images beyond the legacy 16 MiB cap",

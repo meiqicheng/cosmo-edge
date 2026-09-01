@@ -9,6 +9,7 @@
 #include <string_view>
 #include <utility>
 
+#include "RuntimePathsConfig.h"
 #include "api/ApiRouter.h"
 #include "app/AppConstants.h"
 #include "media/IOsdTextRenderer.h"
@@ -111,8 +112,8 @@ namespace cosmo::app {
 
 void SwDevicePreInit() {
     cosmo::path::OverrideRootPaths(
-        cosmo::util::GetEnvOrDefault("COSMO_DATA_DIR", "/data/cwaiuserdata"),
-        cosmo::util::GetEnvOrDefault("COSMO_APP_DATA_DIR", "/appfs/cosmo_wander/cwai_data"));
+        cosmo::util::GetEnvOrDefault("COSMO_DATA_DIR", cosmo::runtime::kDefaultDataDir),
+        cosmo::util::GetEnvOrDefault("COSMO_APP_DATA_DIR", cosmo::runtime::kDefaultAppDataDir));
     cosmo::path::Init();
 }
 

@@ -1,4 +1,0 @@
-benchmark=cosmoedge-1.1-multistream
-platform=CV186X
-device=CV186X reference device
-publication=release-evidence

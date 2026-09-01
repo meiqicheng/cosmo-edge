@@ -22,9 +22,12 @@ import { runPreviewValidation } from './preview-validator.js';
 import { auditLongRunFile, writeLongRunAudit } from './longrun-auditor.js';
 import {
   installShutdownSignalHandlers,
-  sleepWithSignal,
   throwIfAborted,
 } from './shutdown-signal.js';
+import {
+  resolveVlmReadyTimeoutSec,
+  waitForVlmReady,
+} from './vlm-readiness.js';
 
 function parseArgs(argv) {
   const args = {};
@@ -76,6 +79,7 @@ run options:
   --only-channels <n>  Run only one exact channel-count step from the effective profile
   --ramp-batch-size <n>
   --ramp-batch-delay-sec <n>
+  --vlm-ready-timeout-sec <n> Wait for each new VLM route, default 180
   --preview <mode>      none (default) | raw | algorithm
   --preview-streams <n> Number of preview streams or all (default)
   --preview-clients <n> Media clients per preview stream, default 1
@@ -367,6 +371,9 @@ thresholds:
 
 async function runBenchmark(args) {
   requireArgs(args, ['device', 'scenario', 'output']);
+  // Validate every new run option before loading/saving a layout or creating
+  // channels on the target device.
+  const vlmReadyTimeoutSec = resolveVlmReadyTimeoutSec(args['vlm-ready-timeout-sec']);
   const auth = deviceAuth(args);
 
   const log = new Logger({ verbose: args.verbose });
@@ -382,10 +389,14 @@ async function runBenchmark(args) {
   let bottleneckStep = null;
   let bottleneckChannels = null;
   let bottleneckPhase = null;
+  let bottleneckSource = null;
   let bottleneckReason = null;
+  let bottleneckGates = [];
   let runError = null;
   let currentChannels = 0;
   let currentStepIndex = -1;
+  const currentVlmBindingsByStep = new Map();
+  const vlmReadinessByStep = new Map();
   const writer = new ReportWriter(args.output);
   let effectiveLoadProfile = [];
   const abortController = new AbortController();
@@ -407,6 +418,7 @@ async function runBenchmark(args) {
       algorithmCode: task.algorithmCode,
       scheduleId: task.scheduleId,
       targetFps: task.targetFps,
+      vlmCompletionActionId: task.vlmCompletionActionId,
       templateFile: task.templateFile,
       taskConfig: task.taskConfig,
     })) ?? [],
@@ -424,6 +436,7 @@ async function runBenchmark(args) {
       hardwareVersion: deviceInfo.hardwareVersion,
     },
     thresholds: pkg?.thresholds,
+    sampleIntervalSec: pkg?.sampleIntervalSec,
     loadProfile: effectiveLoadProfile.map((s, i) => ({ index: i, ...s })),
     configuredLoadProfile: pkg?.loadProfile?.map((s, i) => ({ index: i, ...s })) ?? [],
     profileMode: args.profile ?? 'capacity',
@@ -435,7 +448,9 @@ async function runBenchmark(args) {
           channels: bottleneckChannels ?? effectiveLoadProfile?.[bottleneckStep]?.channels,
           targetChannels: effectiveLoadProfile?.[bottleneckStep]?.channels,
           phase: bottleneckPhase,
+          source: bottleneckSource,
           reason: bottleneckReason,
+          gates: bottleneckGates,
         }
       : null,
     baselineFps,
@@ -443,7 +458,16 @@ async function runBenchmark(args) {
     startedAt,
     endedAt: new Date().toISOString(),
     samples,
-    steps: effectiveLoadProfile.map((s, i) => ({ index: i, ...s })),
+    steps: effectiveLoadProfile.map((s, i) => ({
+      index: i,
+      ...s,
+      ...(currentVlmBindingsByStep.has(i)
+        ? { currentVlmBindings: currentVlmBindingsByStep.get(i) }
+        : {}),
+      ...(vlmReadinessByStep.has(i)
+        ? { vlmReadiness: vlmReadinessByStep.get(i) }
+        : {}),
+    })),
   });
 
   const writePartial = async () => {
@@ -604,24 +628,63 @@ async function runBenchmark(args) {
       if (Number.isFinite(diskUsed) && Number.isFinite(diskLimit) && diskUsed >= diskLimit) {
         reasons.push(`disk ${diskUsed}% >= ${diskLimit}%`);
       }
-      return reasons.length ? { stop: true, reason: reasons.join('; ') } : { stop: false };
+      return reasons.length
+        ? { stop: true, source: 'quick-fuse', reason: reasons.join('; '), gates: [] }
+        : { stop: false, source: 'quick-fuse', gates: [] };
     };
 
     const staircaseResult = await runner.runStaircase(effectiveLoadProfile, {
-      onRampBatch: async (step, active) => {
+      onRampBatch: async (step, active, added, entries) => {
         currentChannels = active.length;
         currentStepIndex = step.index;
+        const addedChannels = new Set(added);
+        const addedVlmEntries = entries.filter(
+          (entry) => strategyForTaskType(entry.taskType).id === 'vlm'
+            && addedChannels.has(entry.channelId),
+        );
+        if (addedVlmEntries.length) {
+          currentVlmBindingsByStep.set(step.index, addedVlmEntries.map((entry) => ({
+            taskId: entry.taskId,
+            taskKey: entry.taskKey,
+            channelId: entry.channelId,
+            completionActionId: entry.vlmCompletionActionId,
+          })));
+          log.info(
+            `[ready] waiting up to ${vlmReadyTimeoutSec}s for ${addedVlmEntries.length} `
+            + 'new VLM binding(s) to complete task-local inference...',
+          );
+          try {
+            const readiness = await waitForVlmReady({
+              entries: addedVlmEntries,
+              probe: (probeEntries) => sampler.sample(probeEntries),
+              timeoutSec: vlmReadyTimeoutSec,
+              signal,
+              logger: log,
+            });
+            vlmReadinessByStep.set(step.index, {
+              stepIndex: step.index,
+              stepNumber: step.index + 1,
+              targetChannels: step.channels,
+              ...readiness,
+            });
+          } catch (error) {
+            if (error?.readiness) {
+              vlmReadinessByStep.set(step.index, {
+                stepIndex: step.index,
+                stepNumber: step.index + 1,
+                targetChannels: step.channels,
+                ...error.readiness,
+              });
+            }
+            throw error;
+          }
+        }
         return quickFuse(await captureSample('ramp', step.channels));
       },
       onStepStart: async (step, active, entries) => {
         currentChannels = active.length;
         currentStepIndex = step.index;
 
-        const hasVLM = activeEntries().some((e) => e.taskType === 'vlm');
-        if (hasVLM && step.index === 0) {
-          log.info(`[warmup] VLM detected in first step, waiting 30 seconds for model loading before sampling...`);
-          await sleepWithSignal(30_000, signal);
-        }
         await previewLoad.sync(entries);
         throwIfAborted(signal);
       },
@@ -629,7 +692,10 @@ async function runBenchmark(args) {
         return quickFuse(await captureSample('hold', currentChannels));
       },
       onStepEnd: async (step) => {
-        const summary = summarizeStep(step, samples, pkg.thresholds, pkg.videoMode);
+        const summary = summarizeStep({
+          ...step,
+          currentVlmBindings: currentVlmBindingsByStep.get(step.index) ?? [],
+        }, samples, pkg.thresholds, pkg.videoMode);
         const minFps = summary.minFpsAcross;
         const meanDiscard = summary.avgDiscard;
         const maxNpu = summary.maxNpu;
@@ -645,23 +711,47 @@ async function runBenchmark(args) {
             .map((stat) => `${stat.taskKey}=${stat.minThroughputFps == null ? '-' : stat.minThroughputFps.toFixed(2)}fps`)
             .join(', ');
           log.info(`[baseline] step 1 steady minFps=${baselineFps} fps (${sat}) tasks=[${baselineText}] -> strategy gates active`);
-          return;
         }
-        const decision = runtimeStepDecision(summary, {
+
+        const isBaselineStep = step.index === 0;
+        const hasVlm = taskStats.some(
+          (stat) => strategyForTaskType(stat.taskType).id === 'vlm',
+        );
+        // The first CV step remains the reference baseline and is not compared
+        // with itself. VLM has an absolute target, so its first completed hold
+        // must still execute the real task-local thresholds after the baseline
+        // record has been frozen.
+        if (isBaselineStep && !hasVlm) return;
+        const runtimeSummary = isBaselineStep
+          ? {
+              ...summary,
+              taskStats: taskStats.filter(
+                (stat) => strategyForTaskType(stat.taskType).id === 'vlm',
+              ),
+              perThreshold: (summary.perThreshold ?? []).filter(
+                (check) => check.strategy === 'vlm' || check.taskKey === '*',
+              ),
+            }
+          : summary;
+        const decision = runtimeStepDecision(runtimeSummary, {
           thresholds: pkg.thresholds,
-          baselineByTask,
+          baselineByTask: isBaselineStep ? {} : baselineByTask,
           fpsHalveRatio: FPS_HALVE_RATIO,
           discardBottleneck: DISCARD_BOTTLENECK,
         });
         const satNote = ((maxNpu ?? 0) >= 90 || (maxCpu ?? 0) >= 90) ? ' [resource near saturation]' : '';
         log.info(`[step ${step.index + 1}] steady minFps=${minFps?.toFixed(1) ?? '-'} meanDiscard=${meanDiscard?.toFixed(3) ?? '-'} ${sat}${satNote} ${decision.stop ? '-> BOTTLENECK (' + decision.reason + ')' : '-> ok, continuing'}`);
-        return decision.stop ? { stop: true, reason: decision.reason } : { stop: false };
+        return decision.stop
+          ? { stop: true, source: decision.source, reason: decision.reason, gates: decision.gates }
+          : { stop: false, source: decision.source, gates: [] };
       },
     }, pkg.sampleIntervalSec);
     bottleneckStep = staircaseResult?.bottleneckStep ?? null;
     bottleneckChannels = staircaseResult?.bottleneckChannels ?? null;
     bottleneckPhase = staircaseResult?.bottleneckPhase ?? null;
+    bottleneckSource = staircaseResult?.bottleneckSource ?? null;
     bottleneckReason = staircaseResult?.bottleneckReason ?? null;
+    bottleneckGates = staircaseResult?.bottleneckGates ?? [];
   } catch (err) {
     runError = err;
     log.error(`Benchmark aborted; a partial report will be written: ${err.message}`);

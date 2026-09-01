@@ -101,8 +101,16 @@ The code shows the differences between handling x86 ONNX files and Sophon model 
 
 ## Resource Licensing Notes
 
-The model templates, algorithm templates, and layout configuration files in the resource directory describe the metadata of models and algorithms; they do not contain model weights. Some resource files are for example purposes only:
+The resource tree contains model, algorithm, and layout templates as well as
+selected public example weights and chip-converted artifacts. The repository's
+Apache-2.0 source-code license does not automatically cover model files; use
+the bundle manifest and directory-level license as the authority:
 
 - Prebuilt components in the `prebuild/` directory require separate distribution-license review.
+- Ultralytics YOLOv8 chip artifacts under
+  `data/resource/aiboxresource_rknn/model-artifacts/` are AGPL-3.0 community
+  examples, not commercial model deliverables.
+- Commercial or proprietary models use independent source, weight, training,
+  and license records and do not reuse the community example bundle identity.
 - Whether the model encryption feature is included in the current build depends on the CMake option `COSMO_MODEL_GUARD`.
 - If you introduce models from a third-party model ecosystem, follow the license requirements of the corresponding models.

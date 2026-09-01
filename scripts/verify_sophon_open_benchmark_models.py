@@ -80,8 +80,4 @@ for platform, model_root in RESOURCE_SETS.items():
             fail(f"{platform} identity hash mismatch for {expected['public_id']}")
         if identity.get("sizeBytes") != len(model_bytes):
             fail(f"{platform} identity size mismatch for {expected['public_id']}")
-        repository_path = model.parent.relative_to(ROOT).as_posix()
-        if identity.get("repositoryPath") != repository_path:
-            fail(f"{platform} repository path mismatch for {expected['public_id']}")
-
 print("Verified 4 platform-scoped Open Sophon model copies and BM1688/CV186X evidence bindings.")
