@@ -131,14 +131,30 @@ namespace {
         NativeVideoBufferFormat native_format = NativeVideoBufferFormat::Unknown;
         if (base_format == MPP_FMT_YUV420SP) {
             native_format = NativeVideoBufferFormat::NV12;
-        } else if (base_format == MPP_FMT_YUV420SP_VU) {
-            native_format = NativeVideoBufferFormat::NV21;
         } else if (base_format == MPP_FMT_YUV420P) {
             native_format = NativeVideoBufferFormat::I420;
         }
+        // NV21 (YUV420SP_VU) has no native inference consumer; exporting it would
+        // force downstream code to guess the chroma order. Keep such frames on the
+        // explicit host materialization path (CopyMppFrameCpu handles VU order).
+        NativeVideoPlaneLayout layout;
+        const bool layout_valid =
+            native_format != NativeVideoBufferFormat::Unknown &&
+            DeriveNativeVideoPlaneLayout(native_format, static_cast<int>(width), static_cast<int>(height),
+                                         static_cast<int>(horizontal_stride),
+                                         static_cast<int>(vertical_stride), layout);
+        if (!layout_valid || mpp_buffer_get_size(buffer) < layout.required_bytes) {
+            LOG_WARN(
+                "{} MPP DMA-BUF export rejected for native inference: format=0x{:x} layout={} "
+                "capacity={}",
+                decoder_name, static_cast<RK_U32>(format),
+                native_format == NativeVideoBufferFormat::Unknown ? "unsupported"
+                                                                  : (layout_valid ? "undersized" : "invalid"),
+                mpp_buffer_get_size(buffer));
+            return nullptr;
+        }
         const int fd = mpp_buffer_get_fd(buffer);
-        if (native_format == NativeVideoBufferFormat::Unknown || fd < 0 ||
-            mpp_buffer_inc_ref(buffer) != MPP_OK) {
+        if (fd < 0 || mpp_buffer_inc_ref(buffer) != MPP_OK) {
             LOG_WARN("{} could not retain MPP DMA-BUF for inference", decoder_name);
             return nullptr;
         }

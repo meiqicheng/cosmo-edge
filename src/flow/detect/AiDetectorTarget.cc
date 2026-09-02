@@ -53,19 +53,30 @@ void AiDetector::SignTargetAreas(AlgDataPtr data_ptr, const std::string& taskId)
         return;
     }
 
-    if (!data_ptr->chanDataDec.frame) {
-        LOG_ERRO("{}[{}] SignTargetAreas: null decoded frame, skip area marking", kTag, taskId);
-        return;
-    }
-
     if (!data_ptr->chanDataDetect.detRet) {
         LOG_ERRO("{}[{}] SignTargetAreas: null detection result, skip area marking", kTag, taskId);
         return;
     }
 
+    // Frame identity comes from the host image when present, otherwise from the
+    // decode-stage AlgFrameMeta attached to native-only frames. Skipping area
+    // marking on a null frame would silently drop area/line business (P1-1),
+    // so fall back to the metadata instead of returning early.
+    int width        = 0;
+    int height       = 0;
+    const auto& meta = data_ptr->chanDataDec.meta;
+    if (data_ptr->chanDataDec.frame && data_ptr->chanDataDec.frame->Active()) {
+        width  = static_cast<int>(data_ptr->chanDataDec.frame->GetWidth());
+        height = static_cast<int>(data_ptr->chanDataDec.frame->GetHeight());
+    } else if (meta.valid) {
+        width  = meta.width;
+        height = meta.height;
+    } else {
+        LOG_ERRO("{}[{}] SignTargetAreas: no frame identity, skip area marking", kTag, taskId);
+        return;
+    }
+
     auto detRet = data_ptr->chanDataDetect.detRet;
-    auto width  = data_ptr->chanDataDec.frame->GetWidth();
-    auto height = data_ptr->chanDataDec.frame->GetHeight();
     std::shared_lock<std::shared_mutex> lock(mtx);
     auto areaIt = task_areas_.find(taskId);
     if (areaIt == task_areas_.end())

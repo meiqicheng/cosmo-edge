@@ -92,6 +92,20 @@ void AlgChannelDecode::Stop() {
     stop();
 }
 
+// Track the host-frame requirement per task id. A task that needs host pixels
+// (e.g. classify, area/line rules, alarm media, preview/capture consumers)
+// inserts its id; TaskUnRegist erases it. The decoder stays in host-frame mode
+// while the set is non-empty, so removing the last host-frame task restores
+// native-only eligibility for the channel (P1-1).
+void AlgChannelDecode::SetRequiresHostFrame(const std::string& task_id, bool v) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (v) {
+        requires_host_frame_tasks_.insert(task_id);
+    } else {
+        requires_host_frame_tasks_.erase(task_id);
+    }
+}
+
 void AlgChannelDecode::QueueStatus(std::vector<AlgActionDataQueueStatus>& que_status,
                                    unsigned int duration_sec) {
     AlgActionDataQueueStatus status;
@@ -348,10 +362,8 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
     constexpr bool prepared_viewer_distribution = false;
 #endif
 
-    const bool host_frame_required = !decoded_frame.IsDeferred() ||
-                                     !task_plan.Empty() ||
-                                     !viewer_plan.empty() ||
-                                     NeedsHostFrame(output_stream_index);
+    const bool host_frame_required = !decoded_frame.IsDeferred() || !task_plan.Empty() ||
+                                     !viewer_plan.empty() || NeedsHostFrame(output_stream_index);
     if (!host_frame_required) {
         decoded_frame.Discard();
         duration_stat_.EndSample();
@@ -364,9 +376,8 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
 
     const bool all_tasks_native =
         native_inference_buffer && native_inference_buffer->Valid() && task_plan.SupportsNativeInference();
-    const bool skip_materialize =
-        all_tasks_native && viewer_plan.empty() && !NeedsHostFrame(output_stream_index) &&
-        !RequiresHostFrame();
+    const bool skip_materialize = all_tasks_native && viewer_plan.empty() &&
+                                  !NeedsHostFrame(output_stream_index) && !RequiresHostFrame();
 
     frame_index_ = video_frame->index;
     decode_count_++;
@@ -374,10 +385,10 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
 
     if (skip_materialize) {
         duration_stat_.EndSample();
-        auto native_only_data            = std::make_shared<AlgData>();
-        native_only_data->chanDataOrig.packet = demux_data->chanDataOrig.packet;
-        native_only_data->chanDataOrig.fps    = demux_data->chanDataOrig.fps;
-        native_only_data->dataType            = AlgDataType::ChannelDataDec;
+        auto native_only_data                       = std::make_shared<AlgData>();
+        native_only_data->chanDataOrig.packet       = demux_data->chanDataOrig.packet;
+        native_only_data->chanDataOrig.fps          = demux_data->chanDataOrig.fps;
+        native_only_data->dataType                  = AlgDataType::ChannelDataDec;
         native_only_data->chanDataDec.native_buffer = std::move(native_inference_buffer);
         native_only_data->chanDataDec.meta          = frame_meta;
         if (native_only_data->chanDataDec.native_buffer) {
@@ -400,8 +411,8 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
             }
         }
         native_only_data->chanDataDec.reportTimeStamp = frame_meta.timestamp;
-        native_only_data->channelId           = channel_id_;
-        native_only_data->firstTimePoint      = demux_data->firstTimePoint;
+        native_only_data->channelId                   = channel_id_;
+        native_only_data->firstTimePoint              = demux_data->firstTimePoint;
         DistributorNativeOnlyFrame(task_plan, native_only_data);
         return;
     }
@@ -535,19 +546,19 @@ AlgDataPtr AlgChannelDecode::ColorConvert(AlgDataPtr demux_data, VideoFramePtr i
     ai_frame->SetTimestamp(in_data->GetTimestamp());
     ai_frame->SetStreamIndex(in_data->GetStreamIndex());
 
-    AlgDataPtr data                 = std::make_shared<AlgData>();
-    data->chanDataOrig.packet       = demux_data->chanDataOrig.packet;
-    data->chanDataOrig.fps          = demux_data->chanDataOrig.fps;
-    data->dataType                  = AlgDataType::ChannelDataDec;
-    data->chanDataDec.frame         = ai_frame;
-    data->chanDataDec.native_buffer = std::move(native_buffer);
-    data->chanDataDec.meta          = frame_meta;
-    auto& out_meta                  = data->chanDataDec.meta;
-    out_meta.width                  = static_cast<int>(ai_frame->GetWidth());
-    out_meta.height                 = static_cast<int>(ai_frame->GetHeight());
-    out_meta.pixelFormat            = ai_frame->GetPixelFormat();
+    AlgDataPtr data                   = std::make_shared<AlgData>();
+    data->chanDataOrig.packet         = demux_data->chanDataOrig.packet;
+    data->chanDataOrig.fps            = demux_data->chanDataOrig.fps;
+    data->dataType                    = AlgDataType::ChannelDataDec;
+    data->chanDataDec.frame           = ai_frame;
+    data->chanDataDec.native_buffer   = std::move(native_buffer);
+    data->chanDataDec.meta            = frame_meta;
+    auto& out_meta                    = data->chanDataDec.meta;
+    out_meta.width                    = static_cast<int>(ai_frame->GetWidth());
+    out_meta.height                   = static_cast<int>(ai_frame->GetHeight());
+    out_meta.pixelFormat              = ai_frame->GetPixelFormat();
     data->chanDataDec.reportTimeStamp = frame_meta.timestamp;
-    data->channelId                 = channel_id_;
+    data->channelId                   = channel_id_;
 
     data->firstTimePoint = demux_data->firstTimePoint;
     action_status_       = util::ErrorEnum::Success;

@@ -1,15 +1,21 @@
 #include "catch_amalgamated.hpp"
+#include "media/NativeVideoBuffer.h"
 
 #if defined(COSMO_NN_USE_RKNN_BACKEND) && defined(COSMO_MEDIA_USE_ROCKCHIP_BACKEND)
+
+#include <fcntl.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <cstring>
 #include <numeric>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "media/NativeVideoBuffer.h"
 #include "nn/core/inference_pipeline_metrics.h"
 #include "nn/core/shared_resource.h"
 #include "nn/device/rknn/rknn_net_node.h"
@@ -964,14 +970,17 @@ TEST_CASE("RKNN native CPU fallback reads I420 planes by stride, not source heig
     SharedResource resource;
     RknnResizeNode node = MakeDetectorResizeNode(resource);
 
-    // 4x4 I420 inside a 4x6-stride allocation: luma[24] + U[12] + V[12].
-    ScopedMemfd dma_buf(48);
+    // 4x4 I420 inside a 4x6-stride allocation: luma[24] + U[6] + V[6]; the
+    // standard 1.5x Y-plane capacity is exactly 36 bytes. U/V stride is
+    // width_stride / 2, so U(0,0) sits at 24 and V(0,0) at 30. Reading chroma
+    // at src_h * width_stride or at a full-stride V pitch fails this test.
+    ScopedMemfd dma_buf(36);
     REQUIRE(dma_buf.get() >= 0);
     for (size_t row = 0; row < 4; ++row)
         for (size_t col = 0; col < 4; ++col)
             dma_buf.Poke(row * 4 + col, 128);
     dma_buf.Poke(24, 160);  // first U byte
-    dma_buf.Poke(36, 96);   // first V byte (U plane ends at 24+12)
+    dma_buf.Poke(30, 96);   // first V byte (U plane ends at 24+6)
 
     auto bottom = std::make_shared<Blob>(
         NativeSourceBlob(4, 4, IMAGE_I420, NativeImageColorSpace::Unspecified,
@@ -993,20 +1002,20 @@ TEST_CASE("RKNN native CPU fallback reads I420 chroma at subsampled columns",
     SharedResource resource;
     RknnResizeNode node = MakeDetectorResizeNode(resource);
 
-    // 4x4 I420, tightly packed (stride 4x4): luma[16] + U[4] + V[4]. The code
-    // reads U at chroma + (row/2)*width_stride and V at
-    // chroma + (src_h/2 + row/2)*width_stride, so place distinct chroma values
-    // in the second 2x2 block to catch the (col & ~1) vs (col >> 1)
-    // subsampling bug at columns 2-3.
-    ScopedMemfd dma_buf(32);
+    // 4x4 I420, tightly packed (stride 4x4): the standard 1.5x Y-plane
+    // capacity is exactly 24 bytes: luma[16] + U[4] + V[4]. U/V stride is
+    // width_stride / 2 and V follows U, so U(0,0)=16, U(0,1)=17, V(0,0)=20,
+    // V(0,1)=21. Distinct chroma values per 2x2 block catch both a
+    // non-subsampled column index and a full-stride V plane pitch.
+    ScopedMemfd dma_buf(24);
     REQUIRE(dma_buf.get() >= 0);
     for (size_t row = 0; row < 4; ++row)
         for (size_t col = 0; col < 4; ++col)
             dma_buf.Poke(row * 4 + col, 128);  // studio gray luma
     dma_buf.Poke(16, 160);                     // U of the first 2x2 block
     dma_buf.Poke(17, 200);                     // U of the second 2x2 block
-    dma_buf.Poke(24, 96);                      // V of the first 2x2 block
-    dma_buf.Poke(25, 40);                      // V of the second 2x2 block
+    dma_buf.Poke(20, 96);                      // V of the first 2x2 block
+    dma_buf.Poke(21, 40);                      // V of the second 2x2 block
 
     auto bottom = std::make_shared<Blob>(
         NativeSourceBlob(4, 4, IMAGE_I420, NativeImageColorSpace::Unspecified,
@@ -1024,8 +1033,8 @@ TEST_CASE("RKNN native CPU fallback reads I420 chroma at subsampled columns",
 
     // Second 2x2 block (col 2): U=200, V=40 -> y=112,u=72,v=-88:
     // B=(298*112+516*72+128)>>8=255, G=(298*112-100*72+208*88+128)>>8=174,
-    // R=(298*112-409*88+128)>>8=0. The buggy (col & ~1) index would read the
-    // zeroed byte 18 for U and produce B=0 instead.
+    // R=(298*112-409*88+128)>>8=0. A non-subsampled column index would read
+    // the zeroed byte 18 for U and produce B=0 instead.
     const size_t second_block = (0 * 4 + 2) * 3;
     CHECK(output[second_block + 0] == 255);
     CHECK(output[second_block + 1] == 174);
@@ -1067,8 +1076,102 @@ TEST_CASE("RKNN native CPU fallback rejects invalid descriptors without touching
     std::vector<std::shared_ptr<Blob>> rgb_bottoms{rgb_bottom};
     std::vector<std::shared_ptr<Blob>> rgb_tops{rgb_top};
     CHECK_FALSE(bool(node.Forward(rgb_bottoms, rgb_tops)));
+
+    // NV21-equivalent planar order (YV12 swaps U/V) is not a supported native
+    // layout either: it must be rejected instead of silently read as I420.
+    ScopedMemfd yv12_format(24);
+    REQUIRE(yv12_format.get() >= 0);
+    auto yv12_bottom = std::make_shared<Blob>(
+        NativeSourceBlob(4, 4, IMAGE_YV12, NativeImageColorSpace::Unspecified,
+                         NativeImageColorRange::Unspecified, 4, 4, yv12_format.get(), yv12_format.bytes()));
+    auto yv12_top = AllocResizeTop(node);
+    std::vector<std::shared_ptr<Blob>> yv12_bottoms{yv12_bottom};
+    std::vector<std::shared_ptr<Blob>> yv12_tops{yv12_top};
+    CHECK_FALSE(bool(node.Forward(yv12_bottoms, yv12_tops)));
+}
+
+TEST_CASE("RKNN native CPU fallback fails closed when the DMA-BUF cannot be mapped",
+          "[nn][rknn][fast-preprocess][native-fallback]") {
+    using namespace cosmo::nn;
+    ScopedEnvironment force_fail("COSMO_RKNN_RGA_FORCE_FAIL", "1");
+    SharedResource resource;
+    RknnResizeNode node = MakeDetectorResizeNode(resource);
+
+    // A valid 4x4 I420 descriptor whose fd cannot be mmap'ed (a directory):
+    // the fallback must fail closed and leave the output untouched.
+    const int unmappable = open("/", O_RDONLY | O_DIRECTORY);
+    REQUIRE(unmappable >= 0);
+    auto bottom =
+        std::make_shared<Blob>(NativeSourceBlob(4, 4, IMAGE_I420, NativeImageColorSpace::Unspecified,
+                                                NativeImageColorRange::Unspecified, 4, 4, unmappable, 24));
+    auto top = AllocResizeTop(node);
+    std::memset(top->GetHandle().base, 0xAB, static_cast<size_t>(4) * 4 * 3);
+    const auto before = GetInferencePipelineMetrics().Snapshot();
+    std::vector<std::shared_ptr<Blob>> bottoms{bottom};
+    std::vector<std::shared_ptr<Blob>> tops{top};
+    CHECK_FALSE(bool(node.Forward(bottoms, tops)));
+    const auto after = GetInferencePipelineMetrics().Snapshot();
+    CHECK(after.rknn_mpp_dmabuf_fallbacks == before.rknn_mpp_dmabuf_fallbacks);
+    const auto* untouched = static_cast<const uint8_t*>(top->GetHandle().base);
+    CHECK(untouched[0] == 0xAB);
+    CHECK(untouched[static_cast<size_t>(4) * 4 * 3 - 1] == 0xAB);
+    close(unmappable);
 }
 
 #endif  // __linux__ && SYS_memfd_create
 
-#endif
+#endif  // COSMO_NN_USE_RKNN_BACKEND && COSMO_MEDIA_USE_ROCKCHIP_BACKEND
+
+// The plane-layout contract is pure header logic independent of the RKNN
+// backend, so it is verified in every build, not only on Rockchip boards.
+TEST_CASE("Native 4:2:0 plane layout derivation pins MPP geometry and fails closed",
+          "[media][native-fallback]") {
+    using namespace cosmo::media;
+    NativeVideoPlaneLayout layout;
+
+    // Standard 1.5x I420: 4x4 visible inside a 4x4-stride allocation.
+    REQUIRE(DeriveNativeVideoPlaneLayout(NativeVideoBufferFormat::I420, 4, 4, 4, 4, layout));
+    CHECK(layout.y.offset == 0);
+    CHECK(layout.y.stride == 4);
+    CHECK(layout.y.visible_width == 4);
+    CHECK(layout.y.visible_height == 4);
+    CHECK(layout.y.allocated_rows == 4);
+    CHECK(layout.u.offset == 16);
+    CHECK(layout.u.stride == 2);
+    CHECK(layout.u.visible_width == 2);
+    CHECK(layout.u.visible_height == 2);
+    CHECK(layout.u.allocated_rows == 2);
+    CHECK(layout.v.offset == 20);
+    CHECK(layout.v.stride == 2);
+    CHECK(layout.required_bytes == 24);
+
+    // Padded stride: 4x6 allocation keeps chroma behind the padded Y plane,
+    // with half-stride chroma rows and a total capacity of 1.5x the Y plane.
+    REQUIRE(DeriveNativeVideoPlaneLayout(NativeVideoBufferFormat::I420, 4, 4, 4, 6, layout));
+    CHECK(layout.y.allocated_rows == 6);
+    CHECK(layout.u.offset == 24);
+    CHECK(layout.u.allocated_rows == 3);
+    CHECK(layout.v.offset == 30);
+    CHECK(layout.required_bytes == 36);
+
+    // NV12: one interleaved chroma plane; V bytes sit at odd plane offsets.
+    REQUIRE(DeriveNativeVideoPlaneLayout(NativeVideoBufferFormat::NV12, 4, 4, 4, 4, layout));
+    CHECK(layout.u.offset == 16);
+    CHECK(layout.u.stride == 4);
+    CHECK(layout.u.visible_width == 2);
+    CHECK(layout.v.offset == 16);
+    CHECK(layout.v.stride == 4);
+    CHECK(layout.required_bytes == 24);
+
+    // NV21 has no supported native layout and must never be derived.
+    CHECK_FALSE(DeriveNativeVideoPlaneLayout(NativeVideoBufferFormat::NV21, 4, 4, 4, 4, layout));
+    CHECK_FALSE(DeriveNativeVideoPlaneLayout(NativeVideoBufferFormat::Unknown, 4, 4, 4, 4, layout));
+
+    // Odd visible dimensions, odd strides, and undersized strides fail closed.
+    CHECK_FALSE(DeriveNativeVideoPlaneLayout(NativeVideoBufferFormat::I420, 3, 4, 4, 4, layout));
+    CHECK_FALSE(DeriveNativeVideoPlaneLayout(NativeVideoBufferFormat::I420, 4, 3, 4, 4, layout));
+    CHECK_FALSE(DeriveNativeVideoPlaneLayout(NativeVideoBufferFormat::I420, 4, 4, 5, 4, layout));
+    CHECK_FALSE(DeriveNativeVideoPlaneLayout(NativeVideoBufferFormat::I420, 4, 4, 4, 5, layout));
+    CHECK_FALSE(DeriveNativeVideoPlaneLayout(NativeVideoBufferFormat::I420, 4, 4, 3, 4, layout));
+    CHECK_FALSE(DeriveNativeVideoPlaneLayout(NativeVideoBufferFormat::I420, 4, 4, 4, 3, layout));
+}

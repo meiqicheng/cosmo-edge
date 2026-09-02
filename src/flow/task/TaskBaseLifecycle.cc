@@ -1,71 +1,60 @@
 // TaskBaseLifecycle.cc — Lifecycle management for TaskBase.
 // Split from TaskBase.cc to reduce file size (DEBT-007).
 
-#include "flow/task/TaskBase.h"
+#include <algorithm>
+
 #include "flow/channel/AlgChannel.h"
 #include "flow/common/AlgTaskNativeCapability.h"
+#include "flow/task/TaskBase.h"
 #include "util/Log.h"
 #include "util/dto/ActionCodes.h"
-
-#include <algorithm>
-#include <string_view>
 
 namespace cosmo {
 
 namespace {
 
-// Classify-family action codes whose crop-resize inference pipeline requires a
-// host frame.  When any of these nodes is present in a task pipeline, the
-// channel decoder must materialize host frames even though the detector
-// supports native-only inference; otherwise classify receives a null frame and
-// reports FrameDataInvalid / crashes.
-bool IsClassifyAction(std::string_view actionId) {
-    return actionId == AAClassify_Code || actionId == AAClassifyGroup_Code ||
-           actionId == AAClassifyArea_Code || actionId == AAClassifyAttr_Code ||
-           actionId == AAClassifyMultPic_Code || actionId == AAFightClassify_Code ||
-           actionId == PAClassify_Code;
-}
+    // Phase 1 (P1-1): any ordinary area, shielded area, or line rule disables the
+    // native-only fast path. These geometric rules are evaluated on target boxes
+    // and remain conservative consumers of frame identity; keep host frames so
+    // downstream area/line consumers never observe a null frame.
+    bool TaskConfigCarriesHostFrameConsumer(const MsgTaskConfig& config) {
+        if (!config.areas.empty() || !config.shieldedAreas.empty()) {
+            return true;
+        }
+        for (const auto& area : config.areas) {
+            if (!area.linePoints.empty()) {
+                return true;
+            }
+        }
+        for (const auto& area : config.shieldedAreas) {
+            if (!area.linePoints.empty()) {
+                return true;
+            }
+        }
+        return false;
+    }
 
 }  // namespace
 
-// If any action in this task is a classify-family node, the channel decoder
-// must materialize host frames even though the detector supports native-only
-// inference.  Without this, classify receives a null frame and reports
-// FrameDataInvalid / crashes.
-//
-// The classify node's direct father is usually an intermediate action (e.g.
-// TargetFilter), not the channel itself, so locate the AlgChannel instance
-// (the root action's actionInst) by walking the action list instead of casting
-// the classify node's father.
-bool ForceHostFrameForClassifyPipeline(TaskElementPtr task) {
-    const bool has_classify =
-        std::any_of(task->actions.begin(), task->actions.end(), [](const TaskAction& taNode) {
-            return IsClassifyAction(taNode.action.actionId);
-        });
-    if (!has_classify) {
-        return false;
-    }
-    for (const auto& taNode : task->actions) {
-        auto* channel = dynamic_cast<AlgChannel*>(taNode.actionInst.get());
-        if (channel) {
-            channel->SetDecoderRequiresHostFrame(task->taskId, true);
-            LOG_INFO("[{}-{} Create {}] Classify detected in pipeline, "
-                     "decoder forced to host-frame mode",
-                     task->channelId, task->taskId, task->GetAlgName());
-            return true;
-        }
-    }
-    return false;
-}
-
-// True when any action in the task's full pipeline is not native-only eligible.
-// The decoder's native-only fast path must be disabled whenever a downstream
-// action (not just the root action registered on the channel) needs a
-// materialized host frame.
+// True when any action in the task's full pipeline is not native-only eligible,
+// or the task configuration carries area/line rules that Phase 1 treats as
+// host-frame consumers. The decoder's native-only fast path must be disabled
+// whenever a downstream action (not just the root action registered on the
+// channel) needs a materialized host frame (P1-1).
 bool TaskPipelineRequiresHostFrame(const TaskElementPtr& task) {
-    return std::any_of(task->actions.begin(), task->actions.end(), [](const TaskAction& taNode) {
-        return !ResolveAlgTaskNativeCapability(taNode.action.actionId).NativeOnlyEligible();
-    });
+    const bool action_forces_host =
+        std::any_of(task->actions.begin(), task->actions.end(), [](const TaskAction& taNode) {
+            // The stream-channel root is the decoder itself, not an inference
+            // action; it must never force host-frame mode by its own identity.
+            if (taNode.action.actionId == std::string(BAStreamChannel_Code)) {
+                return false;
+            }
+            return !ResolveAlgTaskNativeCapability(taNode.action.actionId).NativeOnlyEligible();
+        });
+    if (action_forces_host) {
+        return true;
+    }
+    return TaskConfigCarriesHostFrameConsumer(task->params);
 }
 
 bool TaskBase::TaskRegist(TaskElementPtr task) {
@@ -83,8 +72,14 @@ bool TaskBase::TaskRegist(TaskElementPtr task) {
             // The decoder's native-only eligibility must consider the full task
             // pipeline, so the root action's registration carries whether any
             // downstream action in this task still needs a host frame.
-            if (dynamic_cast<AlgChannel*>(taNode.fatherAction.get())) {
+            auto* channel = dynamic_cast<AlgChannel*>(taNode.fatherAction.get());
+            if (channel) {
                 param.requires_host_frame = TaskPipelineRequiresHostFrame(task);
+                // Set the decoder's per-task latch BEFORE the queue becomes
+                // visible so the first distributed frame already observes the
+                // correct mode (P1-1: no first-frame race). TaskUnRegist
+                // releases the latch when the task is removed.
+                channel->SetDecoderRequiresHostFrame(task->taskId, param.requires_host_frame);
             }
             if (taNode.actionInst) {
                 LOG_INFO("[{}-{} Create {}] Action: {} Regist To {}, Fps:{}", task->channelId, task->taskId,
@@ -107,8 +102,6 @@ bool TaskBase::TaskRegist(TaskElementPtr task) {
                      task->taskId, task->GetAlgName(), taNode.action.actionId, taNode.action.flowActionId);
         }
     }
-
-    ForceHostFrameForClassifyPipeline(task);
 
     return true;
 }
@@ -360,6 +353,19 @@ bool TaskBase::ModifyTaskParam(TaskElementPtr task, MsgTaskConfig& taskConfig) {
                  taskConfig.shieldedAreas.size());
         taNode.actionInst->ModifyParam(task->channelId, task->taskId, taskConfig.params);
         taNode.actionInst->SetArea(task->channelId, task->taskId, taskConfig.areas, taskConfig.shieldedAreas);
+    }
+
+    // Re-evaluate native-only eligibility after configuration changes: adding
+    // area/line rules to a running detect-only task must flip the decoder to
+    // host-frame mode immediately so the next frame is materialized instead of
+    // being distributed native-only (P1-1).
+    task->params = taskConfig;
+    for (const auto& taNode : task->actions) {
+        auto* channel = dynamic_cast<AlgChannel*>(taNode.actionInst.get());
+        if (channel) {
+            channel->SetDecoderRequiresHostFrame(task->taskId, TaskPipelineRequiresHostFrame(task));
+            break;
+        }
     }
 
     return true;

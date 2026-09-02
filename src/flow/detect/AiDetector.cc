@@ -350,9 +350,16 @@ void AiDetector::HandFrames(std::vector<AlgDataPtr> alg_datas) {
             detTrackRst->picWidth    = meta.width;
             detTrackRst->picHeight   = meta.height;
         }
+        // Every target inherits the result identity. The old code dereferenced
+        // images[i] unconditionally, which crashed on the native-only path where
+        // the host VideoFrame is intentionally null (P1-1). detTrackRst already
+        // carries the resolved identity from either the host image or the
+        // decode-stage AlgFrameMeta.
+        const int64_t target_frame_index  = detTrackRst->frameIndex;
+        const int64_t target_stream_index = detTrackRst->streamIndex;
         for (auto& target : detTrackRst->targets) {
-            target.frameIndex  = images[i]->GetFrameIndex();
-            target.streamIndex = images[i]->GetStreamIndex();
+            target.frameIndex  = static_cast<size_t>(target_frame_index >= 0 ? target_frame_index : 0);
+            target.streamIndex = static_cast<size_t>(target_stream_index >= 0 ? target_stream_index : 0);
         }
         algData->legacyDetect = algData->chanDataDetect;
 
