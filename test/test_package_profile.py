@@ -1134,6 +1134,38 @@ class PackageProfileTests(unittest.TestCase):
         self.assertIn("${COSMO_TARGET_CHIP:-rk3588}", compose)
         self.assertIn("Dockerfile.rockchip-bullseye", compose)
 
+    def test_bullseye_lock_enforces_glibc_2_31_gate_on_all_three_chips(self) -> None:
+        # The Debian 11 (bullseye) flow is the Rockchip build baseline, so every
+        # chip built through builder-lock.bullseye.json must run the package
+        # glibc gate at 2.31. The Ubuntu 22.04 flow (builder-lock.json) is left
+        # unchanged: its rk3576/rv1126b targets carry no glibc_max.
+        bullseye_lock = json.loads(
+            (REPOSITORY / "config/rockchip-build/builder-lock.bullseye.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertNotIn("glibc_max", bullseye_lock.get("common", {}))
+        for chip in ("rk3576", "rk3588", "rv1126b"):
+            target = bullseye_lock["targets"][chip]
+            self.assertEqual(
+                target.get("glibc_max"),
+                "2.31",
+                f"{chip} must carry glibc_max=2.31 so build_rockchip_package.sh runs glibc_gate.py",
+            )
+        ubuntu_lock = json.loads(
+            (REPOSITORY / "config/rockchip-build/builder-lock.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertNotIn("glibc_max", ubuntu_lock.get("common", {}))
+        for chip in ("rk3576", "rv1126b"):
+            self.assertNotIn(
+                "glibc_max",
+                ubuntu_lock["targets"][chip],
+                "the Ubuntu 22.04 flow is intentionally left unchanged (no glibc gate)",
+            )
+        self.assertEqual(ubuntu_lock["targets"]["rk3588"]["glibc_max"], "2.31")
+
     def test_glibc_gate_scans_verneed_and_enforces_policy(self) -> None:
         def elf64_verneed(version_names: list[bytes]) -> bytes:
             """Build a minimal ELF64 little-endian image with a verneed section."""
