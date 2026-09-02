@@ -17,7 +17,7 @@ class PackageAuditError(RuntimeError):
 
 
 PROFILES = ("public-runtime", "production-release")
-TARGET_CHIPS = ("bm1688", "cv186x", "rk3576", "rv1126b", "unspecified")
+TARGET_CHIPS = ("bm1688", "cv186x", "rk3576", "rv1126b", "ax650n", "unspecified")
 REQUIRED_DIRS = {"bin", "files", "font", "lib", "resource", "scripts", "web"}
 REQUIRED_EXECUTABLES = {
     "bin/cosmo-engine",
@@ -481,6 +481,38 @@ def verify_package(
                         raise PackageAuditError(
                             "Rockchip media manifest does not match target policy"
                         )
+
+        elif target_chip == "ax650n":
+            platform_name = "share/cosmo/platform-profile.json"
+            platform_entry = entries.get(platform_name)
+            if platform_entry is None or not platform_entry.isreg():
+                raise PackageAuditError(
+                    f"AXERA platform profile is missing: {platform_name}"
+                )
+            try:
+                platform = json.loads(contents[platform_name].decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as error:
+                raise PackageAuditError(
+                    "AXERA platform profile is not valid UTF-8 JSON"
+                ) from error
+            if not isinstance(platform, dict) or platform.get("chip") != target_chip:
+                raise PackageAuditError(
+                    f"AXERA platform profile does not match {target_chip}"
+                )
+            if platform.get("backend") != "axera":
+                raise PackageAuditError("AXERA platform profile must use axera")
+            if target_policy is not None:
+                expected_runtime = target_policy.get("media_runtime_profile")
+                platform_media = platform.get("media")
+                actual_runtime = (
+                    platform_media.get("runtime_profile")
+                    if isinstance(platform_media, dict)
+                    else None
+                )
+                if expected_runtime and actual_runtime != expected_runtime:
+                    raise PackageAuditError(
+                        "AXERA media runtime profile does not match target policy"
+                    )
 
     provision = entries.get("bin/cosmo-model-provision")
     if profile == "public-runtime" and provision is not None:

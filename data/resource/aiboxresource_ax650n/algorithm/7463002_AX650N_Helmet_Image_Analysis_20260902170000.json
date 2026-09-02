@@ -1,0 +1,29 @@
+{
+  "algorithmCategory": 2,
+  "algorithmCode": 7463002,
+  "algorithmId": "7463002",
+  "algorithmMetadata": "{\"params\":[],\"region\":{\"heads\":[]},\"regionType\":\"0\",\"scheduleSupport\":false,\"defaultFullScreen\":true,\"maxAreaCount\":4,\"shieldedRegion\":{}}",
+  "algorithmName": "AX650N Helmet Image Analysis",
+  "algorithmProcessdata": "[{\"actionId\":\"PA_00001\",\"actionName\":\"Person Detection\",\"flowActionId\":\"ax650n-det\",\"preFlowActionId\":\"-1\",\"configObject\":{\"params\":[{\"key\":\"atomicCode\",\"value\":\"6047042\"}]}},{\"actionId\":\"PA_00002\",\"actionName\":\"Helmet Classification\",\"flowActionId\":\"ax650n-cls\",\"preFlowActionId\":\"ax650n-det\",\"configObject\":{\"params\":[{\"key\":\"atomicCode\",\"value\":\"7486163\"}]}}]",
+  "algorithmUsage": 2,
+  "atomicList": "[{\"atomicCode\":\"6047042\",\"atomicName\":\"YOLOV8n\",\"position\":\"ax650n-det\",\"labelList\":[{\"class_name\":\"Pedestrian\",\"label\":\"0\",\"nameCN\":\"Pedestrian\",\"threshold\":[0.25],\"used\":true,\"position\":\"ax650n-det\",\"atomicCode\":\"6047042\"}],\"categoriesLabelList\":[]},{\"atomicCode\":\"7486163\",\"atomicName\":\"helmet\",\"position\":\"ax650n-cls\",\"labelList\":[{\"class_name\":\"helmet\",\"label\":\"0\",\"nameCN\":\"helmet\",\"threshold\":[0.5],\"used\":true,\"position\":\"ax650n-cls\",\"atomicCode\":\"7486163\"},{\"class_name\":\"nohelmet\",\"label\":\"1\",\"nameCN\":\"nohelmet\",\"threshold\":[0.5],\"used\":true,\"position\":\"ax650n-cls\",\"atomicCode\":\"7486163\"}],\"categoriesLabelList\":[]}]",
+  "checkType": 0,
+  "confVersionId": "ax650n-helmet-image-v1",
+  "confVersionName": "V1",
+  "configVersionList": [
+    {
+      "algorithmCode": "7463002",
+      "algorithmMetadata": "{\"params\":[],\"region\":{\"heads\":[]},\"regionType\":\"0\",\"scheduleSupport\":false,\"defaultFullScreen\":true,\"maxAreaCount\":4,\"shieldedRegion\":{}}",
+      "algorithmProcessdata": "[{\"actionId\":\"PA_00001\",\"actionName\":\"Person Detection\",\"flowActionId\":\"ax650n-det\",\"preFlowActionId\":\"-1\",\"configObject\":{\"params\":[{\"key\":\"atomicCode\",\"value\":\"6047042\"}]}},{\"actionId\":\"PA_00002\",\"actionName\":\"Helmet Classification\",\"flowActionId\":\"ax650n-cls\",\"preFlowActionId\":\"ax650n-det\",\"configObject\":{\"params\":[{\"key\":\"atomicCode\",\"value\":\"7486163\"}]}}]",
+      "algorithmUpdateTime": 1785705600000,
+      "atomicList": "[{\"atomicCode\":\"6047042\",\"atomicName\":\"YOLOV8n\",\"position\":\"ax650n-det\",\"labelList\":[{\"class_name\":\"Pedestrian\",\"label\":\"0\",\"nameCN\":\"Pedestrian\",\"threshold\":[0.25],\"used\":true,\"position\":\"ax650n-det\",\"atomicCode\":\"6047042\"}],\"categoriesLabelList\":[]},{\"atomicCode\":\"7486163\",\"atomicName\":\"helmet\",\"position\":\"ax650n-cls\",\"labelList\":[{\"class_name\":\"helmet\",\"label\":\"0\",\"nameCN\":\"helmet\",\"threshold\":[0.5],\"used\":true,\"position\":\"ax650n-cls\",\"atomicCode\":\"7486163\"},{\"class_name\":\"nohelmet\",\"label\":\"1\",\"nameCN\":\"nohelmet\",\"threshold\":[0.5],\"used\":true,\"position\":\"ax650n-cls\",\"atomicCode\":\"7486163\"}],\"categoriesLabelList\":[]}]",
+      "id": "ax650n-helmet-image-v1",
+      "name": "V1"
+    }
+  ],
+  "createTime": 1785705600000,
+  "description": "AX650N picture pipeline for person detection followed by helmet classification",
+  "remark": "AX650N picture pipeline for person detection followed by helmet classification",
+  "supplier": "CWAI",
+  "updateTime": 1785705600000
+}
