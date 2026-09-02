@@ -40,7 +40,6 @@ static constexpr const char* kPlatformDirRegex = "prod_[A-Z0-9]+_([0-9]+)_.*";
 /// Engine type identifier reported to frontend / device info API.
 static constexpr const char* kBackendType = "SOPHON";
 static constexpr const char* kEngineType  = "BM1688";
-static constexpr bool kSupportsRkllm      = false;
 
 /// Model binary file extension for Sophon backend (.nn wraps .bmodel).
 static constexpr const char* kModelFileExt = ".nn";
@@ -90,7 +89,6 @@ static constexpr const char* kPlatformDirRegex = "prod_[A-Z0-9]+_([0-9]+)_.*";
 /// Engine type identifier reported to frontend / device info API.
 static constexpr const char* kBackendType = "ONNX_RUNTIME";
 static constexpr const char* kEngineType  = "X86";
-static constexpr bool kSupportsRkllm      = false;
 
 /// Model binary file extension for CPU backend (.onnx used directly).
 static constexpr const char* kModelFileExt = ".onnx";
@@ -98,8 +96,29 @@ static constexpr const char* kModelFileExt = ".onnx";
 /// Supported platform identifier for the CPU backend.
 static constexpr const char* kSupportedChips[] = {"X86"};
 
+#elif defined(COSMO_NN_USE_AXERA_BACKEND)
+
+    #ifndef COSMO_AXERA_TARGET_CHIP
+    #error "AXERA builds must define COSMO_AXERA_TARGET_CHIP through COSMO_TARGET_CHIP"
+    #endif
+    #ifndef COSMO_AXERA_TARGET_CHIP_LABEL
+    #error "AXERA builds must define COSMO_AXERA_TARGET_CHIP_LABEL through COSMO_TARGET_CHIP"
+    #endif
+
+    /// Legacy target-labelled directories remain readable. Newly imported models
+    /// use a vendor-level token; config.json chip_type is the compatibility gate.
+    static constexpr const char* kPlatformDirPrefix    = "prod_" COSMO_AXERA_TARGET_CHIP_LABEL "_";
+    static constexpr const char* kNewDirPrefix         = "prod_AXERA_";
+    static constexpr const char* kPlatformDirRegex     = "prod_[A-Z0-9]+_([0-9]+)_.*";
+    static constexpr const char* kBackendType          = "AXERA";
+    static constexpr const char* kEngineType           = COSMO_AXERA_TARGET_CHIP_LABEL;
+    static constexpr const char* kTargetChip           = COSMO_AXERA_TARGET_CHIP;
+    static constexpr const char* kHardwareSpecFallback = "axera," COSMO_AXERA_TARGET_CHIP;
+    static constexpr const char* kModelFileExt         = ".axmodel";
+    static constexpr const char* kSupportedChips[]     = {COSMO_AXERA_TARGET_CHIP_LABEL};
+
 #else
-#error "A Sophon, CPU, or RKNN backend must be defined"
+#error "A Sophon, CPU, RKNN, or AXERA backend must be defined"
 #endif
 
 /// Case-insensitive check whether `chip` is a supported chip/platform type for the

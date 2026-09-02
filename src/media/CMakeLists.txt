@@ -105,7 +105,7 @@ target_link_libraries(cosmo_media PRIVATE cosmo_common
 )
 
 if(COSMO_MEDIA_USE_AXERA_BACKEND)
-    target_link_libraries(cosmo_media PRIVATE ax_sys ax_comm ax_vdec ax_venc ax_ivps)
+    target_link_libraries(cosmo_media PRIVATE ax_sys ax_vdec ax_venc ax_ivps)
 endif()
 if(COSMO_MEDIA_USE_SOPHON_BACKEND)
     target_link_libraries(cosmo_media PRIVATE bmlib bmcv bmvd bmvenc)

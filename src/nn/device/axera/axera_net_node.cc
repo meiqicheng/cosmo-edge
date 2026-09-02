@@ -40,18 +40,28 @@ namespace {
     }
 
     // Engine initialization is process-wide; mirror the official sample which
-    // calls AX_ENGINE_Init once with VNPU disabled and deinits at exit.
-    void EnsureEngineInitialized() {
+    // initializes AX_SYS first, then calls AX_ENGINE_Init once with VNPU
+    // disabled and deinits at exit. AX_ENGINE_Init fails (0x80060087) when the
+    // AX_SYS layer has not been initialized first.
+    bool EnsureEngineInitialized() {
         static std::once_flag flag;
+        static bool initialized = false;
         std::call_once(flag, []() {
+            if (AX_SYS_Init() != 0) {
+                LOG_ERRO("[Axera] AX_SYS_Init failed; NPU driver may not be loaded");
+                return;
+            }
             AX_ENGINE_NPU_ATTR_T npu_attr;
             std::memset(&npu_attr, 0, sizeof(npu_attr));
             npu_attr.eHardMode = AX_ENGINE_VIRTUAL_NPU_DISABLE;
-            if (AX_ENGINE_Init(&npu_attr) == 0)
+            if (AX_ENGINE_Init(&npu_attr) == 0) {
                 std::atexit([]() { AX_ENGINE_Deinit(); });
-            else
+                initialized = true;
+            } else {
                 LOG_ERRO("[Axera] AX_ENGINE_Init failed; NPU driver may not be loaded");
+            }
         });
+        return initialized;
     }
 
     bool IsPackedNhwcShape(const std::vector<int>& shape) {
@@ -88,7 +98,8 @@ Status AxeraNetNode::LoadWeight(const char* data, size_t size) {
         return Status(COSMO_NN_ERR_OUT_OF_MEMORY, "Not enough memory to retain AXERA model data");
     }
 
-    EnsureEngineInitialized();
+    if (!EnsureEngineInitialized())
+        return Status(COSMO_NN_ERR_NET, "AXERA engine initialization failed; cannot load model");
 
     AX_ENGINE_HANDLE handle = nullptr;
     int ret = AX_ENGINE_CreateHandle(&handle, model_data_.data(), static_cast<AX_U32>(model_data_.size()));

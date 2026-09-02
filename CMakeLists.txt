@@ -25,7 +25,12 @@ if(NOT COSMO_TARGET_ARCH STREQUAL "aarch64" AND NOT COSMO_TARGET_ARCH STREQUAL "
     message(FATAL_ERROR "Unsupported COSMO_TARGET_ARCH=${COSMO_TARGET_ARCH}. Expected aarch64 or x86_64.")
 endif()
 
-if(COSMO_TARGET_ARCH STREQUAL "aarch64" AND NOT CMAKE_TOOLCHAIN_FILE)
+if(COSMO_TARGET_ARCH STREQUAL "aarch64" AND NOT CMAKE_TOOLCHAIN_FILE
+        AND NOT DEFINED CMAKE_C_COMPILER AND NOT DEFINED CMAKE_CXX_COMPILER)
+    # Callers that preset CMAKE_C/CXX_COMPILER (e.g. scripts/build_axera.sh
+    # with the ARM GNU toolchain) own the compiler choice; the default file
+    # below hardcodes /usr/bin/aarch64-linux-gnu-* and would FORCE-override
+    # their -D flags.
     set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/toolchains/aarch64-linux.toolchain.cmake"
         CACHE FILEPATH "aarch64 linux cross toolchain")
 endif()
@@ -586,7 +591,7 @@ if(COSMO_MEDIA_USE_ROCKCHIP_BACKEND)
     list(APPEND COMMON_LIBS rockchip_mpp rockchip_rga)
 endif()
 if(COSMO_MEDIA_USE_AXERA_BACKEND)
-    list(APPEND COMMON_LIBS ax_comm ax_vdec ax_venc ax_ivps)
+    list(APPEND COMMON_LIBS ax_vdec ax_venc ax_ivps)
 endif()
 
 ##########################################################
@@ -1036,7 +1041,7 @@ if(COSMO_TARGET_CHIP)
     message(STATUS "Package target chip: ${COSMO_TARGET_CHIP_NORMALIZED}")
 endif()
 
-if(COSMO_NN_USE_RKNN_BACKEND)
+if(COSMO_NN_USE_RKNN_BACKEND OR COSMO_NN_USE_AXERA_BACKEND)
     install(FILES "${COSMO_PLATFORM_PROFILE}"
         DESTINATION share/cosmo
         RENAME platform-profile.json

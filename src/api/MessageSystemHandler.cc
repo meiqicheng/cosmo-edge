@@ -92,8 +92,10 @@ System::MsgQueryDeviceInfoSend MessageSystemHandler::Handle(System::MsgQueryDevi
     auto info = device_info_.GetDeviceInfo();
     retData.resData.devInfoList.push_back({"deviceType", "设备型号", info.devModel});
     retData.resData.devInfoList.push_back({"acceleratorBackend", "推理后端", cosmo::util::kBackendType});
+#ifdef COSMO_NN_USE_RKNN_BACKEND
     retData.resData.devInfoList.push_back(
         {"rkllmAvailable", "RKLLM能力", cosmo::util::kSupportsRkllm ? "true" : "false"});
+#endif
     retData.resData.devInfoList.push_back({"hardwareVersion", "固件版本", info.devVersion});
     retData.resData.devInfoList.push_back({"softwareVersion", "软件版本", info.softwareVersion});
     retData.resData.devInfoList.push_back({"deviceSn", "设备SN", info.devSn});
