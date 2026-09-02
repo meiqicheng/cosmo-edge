@@ -1,9 +1,11 @@
 # Axera AX650 runtime (ax_engine SoC SDK) selection.
 #
-# The AX650N board runs the SoC-mode SDK (msp/out from the AX650 SDK V3.10.2
-# package): ax_engine_api.h + ax_sys_api.h headers and libax_engine.so +
-# libax_sys.so. The SDK is kept external to the repository (mirrors the RKNN
-# runtime convention); point COSMO_AXERA_ROOT at the SDK's msp/out directory.
+# The AX650N board runs the SoC-mode SDK (soc partition lib/include extracted
+# from the AX650 eMMC board image V3.10.2_20260605121907, downloaded into the
+# builder image from the official AXERA-TECH HuggingFace BoardImages repo):
+# ax_engine_api.h + ax_sys_api.h headers and libax_engine.so + libax_sys.so.
+# The SDK is kept external to the repository (mirrors the RKNN runtime
+# convention); point COSMO_AXERA_ROOT at the extracted msp-out directory.
 set(COSMO_AXERA_ROOT "" CACHE PATH "Axera AX650 SoC SDK root containing include/ and lib/")
 if(NOT COSMO_AXERA_ROOT AND DEFINED ENV{AXERA_ROOT})
     set(COSMO_AXERA_ROOT "$ENV{AXERA_ROOT}" CACHE PATH "Axera AX650 SDK root" FORCE)

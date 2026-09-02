@@ -5,7 +5,7 @@
     "architecture": "linux/amd64",
     "target_architecture": "aarch64",
     "sdk_family": "ax_engine_soc",
-    "sdk_version": "V3.10.2",
+    "sdk_version": "AX650_BoardImage_emmc_ubuntu_rootfs_desktop_V3.10.2_20260605121907 (soc partition lib/include, sha256 088f5f9f453da5412f99ba55827a366bbcc9fb3325906af5b6c5e9d6cef3b700)",
     "axera_root": "/opt/axera/sdk/msp-out",
     "toolchain_root": "/opt/axera/toolchain/gcc-arm-9.2"
   },
@@ -17,7 +17,7 @@
       "required_package_paths": [
         "lib/libax_engine.so",
         "lib/libax_sys.so",
-        "lib/libax_comm.so",
+        "lib/libax_interpreter.so",
         "lib/libax_vdec.so",
         "lib/libax_venc.so",
         "lib/libax_ivps.so"

@@ -2,24 +2,26 @@
   "schema_version": 2,
   "family": "axera-ax650",
   "sdk": {
-    "name": "AX650 SDK",
-    "version": "V3.10.2",
-    "package": "AX650_SDK_V3.10.2_20260513151335",
+    "name": "AX650 eMMC board image (ubuntu rootfs desktop)",
+    "version": "V3.10.2_20260605121907",
+    "package": "AX650_emmc_ubuntu_rootfs_desktop_V3.10.2_20260605121907.axp",
     "runtime_mode": "soc",
-    "msp_out": "package/msp/out",
     "runtime_family": "ax_engine_soc",
     "model_file_ext": ".axmodel",
-    "source_dir": "hardware/Axera爱芯元智/AXERA-TECH/AX650-Community-Hub/AX650_SDK_V3.10.2_20260513151335",
-    "wsl_stage": "/opt/axera/sdk/msp-out"
+    "source_repo": "https://huggingface.co/AXERA-TECH/BoardImages",
+    "source_path": "AX650_emmc_ubuntu_rootfs_desktop_V3.10.2_20260605121907.axp",
+    "source_url": "https://huggingface.co/AXERA-TECH/BoardImages/resolve/main/AX650_emmc_ubuntu_rootfs_desktop_V3.10.2_20260605121907.axp",
+    "sha256": "088f5f9f453da5412f99ba55827a366bbcc9fb3325906af5b6c5e9d6cef3b700",
+    "extraction": "zip member soc_sparse.ext4 -> simg2img -> debugfs rdump /lib + /include into /opt/axera/sdk/msp-out",
+    "note": "The board image is downloaded and sha256-verified during the builder image build (Dockerfile.axera); only the soc partition lib/include are kept inside the image. This matches the builder-lock.json sdk_version and replaces the earlier ModelScope AX650_SDK tgz record."
   },
   "toolchain": {
     "name": "ARM GNU gcc-arm-9.2",
     "version": "9.2.1",
     "triplet": "aarch64-none-linux-gnu",
-    "release": "gcc-arm-9.2-2022.12",
-    "archive": "gcc-arm-9.2-2022.12-x86_64-aarch64-none-linux-gnu.tar.xz",
-    "upstream": "https://developer.arm.com/-/media/Files/downloads/gnu/9.2-2022.12/binrel/gcc-arm-9.2-2022.12-x86_64-aarch64-none-linux-gnu.tar.xz",
-    "wsl_stage": "/opt/axera/toolchain/gcc-arm-9.2"
+    "release": "gcc-arm-9.2-2019.12",
+    "archive": "gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.xz",
+    "upstream": "https://developer.arm.com/-/media/Files/downloads/gnu-a/9.2-2019.12/binrel/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.xz"
   },
   "converter": {
     "name": "Pulsar2",

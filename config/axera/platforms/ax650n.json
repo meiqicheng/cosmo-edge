@@ -16,6 +16,7 @@
   "media": {
     "default_backend": "axera",
     "cpu_fallback": true,
+    "runtime_profile": "axera-msp-v3.10.2",
     "note": "Phase-2 AX650N uses the native AX650 VDEC/VENC media backend with CPU/FFmpeg fault-tolerance fallbacks; IVPS frame-proc path still delegates to CPU pending board validation"
   },
   "packaging": {

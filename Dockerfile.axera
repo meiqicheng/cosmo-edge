@@ -1,24 +1,36 @@
 # syntax=docker/dockerfile:1.7
 
-# CosmoEdge AX650N build environment.
+# CosmoEdge AX650N 构建环境。
 #
-# Unlike Rockchip/Sophon (prebuilt SDK images on ghcr.io), the AX650 SDK is
-# NDA-licensed and cannot be published to a public registry. This image
-# therefore only carries the generic build tooling; the SDK (msp/out) and the
-# ARM GNU toolchain are bind-mounted into the container by
-# docker-compose.axera.yml from the host WSL checkout:
-#   /opt/axera/sdk/msp-out         (AX650 SDK V3.10.2 SoC runtime)
-#   /opt/axera/toolchain/gcc-arm-9.2
-# scripts/build_axera_package.ps1 resolves the \\wsl$\<distro> path so Docker
-# Desktop on Windows can mount them.
+# 多阶段布局，对标 Dockerfile.rockchip：共享的工具链基础阶段、并行的 SDK
+# 暂存阶段（下载并裁剪 AX650 运行时），以及聚合两者的最终 builder 阶段。
+# 完全自包含——构建与打包时均不从宿主机 bind mount 任何内容。
+#
+# 工具链：Arm GNU Toolchain 9.2-2019.12（aarch64-none-linux-gnu），来自
+#         developer.arm.com。AXERA 官方的 AX650 工具链（ax-pipeline CI）
+#         使用 ARM GNU 9.2，SDK 预编译库也面向其 glibc/libstdc++ ABI，
+#         因此 9.2 是匹配的厂商工具链。
+# SDK：   AX650 eMMC 板卡镜像（ubuntu rootfs desktop），来自 AXERA-TECH
+#         官方 HuggingFace BoardImages 仓库，按 sha256 锁定。.axp 是 zip，
+#         其 soc_sparse.ext4 成员即 /soc 分区（lib + include + ko + 脚本）；
+#         用 debugfs 抽取 lib/ 与 include/，其余内容（启动镜像、rootfs、
+#         归档本身）在同一层内删除。soc 分区内容与烧写到设备上的固件
+#         完全一致，因此头文件与运行时库始终与固件匹配。
+#
+# 阶段：
+#   axera-toolchain — 基础工具（apt 镜像源、Node 20、rustup）+ ARM GNU
+#   axera-sdk       — SDK 下载 + sha256 校验 + msp/out lib/include 裁剪
+#   axera-builder   — 汇合工具链与 msp/out 的最终 builder
 
 ARG AXERA_BASE_IMAGE=ubuntu:22.04
-FROM ${AXERA_BASE_IMAGE}
+
+# ── 阶段 1：交叉工具链基础 ─────────────────────────────────────────────────
+FROM ${AXERA_BASE_IMAGE} AS axera-toolchain
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-# Use the Aliyun HTTP mirror (base image lacks fresh CA bundles for HTTPS
-# mirrors; HTTP works reliably and the project already mirrors to Aliyun).
+# 使用 Aliyun HTTP 镜像源（基础镜像缺少支持 HTTPS 镜像源的新 CA 包；
+# HTTP 可靠可用，且项目本就使用 Aliyun 镜像）。
 RUN set -eux; \
     sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list; \
     sed -i 's|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list; \
@@ -40,14 +52,16 @@ RUN set -eux; \
         python3 \
         python3-pip \
         rsync \
+        android-sdk-libsparse-utils \
         unzip \
         xz-utils \
+        e2fsprogs \
         zlib1g-dev; \
     rm -rf /var/lib/apt/lists/*
 
-# Modern Node.js (>=18): the frontend uses node:assert/strict imports that
-# require node >= 14.18; Ubuntu 22.04 ships node 12 via npm. Install Node 20
-# from the NodeSource APT repo (mirrored to Aliyun for reachability).
+# 现代 Node.js（>=18）：前端使用了要求 node >= 14.18 的 node:assert/strict
+# 导入；Ubuntu 22.04 经 npm 附带的是 node 12。从 NodeSource APT 仓库安装
+# Node 20（镜像源指向 Aliyun 以保证可达）。
 RUN set -eux; \
     curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh; \
     bash /tmp/nodesource_setup.sh; \
@@ -57,8 +71,8 @@ RUN set -eux; \
     node --version; \
     npm --version
 
-# tokenizers-c builds a Rust staticlib via cargo; bootstrap rustup (stable)
-# with the aarch64-unknown-linux-gnu target for cross-linking.
+# tokenizers-c 通过 cargo 构建 Rust 静态库；引导 rustup（stable）并安装
+# aarch64-unknown-linux-gnu target 用于交叉链接。
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
@@ -73,12 +87,57 @@ RUN set -eux; \
     cargo --version; \
     rustc --version
 
-# Builder lock consumed by scripts/build_axera_package.sh.
+# Arm GNU Toolchain 9.2-2019.12，来自 ARM 官方下载服务器。
+ARG ARM_GNU_URL=https://developer.arm.com/-/media/Files/downloads/gnu-a/9.2-2019.12/binrel/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.xz
+ARG ARM_GNU_SHA256=8dfe681531f0bd04fb9c53cf3c0a3368c616aa85d48938eebe2b516376e06a66
+RUN set -eux; \
+    mkdir -p /opt/axera/toolchain; \
+    curl -fL --retry 3 "${ARM_GNU_URL}" -o /tmp/gcc-arm-9.2.tar.xz; \
+    echo "${ARM_GNU_SHA256}  /tmp/gcc-arm-9.2.tar.xz" | sha256sum -c -; \
+    tar -xJf /tmp/gcc-arm-9.2.tar.xz -C /opt/axera/toolchain; \
+    rm -f /tmp/gcc-arm-9.2.tar.xz; \
+    mv /opt/axera/toolchain/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu \
+       /opt/axera/toolchain/gcc-arm-9.2; \
+    /opt/axera/toolchain/gcc-arm-9.2/bin/aarch64-none-linux-gnu-gcc --version | head -n1
+
+# ── 阶段 2：AX650 SDK 运行时暂存（与工具链工作并行）──────────────────────
+FROM axera-toolchain AS axera-sdk
+
+ARG AX650_BOARD_IMAGE_URL=https://huggingface.co/AXERA-TECH/BoardImages/resolve/main/AX650_emmc_ubuntu_rootfs_desktop_V3.10.2_20260605121907.axp
+ARG AX650_BOARD_IMAGE_SHA256=088f5f9f453da5412f99ba55827a366bbcc9fb3325906af5b6c5e9d6cef3b700
+RUN set -eux; \
+    curl -fL --retry 3 "${AX650_BOARD_IMAGE_URL}" -o /tmp/ax650-board.axp; \
+    echo "${AX650_BOARD_IMAGE_SHA256}  /tmp/ax650-board.axp" | sha256sum -c -; \
+    mkdir -p /tmp/axsoc /opt/axera/sdk/msp-out; \
+    unzip -o -q /tmp/ax650-board.axp soc_sparse.ext4 -d /tmp/axsoc; \
+    simg2img /tmp/axsoc/soc_sparse.ext4 /tmp/axsoc/soc.img; \
+    debugfs -R 'rdump /lib /opt/axera/sdk/msp-out' /tmp/axsoc/soc.img; \
+    debugfs -R 'rdump /include /opt/axera/sdk/msp-out' /tmp/axsoc/soc.img; \
+    rm -rf /tmp/axsoc /tmp/ax650-board.axp; \
+    test -f /opt/axera/sdk/msp-out/include/ax_engine_api.h; \
+    test -f /opt/axera/sdk/msp-out/include/ax_sys_api.h; \
+    for l in ax_engine ax_sys ax_interpreter ax_ivps ax_vdec ax_venc; do \
+        test -f "/opt/axera/sdk/msp-out/lib/lib${l}.so"; \
+    done
+
+# ── 阶段 3：最终 builder ──────────────────────────────────────────────────
+FROM axera-toolchain AS axera-builder
+
+COPY --from=axera-sdk /opt/axera/sdk/msp-out /opt/axera/sdk/msp-out
+
+# 供 scripts/build_axera_package.sh 使用的 builder 锁文件。
 COPY config/axera-build/builder-lock.json /opt/cosmo/axera-builder-lock.json
 
 ENV AXERA_ROOT=/opt/axera/sdk/msp-out \
+    AXERA_TOOLCHAIN=/opt/axera/toolchain/gcc-arm-9.2 \
     COSMO_TARGET_CHIP=ax650n \
     COSMO_AXERA_ROOT=/opt/axera/sdk/msp-out
+
+LABEL org.opencontainers.image.title="CosmoEdge AX650N build environment" \
+      org.opencontainers.image.description="Self-contained AX650N cross build environment (Arm GNU 9.2-2019.12 + AX650 board image V3.10.2_20260605121907 soc lib/include)" \
+      org.opencontainers.image.axera-sdk.version="V3.10.2_20260605121907" \
+      org.opencontainers.image.arm-gnu.version="9.2-2019.12" \
+      io.cosmo.axera.targets="ax650n"
 
 WORKDIR /workspace
 CMD ["/bin/bash"]

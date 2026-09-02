@@ -1,17 +1,13 @@
-# CosmoEdge AX650N package build.
+# CosmoEdge AX650N 包构建。
 #
-# The AX650 SDK is NDA-licensed and cannot ship in a public registry image;
-# the builder image carries only generic tooling, while the SDK and the ARM
-# GNU toolchain are bind-mounted from the host WSL checkout:
-#   ${AXERA_SDK_WSL_ROOT:-/opt/axera/sdk/msp-out}
-#   ${AXERA_TOOLCHAIN_WSL_ROOT:-/opt/axera/toolchain/gcc-arm-9.2}
-# On Windows Docker Desktop set these to \\wsl$\<distro>\opt\axera\...
-# (scripts/build_axera_package.ps1 resolves them automatically).
+# builder 镜像完全自包含（见 Dockerfile.axera）：ARM GNU gcc-arm-9.2
+# 工具链与 AX650 SDK V3.10.2 msp/out 运行时（仅 lib/include）在镜像
+# 构建时从官方源下载，不需要本地 bind mount。
 #
-# Usage:
+# 用法：
 #   docker compose -f docker-compose.axera.yml build
 #   docker compose -f docker-compose.axera.yml run --rm cosmo-axera-package --chip ax650n
-# Output lands in ./build_output/ax650n/.
+# 输出落在 ./build_output/ax650n/。
 
 services:
   cosmo-axera-package:
@@ -24,8 +20,6 @@ services:
     volumes:
       - .:/workspace
       - ./build_output:/build_output
-      - ${AXERA_SDK_WSL_ROOT:-/opt/axera/sdk/msp-out}:/opt/axera/sdk/msp-out:ro
-      - ${AXERA_TOOLCHAIN_WSL_ROOT:-/opt/axera/toolchain/gcc-arm-9.2}:/opt/axera/toolchain/gcc-arm-9.2:ro
       - cosmo-axera-build:/opt/axera/build
       - cosmo-npm-cache:/root/.npm
     working_dir: /workspace

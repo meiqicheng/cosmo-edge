@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# CosmoEdge AX650N package build entrypoint (runs inside the AXERA builder
-# container, mirrors scripts/build_rockchip_package.sh).
+# CosmoEdge AX650N 包构建入口（在 AXERA builder 容器内运行，
+# 对标 scripts/build_rockchip_package.sh）。
 #
-#   Usage: build_axera_package.sh [--chip <ax650n>] [--models <include|preserve>]
+#   用法: build_axera_package.sh [--chip <ax650n>] [--models <include|preserve>]
 #
-# The AX650 SDK root and the ARM GNU toolchain root come from the builder
-# lock (config/axera-build/builder-lock.json, staged into the image at
-# /opt/cosmo/axera-builder-lock.json).
+# AX650 SDK 根目录与 ARM GNU 工具链根目录来自 builder 锁文件
+# （config/axera-build/builder-lock.json，构建镜像时暂存到
+# /opt/cosmo/axera-builder-lock.json）。
 
 chip="ax650n"
 package_models="include"
@@ -95,9 +95,9 @@ test -f "${sdk_root}/include/ax_engine_api.h"
 test -f "${sdk_root}/lib/libax_engine.so"
 test -x "${toolchain_root}/bin/aarch64-none-linux-gnu-gcc"
 
-# Windows Git checkouts materialize Linux .so symlinks as tiny text files and
-# convert third-party configure scripts to CRLF. Normalize before building so
-# the linker resolves .so chains and configure scripts execute with LF.
+# Windows Git 检出会把 Linux .so 符号链接物化为小文本文件，并把第三方
+# configure 脚本转成 CRLF。构建前先归一化：让链接器正确解析 .so 链、
+# configure 脚本以 LF 执行。
 "${PROJECT_ROOT_PATH}/scripts/restore-symlinks.sh" || true
 find "${PROJECT_ROOT_PATH}/3rd/mp4v2-2.0.0" "${PROJECT_ROOT_PATH}/3rd/openssl-3.5.3" \
      "${PROJECT_ROOT_PATH}/3rd/curl-8.17.0" "${PROJECT_ROOT_PATH}/3rd/srs-6.0-r0" \
@@ -105,20 +105,63 @@ find "${PROJECT_ROOT_PATH}/3rd/mp4v2-2.0.0" "${PROJECT_ROOT_PATH}/3rd/openssl-3.
                -o -name '*.sh' -o -name '*.pl' -o -name '*.pm' -o -name '*.h' \) \
     -exec sed -i 's/\r$//' {} + 2>/dev/null || true
 
-# Build inside the container's ext4 layer (or a persistent volume) instead
-# of the drvfs workspace mount: CPack staging copies the whole install tree
-# and the Windows drive may lack space. Override via COSMO_AXERA_BUILD_DIR.
-# The build dir may itself be a volume mount point, so clear its contents
-# rather than removing the mount.
+# 在容器 ext4 层（或持久卷）内构建，而不是 drvfs workspace 挂载：
+# CPack 暂存要拷贝整个 install 树，Windows 盘可能空间不足。
+# 可用 COSMO_AXERA_BUILD_DIR 覆盖。构建目录本身可能是卷挂载点，
+# 因此清空其内容而不是删除挂载点。
 build_dir="${COSMO_AXERA_BUILD_DIR:-/opt/axera/build}"
 mkdir -p "${build_dir}"
-find "${build_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+# COSMO_AXERA_KEEP_BUILD=1 resumes an interrupted run: keep the existing build
+# tree (externals, objects, install) and only refresh the staged resources.
+if [ -z "${COSMO_AXERA_KEEP_BUILD:-}" ]; then
+    find "${build_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+fi
+
+# Windows 宿主（GBK ANSI 代码页）上 Docker Desktop 的文件共享会损坏
+# 非 ASCII 文件名（正确的 UTF-8 字节被按 GBK 重新解码）。algorithm_template
+# 资源带中文文件名，CPack 无法 lstat 损坏后的名字。把资源树拷贝到容器
+# ext4，确定性地修复乱码（把名字字节按 GBK 解码即还原原 UTF-8 名），
+# 再从修复后的副本构建。
+# Stage INSIDE the persistent build volume: the container filesystem layer is
+# discarded between `compose run` invocations, so a stage under /opt/axera
+# would vanish before any resumed package_all step can use it.
+resource_stage="${build_dir}/resource-stage"
+rm -rf "${resource_stage}"
+python3 - "${PROJECT_ROOT_PATH}/data/resource/aiboxresource_ax650n" "${resource_stage}" <<'PY'
+import os
+import shutil
+import sys
+
+src_root, dst_root = os.fsencode(sys.argv[1]).decode(), os.fsencode(sys.argv[2]).decode()
+
+
+def repair(name: str) -> str:
+    try:
+        fixed = name.encode("gbk").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return name
+    return fixed if fixed != name else name
+
+
+total = 0
+for root, dirs, files in os.walk(src_root):
+    rel = os.path.relpath(root, src_root)
+    dst_dir = dst_root if rel == "." else os.path.join(dst_root, repair(rel))
+    os.makedirs(dst_dir, exist_ok=True)
+    for name in dirs + files:
+        if os.path.isdir(os.path.join(root, name)):
+            continue
+        shutil.copy2(os.path.join(root, name), os.path.join(dst_dir, repair(name)))
+        total += 1
+print(f"staged {total} resource files with repaired names")
+PY
+
 COSMO_PACKAGE_MODELS="${package_models}" \
     "${PROJECT_ROOT_PATH}/scripts/build_axera.sh" \
         -a "${sdk_root}" \
-        -c "${PROJECT_ROOT_PATH}/toolchains/aarch64-axera.toolchain.cmake" \
         -C "${chip}" \
         -b "${build_dir}" \
+        -m "${resource_stage}" \
         -T
 
 shopt -s nullglob
