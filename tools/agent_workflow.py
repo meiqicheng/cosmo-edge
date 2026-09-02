@@ -58,6 +58,7 @@ AUTHORITY_GRANTS = {
 }
 TPU_MLIR_OFFICIAL_REFERENCE = "https://github.com/sophgo/tpu-mlir#-installation"
 RKNN_TOOLKIT2_OFFICIAL_REFERENCE = "https://github.com/airockchip/rknn-toolkit2"
+PULSAR2_OFFICIAL_REFERENCE = "https://modelscope.cn/models/AXERA-TECH/Pulsar2"
 TOOLCHAIN_PROBE_SCRIPT = r"""
 import hashlib
 import importlib
@@ -522,11 +523,27 @@ def _conversion_toolchain_family(target_chip: str | None) -> str | None:
         return "rknn"
     if normalized.startswith(("bm", "cv")):
         return "sophon"
+    if normalized.startswith("ax"):
+        return "pulsar2"
     return None
 
 
 def _conversion_toolchain_label(family: str | None) -> str:
-    return "RKNN Toolkit2" if family == "rknn" else "TPU-MLIR"
+    return {
+        "rknn": "RKNN Toolkit2",
+        "pulsar2": "Pulsar2",
+    }.get(family, "TPU-MLIR")
+
+
+def _conversion_route_suffix(family: str | None) -> str:
+    return {"rknn": "rknn-toolkit2", "pulsar2": "pulsar2"}.get(family, "tpu-mlir")
+
+
+def _toolchain_official_reference(family: str | None) -> str:
+    return {
+        "rknn": RKNN_TOOLKIT2_OFFICIAL_REFERENCE,
+        "pulsar2": PULSAR2_OFFICIAL_REFERENCE,
+    }.get(family, TPU_MLIR_OFFICIAL_REFERENCE)
 
 
 def _material_observations(contract: dict[str, Any], run_dir: Path) -> list[dict[str, Any]]:
@@ -671,13 +688,9 @@ def assess_task_report(
             and str(environment.get("architecture", "x86_64")).lower() in {"x86_64", "amd64"}
         )
         if toolchain_family:
-            route_suffix = "rknn-toolkit2" if toolchain_family == "rknn" else "tpu-mlir"
+            route_suffix = _conversion_route_suffix(toolchain_family)
             toolchain_label = _conversion_toolchain_label(toolchain_family)
-            official_reference = (
-                RKNN_TOOLKIT2_OFFICIAL_REFERENCE
-                if toolchain_family == "rknn"
-                else TPU_MLIR_OFFICIAL_REFERENCE
-            )
+            official_reference = _toolchain_official_reference(toolchain_family)
             route_candidates.append(
                 {
                     "id": f"local-linux-{route_suffix}",
@@ -870,11 +883,9 @@ def _resolve_executable(raw_value: str) -> str | None:
 
 def _toolchain_spec(parameters: dict[str, Any]) -> tuple[dict[str, Any] | None, str]:
     family = _conversion_toolchain_family(str(parameters.get("targetChip", ""))) or "sophon"
-    default_package = "rknn-toolkit2" if family == "rknn" else "tpu_mlir"
-    default_module = "rknn.api" if family == "rknn" else "tpu_mlir"
-    official_reference = (
-        RKNN_TOOLKIT2_OFFICIAL_REFERENCE if family == "rknn" else TPU_MLIR_OFFICIAL_REFERENCE
-    )
+    default_package = {"rknn": "rknn-toolkit2", "pulsar2": "pulsar2"}.get(family, "tpu_mlir")
+    default_module = {"rknn": "rknn.api", "pulsar2": "pulsar2"}.get(family, "tpu_mlir")
+    official_reference = _toolchain_official_reference(family)
     raw = parameters.get("toolchain")
     if not isinstance(raw, dict):
         if "toolchain" in parameters and raw is not None:
