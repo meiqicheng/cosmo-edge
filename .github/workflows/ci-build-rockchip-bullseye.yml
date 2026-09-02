@@ -1,14 +1,18 @@
-name: RK3588 Preview Checks
+name: Rockchip Bullseye Cross Build
 
-# Preview-grade coverage for the RK3588 package path built on the locked
+# Preview-grade coverage for every Rockchip package path built on the locked
 # Debian 11 (bullseye) builder (Dockerfile.rockchip-bullseye, glibc 2.31;
-# RKNN + MPP/RGA + FFmpeg core; the optional RKLLM/Qwen VLM overlay is
+# RKNN + MPP/RGA + LGPL FFmpeg core; the optional RKLLM/Qwen VLM overlay is
 # user-supplied and only packaged when rkllm_required=true for the target).
+# The bullseye builder is a single shared image that fans the same MPP/RGA
+# media sysroot out to RK3576 / RV1126B / RK3588, so the nightly package
+# matrix covers all three chips instead of only the RK3588 preview path.
 #
 # - On PRs: package-profile/hash-closure tests, media sysroot lock, builder
 #   entrypoint validation, and diff whitespace.
 # - Nightly / manual: additionally build the locked bullseye builder and
-#   produce a full RK3588 candidate package (no device execution).
+#   produce a full candidate package for every Rockchip chip (no device
+#   execution).
 #
 # The builder is assembled from scratch in the image (no host-side
 # .rk3588-build-cache), so the nightly build is the only place that downloads
@@ -31,7 +35,7 @@ concurrency:
 
 jobs:
   package-policy:
-    name: rk3588-package-policy-and-hashes
+    name: rockchip-bullseye-policy-and-hashes
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -44,7 +48,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Syntax-check RK3588 build scripts
+      - name: Syntax-check Rockchip build scripts
         run: |
           bash -n scripts/build_rockchip_package.sh scripts/build_rknn.sh
 
@@ -68,25 +72,43 @@ jobs:
           fi
 
   builder-entrypoint:
-    name: rk3588-builder-entrypoint
+    name: rockchip-bullseye-builder-entrypoint
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Validate bullseye compose entry for rk3588
+      - name: Validate bullseye compose entry and chip coverage
         run: |
           docker compose -f docker-compose.rockchip-bullseye.yml config --quiet
           grep -q 'builder-lock.bullseye.json' docker-compose.rockchip-bullseye.yml
-          grep -q 'COSMO_TARGET_CHIP.*rk3588' docker-compose.rockchip-bullseye.yml || true
+          # The bullseye builder lock must cover every Rockchip chip so the
+          # nightly matrix can fan the shared MPP/RGA media out to all of them.
+          python3 - <<'PY'
+          import json
+          lock = json.load(open('config/rockchip-build/builder-lock.bullseye.json', encoding='utf-8'))
+          chips = sorted(lock['targets'])
+          assert chips == ['rk3576', 'rk3588', 'rv1126b'], f'unexpected bullseye chips: {chips}'
+          for chip in chips:
+              assert lock['targets'][chip]['media_runtime_profile'] == 'mpp-1.1.0-rga-1.10.6-bullseye-v1'
+          print('bullseye lock covers:', ', '.join(chips))
+          PY
 
   package-core:
-    name: rk3588-core-package
+    name: rockchip-bullseye-package (${{ matrix.chip }})
     if: github.event_name != 'pull_request'
     needs: [package-policy, builder-entrypoint]
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - chip: rk3576
+          - chip: rk3588
+          - chip: rv1126b
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -96,7 +118,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build locked RK3588 core builder
+      - name: Build locked bullseye core builder
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -104,52 +126,54 @@ jobs:
           target: builder
           platforms: linux/amd64
           load: true
-          tags: cosmo-edge-build-env-rk3588-bullseye:ci
+          tags: cosmo-edge-build-env-rockchip-bullseye:ci
           provenance: false
-          cache-from: type=gha,scope=rk3588-core-builder
-          cache-to: type=gha,mode=max,scope=rk3588-core-builder
+          cache-from: type=gha,scope=rockchip-bullseye-${{ matrix.chip }}
+          cache-to: type=gha,mode=max,scope=rockchip-bullseye-${{ matrix.chip }}
 
       - name: Build core package and tests
         env:
-          COSMO_ROCKCHIP_BUILDER_IMAGE: cosmo-edge-build-env-rk3588-bullseye:ci
-          COSMO_TARGET_CHIP: rk3588
+          COSMO_ROCKCHIP_BUILDER_IMAGE: cosmo-edge-build-env-rockchip-bullseye:ci
+          COSMO_TARGET_CHIP: ${{ matrix.chip }}
           COSMO_PACKAGE_MODELS: include
         run: docker compose -f docker-compose.rockchip-bullseye.yml run --rm cosmo-rockchip-bullseye-package
 
       - name: Verify core artifacts
+        env:
+          CHIP: ${{ matrix.chip }}
         run: |
           set -euo pipefail
           shopt -s nullglob
-          packages=("build_output/rk3588"/cosmo-*.tar.gz)
+          packages=("build_output/${CHIP}"/cosmo-*.tar.gz)
           if (( ${#packages[@]} != 1 )) || [[ ! -f "${packages[0]:-}" || -L "${packages[0]:-}" ]]; then
-            echo "Expected exactly one regular rk3588 package artifact." >&2
+            echo "Expected exactly one regular ${CHIP} package artifact." >&2
             exit 1
           fi
           package="${packages[0]}"
           package_name="${package##*/}"
           digest="$(sha256sum -- "$package")"
           digest="${digest%% *}"
-          printf '%s  %s\n' "$digest" "$package_name" | tee rk3588-package.sha256
-          cmp -s <(printf '%s\n' "rk3588") "build_output/rk3588/TARGET_CHIP"
-          (cd "build_output/rk3588" && sha256sum -c SHA256SUMS)
+          printf '%s  %s\n' "$digest" "$package_name" | tee "${CHIP}-package.sha256"
+          cmp -s <(printf '%s\n' "$CHIP") "build_output/${CHIP}/TARGET_CHIP"
+          (cd "build_output/${CHIP}" && sha256sum -c SHA256SUMS)
           for binary in build_rknn/cosmo-tests build_rknn/cosmo-rknn-backend-smoke build_rknn/cosmo-rknn-fastpath-qualify; do
             binary_info="$(file "$binary")"
             printf '%s\n' "$binary_info"
             grep -Fq 'ARM aarch64' <<< "$binary_info"
           done
-          printf "## rk3588 core candidate\n\n- Package: \`%s\`\n- SHA-256: \`%s\`\n" \
+          printf "## ${CHIP} bullseye core candidate\n\n- Package: \`%s\`\n- SHA-256: \`%s\`\n" \
             "$package_name" "$digest" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload core candidate
         uses: actions/upload-artifact@v7
         with:
-          name: rk3588-core-candidate-${{ github.sha }}
+          name: ${{ matrix.chip }}-bullseye-candidate-${{ github.sha }}
           path: |
-            build_output/rk3588/*.tar.gz
-            build_output/rk3588/TARGET_CHIP
-            build_output/rk3588/MEDIA_RUNTIME_PROFILE
-            build_output/rk3588/SHA256SUMS
-            rk3588-package.sha256
+            build_output/${{ matrix.chip }}/*.tar.gz
+            build_output/${{ matrix.chip }}/TARGET_CHIP
+            build_output/${{ matrix.chip }}/MEDIA_RUNTIME_PROFILE
+            build_output/${{ matrix.chip }}/SHA256SUMS
+            ${{ matrix.chip }}-package.sha256
             build_rknn/cosmo-tests
             build_rknn/cosmo-rknn-backend-smoke
             build_rknn/cosmo-rknn-fastpath-qualify
