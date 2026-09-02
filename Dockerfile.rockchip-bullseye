@@ -15,22 +15,27 @@
 #   - Rust 1.95.0   installed with rustup from rsproxy.cn
 #   - RKNN 2.3.2    downloaded from the pinned rknn-toolkit2 commit, sha256
 #                   verified against config/rknn/toolchain-lock.json
-#   - FFmpeg        Debian 11 arm64 dev packages assembled into
-#                   /opt/ffmpeg-debian11 (glibc 2.31)
+#   - FFmpeg 4.4.6  cross-compiled from the official LGPL source release
+#                   (--disable-gpl), installed into /opt/ffmpeg-debian11
+#                   (glibc 2.31). No GPL-licensed components are enabled, so
+#                   the packaged libavcodec identifies as LGPL-2.1-or-later
+#                   and matches the shipped COPYING.LGPLv2.1 (P1-6: no
+#                   GPL-binary-under-LGPL waiver is needed).
 #   - MPP/RGA       cross-compiled from pinned sources (glibc 2.31)
 #   - RKLLM         downloaded by scripts/install_rkllm_sdk.py (sha256 pinned)
 #
 # Frozen inputs (do not bump casually; update config/rockchip-build/builder-lock.json
 # in lockstep and record identities in /opt/cosmo/builder-versions.json):
 #   - Base image: debian:bullseye pinned by digest.
-#   - Debian 11 arm64 FFmpeg dev packages assembled into a self-contained
-#     COSMO_FFMPEG_ROOT (/opt/ffmpeg-debian11) with their non-glibc
-#     dependency closure, so cross builds link against a glibc-2.31
-#     compatible media stack without touching prebuild/ffmpeg.
+#   - FFmpeg 4.4.6 official release tarball (ffmpeg.org) pinned by SHA-256,
+#     cross-compiled with --disable-gpl into a self-contained COSMO_FFMPEG_ROOT
+#     (/opt/ffmpeg-debian11) with its non-glibc dependency closure, so cross
+#     builds link against a glibc-2.31 compatible media stack without touching
+#     prebuild/ffmpeg.
 #
 # SDK layout:
 #   /opt/rknn               RKNN Runtime 2.3.2 (include/rknn_api.h, lib/librknnrt.so)
-#   /opt/ffmpeg-debian11    {include,lib} Debian 11 arm64 FFmpeg + dep closure
+#   /opt/ffmpeg-debian11    {include,lib} FFmpeg 4.4.6 LGPL cross build + dep closure
 #   /opt/rockchip-media/<chip>   MPP/RGA media sysroot per chip (glibc 2.31)
 #   /opt/rkllm              RKLLM Runtime 1.3.0 (include/rkllm.h, lib/librkllmrt.so)
 #   /usr/local/node         Node.js 20 (Vue3/Vite frontend build)
@@ -63,10 +68,15 @@ FROM ${ROCKCHIP_LEGACY_BASE} AS rockchip-toolchain
 # Pinned source revisions. MPP/RGA match the shared bullseye runtime profile
 # "mpp-1.1.0-rga-1.10.6-bullseye-v1" in config/rockchip-media/runtime-lock.json.
 # RKNN_COMMIT is the rknn-toolkit2 v2.3.2 tag (config/rknn/toolchain-lock.json
-# source.tag_sha). Global ARGs so every stage can resolve them.
+# source.tag_sha). FFmpeg is the official ffmpeg.org 4.4.6 release tarball
+# (sha256 2290461f...; same version as the x86_64/Sophon prebuild roots),
+# cross-compiled with --disable-gpl. Global ARGs so
+# every stage can resolve them.
 ARG MPP_REVISION=c08762ebfadeb4e986d2fed993bc7a54862d3ebe
 ARG RGA_REVISION=2b32edcb97b601b25683e2941d888c8515da6d55
 ARG RKNN_COMMIT=42aa1d426c0a9e0869b6374edba009f7208a1926
+ARG FFMPEG_VERSION=4.4.6
+ARG FFMPEG_TARBALL_SHA256=2290461f467c08ab801731ed412d8e724a5511d6c33173654bd9c1d2e25d0617
 ARG NODE_VERSION=v20.11.0
 ARG RUST_VERSION=1.95.0
 
@@ -75,7 +85,8 @@ FROM rockchip-toolchain AS rockchip-common
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# amd64 host + arm64 cross targets (multiarch for arm64 ffmpeg dev packages).
+# amd64 host + arm64 cross targets (multiarch for the arm64 build deps used
+# when cross-compiling FFmpeg 4.4.6 from source below).
 # Use a China mirror (mirrors.tuna.tsinghua.edu.cn) for reliable downloads; the upstream
 # deb.debian.org frequently returns 502 on this network. HTTP (not HTTPS) is
 # used here because the base image has no ca-certificates yet; they are
@@ -83,10 +94,13 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Slimming: merge every apt step into ONE layer and purge apt list/archive
 # caches inside the same RUN, so they are never baked into the image.
 # Step 1: host build tools (amd64). Step 2: aarch64 cross toolchain.
-# Step 3: Debian 11 arm64 FFmpeg dev packages (glibc 2.31 compatible).
-# liblzma5/libbz2 are linked by libavformat/libavcodec but, as required-
-# priority packages, apt does not pull their arm64 variants automatically
-# under multiarch; install them explicitly.
+# Step 3: arm64 dev libraries for the FFmpeg source build. Debian 11 arm64
+# FFmpeg binary packages are NOT used: the official Debian build enables GPL
+# components (libx264), which would make the packaged libavcodec GPL while the
+# shipped license text claims LGPL (P1-6). The arm64 -dev packages below only
+# provide the optional non-GPL libraries (zlib/bz2/lzma/openssl) that the
+# self-built LGPL FFmpeg links against; the device gets the matching runtime
+# libraries through the dependency closure collected in Step 5.
 RUN sed -i 's|http://deb.debian.org/debian-security|http://mirrors.tuna.tsinghua.edu.cn/debian-security|g; s|http://deb.debian.org/debian|http://mirrors.tuna.tsinghua.edu.cn/debian|g' /etc/apt/sources.list \
     && printf 'Acquire::Retries "10";\nAcquire::http::Timeout "120";\nAcquire::http::ConnectionTimeout "60";\nAcquire::ftp::Timeout "120";\n' > /etc/apt/apt.conf.d/99-retries \
     && printf 'path-exclude /usr/share/doc/*\npath-include /usr/share/doc/*/copyright\npath-exclude /usr/share/man/*\npath-exclude /usr/share/locale/*\npath-exclude /usr/share/info/*\n' > /etc/dpkg/dpkg.cfg.d/01-nodoc \
@@ -99,10 +113,8 @@ RUN sed -i 's|http://deb.debian.org/debian-security|http://mirrors.tuna.tsinghua
         binutils gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
         binutils-aarch64-linux-gnu libc6-dev-arm64-cross \
     && apt-get install -y --no-install-recommends --fix-missing \
-        libavcodec-dev:arm64 libavdevice-dev:arm64 libavfilter-dev:arm64 \
-        libavformat-dev:arm64 libavutil-dev:arm64 \
-        libswresample-dev:arm64 libswscale-dev:arm64 \
-        liblzma5:arm64 libbz2-1.0:arm64 \
+        zlib1g-dev:arm64 libssl-dev:arm64 \
+        libbz2-dev:arm64 liblzma-dev:arm64 \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 # CMake: bullseye's 3.18.4 is too old for cryptopp (needs >= 3.20). Install a
@@ -161,26 +173,54 @@ RUN set -eux; \
 
 # Step 5: assemble a self-contained FFmpeg root for cross builds.
 #
-# Headers come from the multiarch dev packages; libraries are collected with
-# their transitive dependency closure (resolved via arm64 readelf NEEDED),
-# excluding glibc core libs and libstdc++/libgcc_s which the target device
-# provides itself (the device is Debian 11 bullseye, same distro release as
-# this build base, so its own copies are ABI-compatible).
+# FFmpeg 4.4.6 is cross-compiled from the official ffmpeg.org release tarball
+# with --disable-gpl (no libx264/x265 or any other GPL-only external library),
+# so the packaged libavcodec identifies as "LGPL version 2.1 or later" and
+# matches the shipped COPYING.LGPLv2.1 — the same license posture as the
+# x86_64/Sophon prebuild roots (P1-6). Optional non-GPL system libraries
+# (zlib/bz2/lzma/openssl) are enabled via the arm64 -dev packages from Step 3.
+# Configure flags follow the FFmpeg cross-build pattern used by AXERA's
+# axcl-runtime 3rdparty/ffmpeg/build.sh (--enable-cross-compile,
+# --cross-prefix, --arch=aarch64, --target-os=linux, --cc).
+#
+# After `make install` the libraries are collected with their transitive
+# dependency closure (resolved via arm64 readelf NEEDED), excluding glibc
+# core libs and libstdc++/libgcc_s which the target device provides itself
+# (the device is Debian 11 bullseye, same distro release as this build base,
+# so its own copies are ABI-compatible).
 RUN set -eux; \
+    curl -fsSL -o /tmp/ffmpeg.tar.xz \
+      "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"; \
+    echo "${FFMPEG_TARBALL_SHA256}  /tmp/ffmpeg.tar.xz" | sha256sum -c -; \
+    mkdir -p /tmp/ffmpeg; \
+    tar -xJf /tmp/ffmpeg.tar.xz -C /tmp/ffmpeg --strip-components=1; \
+    rm -f /tmp/ffmpeg.tar.xz; \
+    cd /tmp/ffmpeg; \
+    PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig \
+    ./configure \
+      --prefix=/opt/ffmpeg-debian11 \
+      --enable-cross-compile \
+      --cross-prefix=aarch64-linux-gnu- \
+      --arch=aarch64 \
+      --target-os=linux \
+      --cc=aarch64-linux-gnu-gcc \
+      --enable-shared --disable-static \
+      --disable-gpl --disable-nonfree \
+      --disable-doc --disable-programs --disable-debug \
+      --enable-avcodec --enable-avdevice --enable-avfilter \
+      --enable-avformat --enable-avutil \
+      --enable-swscale --enable-swresample \
+      --enable-openssl \
+      --enable-zlib --enable-bzlib --enable-lzma; \
+    make -j"$(nproc)"; \
+    make install; \
     root=/opt/ffmpeg-debian11; \
-    inc=/usr/include/aarch64-linux-gnu; \
     libdir=/usr/lib/aarch64-linux-gnu; \
-    mkdir -p "$root/include" "$root/lib/pkgconfig"; \
-    for h in libavcodec libavdevice libavfilter libavformat libavutil libswresample libswscale; do \
-        cp -r "$inc/$h" "$root/include/"; \
-    done; \
-    cp "$inc"/libav*.h "$inc"/libsw*.h "$root/include/" 2>/dev/null || true; \
-    cp "$libdir"/pkgconfig/libav*.pc "$libdir"/pkgconfig/libsw*.pc "$root/lib/pkgconfig/"; \
     copy_lib() { \
         name="$1"; \
         if [ -e "$root/lib/$name" ]; then return 0; fi; \
         src=""; \
-        for d in "$libdir" /lib/aarch64-linux-gnu "$libdir/pulseaudio"; do \
+        for d in "$libdir" /lib/aarch64-linux-gnu; do \
             if [ -e "$d/$name" ]; then src="$d/$name"; break; fi; \
         done; \
         if [ -z "$src" ]; then echo "FATAL: arm64 library not found: $name" >&2; return 1; fi; \
@@ -192,16 +232,18 @@ RUN set -eux; \
             esac; \
         done; \
     }; \
-    for s in libavcodec.so.58 libavdevice.so.58 libavfilter.so.7 libavformat.so.58 libavutil.so.56 libswresample.so.3 libswscale.so.5; do \
-        copy_lib "$s"; \
+    for s in /opt/ffmpeg-debian11/lib/libavcodec.so.58 /opt/ffmpeg-debian11/lib/libavdevice.so.58 /opt/ffmpeg-debian11/lib/libavfilter.so.7 /opt/ffmpeg-debian11/lib/libavformat.so.58 /opt/ffmpeg-debian11/lib/libavutil.so.56 /opt/ffmpeg-debian11/lib/libswresample.so.3 /opt/ffmpeg-debian11/lib/libswscale.so.5; do \
+        for dep in $(aarch64-linux-gnu-readelf -d "$s" | sed -n 's/.*Shared library: \[\(.*\)\]$/\1/p'); do \
+            case "$dep" in \
+                libc.so*|libm.so*|libdl.so*|libpthread.so*|librt.so*|libresolv.so*|libnsl.so*|libutil.so*|libanl.so*|libBrokenLocale.so*|libthread_db.so*|ld-linux-*|libgcc_s.so*|libstdc++.so*|libavcodec.so*|libavdevice.so*|libavfilter.so*|libavformat.so*|libavutil.so*|libswresample.so*|libswscale.so*) ;; \
+                *) copy_lib "$dep" ;; \
+            esac; \
+        done; \
     done; \
-    ln -sf libavcodec.so.58 "$root/lib/libavcodec.so"; \
-    ln -sf libavdevice.so.58 "$root/lib/libavdevice.so"; \
-    ln -sf libavfilter.so.7 "$root/lib/libavfilter.so"; \
-    ln -sf libavformat.so.58 "$root/lib/libavformat.so"; \
-    ln -sf libavutil.so.56 "$root/lib/libavutil.so"; \
-    ln -sf libswresample.so.3 "$root/lib/libswresample.so"; \
-    ln -sf libswscale.so.5 "$root/lib/libswscale.so"; \
+    for s in libavcodec.so.58 libavdevice.so.58 libavfilter.so.7 libavformat.so.58 libavutil.so.56 libswresample.so.3 libswscale.so.5; do \
+        ln -sf "$s" "$root/lib/${s%%.so*}.so"; \
+    done; \
+    rm -rf /tmp/ffmpeg; \
     test -f "$root/include/libavcodec/avcodec.h"; \
     test -f "$root/lib/libavcodec.so.58"; \
     echo "--- /opt/ffmpeg-debian11/lib ---"; ls -la "$root/lib"
@@ -364,20 +406,30 @@ ENV COSMO_ROCKCHIP_BUILDER_LOCK=/opt/cosmo/rockchip-builder-lock.json \
 # Record frozen tool identities for evidence/reproducibility.
 RUN set -eux; \
     python3 - <<'PYEOF'
-import json, subprocess
+import json, re, subprocess
 
 def out(cmd):
     return subprocess.run(cmd, shell=True, capture_output=True, text=True).stdout.strip()
 
-ffmpeg_ver = out("dpkg-query -W -f='${Version}' libavcodec58:arm64")
+# FFmpeg is self-built LGPL 4.4.6; report the pinned release identity and the
+# LGPL build flags instead of a Debian binary-package version.
+ffmpeg_root = "/opt/ffmpeg-debian11"
+ffmpeg_ident = out(
+    f"grep -a -o 'libavcodec license: LGPL version 2.1 or later' "
+    f"{ffmpeg_root}/lib/libavcodec.so.58 | head -1"
+)
 record = {
     "base_image": "debian:bullseye@sha256:99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704ebc3ead2015675",
     "build_mode": "from-scratch",
     "media_runtime_profile": "mpp-1.1.0-rga-1.10.6-bullseye-v1",
     "rknn_runtime_sha256": "d31fc19c85b85f6091b2bd0f6af9d962d5264a4e410bfb536402ec92bac738e8",
     "rknn_include_header": "/opt/rknn/include/rknn_api.h",
-    "ffmpeg_root": "/opt/ffmpeg-debian11",
-    "ffmpeg_deb_version_arm64": ffmpeg_ver,
+    "ffmpeg_root": ffmpeg_root,
+    "ffmpeg_version": "4.4.6",
+    "ffmpeg_source": "https://ffmpeg.org/releases/ffmpeg-4.4.6.tar.xz",
+    "ffmpeg_sha256": "2290461f467c08ab801731ed412d8e724a5511d6c33173654bd9c1d2e25d0617",
+    "ffmpeg_license_build": "lgpl",
+    "ffmpeg_license_identity": ffmpeg_ident,
     "cmake": out("cmake --version | head -1"),
     "cross_gcc": out("aarch64-linux-gnu-gcc --version | head -1"),
     "node": out("node --version"),
