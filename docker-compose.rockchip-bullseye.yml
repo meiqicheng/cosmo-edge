@@ -4,7 +4,8 @@
 # Consumes the locally built Dockerfile.rockchip-bullseye image (digest-frozen
 # debian:bullseye base, everything assembled from scratch on glibc 2.31:
 # RKNN 2.3.2 downloaded from rknn-toolkit2, Node 20 from npmmirror, Rust via
-# rsproxy, Debian 11 arm64 FFmpeg assembled at /opt/ffmpeg-debian11,
+# rsproxy, FFmpeg 4.4.6 LGPL cross-compiled from the official source release
+# at /opt/ffmpeg-debian11 (--disable-gpl; no Debian GPL ffmpeg binaries),
 # MPP 1.1.0 + RGA 1.10.6 cross-built once and fanned out to every chip media
 # root) and runs the standard rockchip packaging flow, selecting the target
 # chip via COSMO_TARGET_CHIP:

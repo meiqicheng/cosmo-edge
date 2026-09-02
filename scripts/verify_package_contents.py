@@ -102,16 +102,11 @@ EXEMPT_ELF_SHA256: dict[str, str] = {
     # material. Measured from the rk3588 bullseye package build.
     "lib/libgnutls.so.30": "45484907186edbc15f68ea8ac0e3985ef79f368ef4b275d010e5e88a8eda6612",
 }
-# FFmpeg runtime license waiver (rk3588 bullseye, PRE-EXISTING KNOWN ISSUE).
-# The packaged lib/libavcodec.so.58 is the Debian 11 arm64 official build
-# (libavcodec58:arm64) configured with --enable-libx264, so its embedded
-# identity string is "libavcodec license: GPL version 2 or later" while the
-# shipped COPYING.LGPLv2.1 text claims LGPL. This is a genuine compliance
-# mismatch that predates the classify-pipeline fix and is tracked as a
-# separate known issue. The waiver matches ONLY the frozen binary below AND
-# requires the GPL identity string, so any future FFmpeg change fails the
-# check again instead of silently inheriting the waiver.
-FFMPEG_LGPL_WAIVER_SHA256 = "71cd1f767c8a67557b7d88155667df9fad6542103da3e9f67819b8936388afe5"
+# FFmpeg runtime license check (P1-6). The packaged libavcodec must identify
+# as LGPL-2.1-or-later to match the shipped COPYING.LGPLv2.1. The rk3588
+# bullseye builder cross-compiles FFmpeg 4.4.6 from source with --disable-gpl
+# (no libx264 or other GPL-only components), so no binary-specific waiver is
+# allowed: a GPL-identified FFmpeg fails here instead of being exempted.
 FORBIDDEN_BASENAMES = {
     "commissioning-ed25519.seed",
     "device-certificate.bin",
@@ -184,7 +179,7 @@ def verify_runtime_license_bundle(
     contents: dict[str, bytes], target_chip: str | None
 ) -> None:
     required = set(REQUIRED_LICENSE_FILES)
-    if target_chip in ("rk3576", "rv1126b"):
+    if target_chip in ("rk3576", "rv1126b", "rk3588"):
         required.update(RKNN_LICENSE_FILES)
     if MODEL_GUARD_RUNTIME_FILE in contents:
         required.add(MODEL_GUARD_TERMS_FILE)
@@ -211,25 +206,18 @@ def verify_runtime_license_bundle(
         raise PackageAuditError("package root and shared NOTICE copies differ")
 
     ffmpeg_license_identity = b"libavcodec license: LGPL version 2.1 or later"
-    ffmpeg_gpl_identity = b"libavcodec license: GPL version 2 or later"
     ffmpeg_libraries = [
         data
         for name, data in contents.items()
         if name.startswith("lib/libavcodec.so.")
     ]
-    ffmpeg_waived = any(
-        content_sha256(data) == FFMPEG_LGPL_WAIVER_SHA256
-        and ffmpeg_gpl_identity in data
-        for data in ffmpeg_libraries
-    )
-    if not ffmpeg_libraries or (
-        not any(ffmpeg_license_identity in data for data in ffmpeg_libraries)
-        and not ffmpeg_waived
+    if not ffmpeg_libraries or not any(
+        ffmpeg_license_identity in data for data in ffmpeg_libraries
     ):
         raise PackageAuditError(
             "packaged FFmpeg runtime is not identified as LGPL-2.1-or-later"
         )
-    if target_chip in ("rk3576", "rv1126b"):
+    if target_chip in ("rk3576", "rv1126b", "rk3588"):
         rknn_terms = contents[
             "share/licenses/third-party/rknn-runtime/LICENSE"
         ]
@@ -277,9 +265,9 @@ def verify_model_bundle(
         if name.startswith("resource/models/") and name.endswith("/model.rknn")
     }
     if bundle_name not in contents:
-        if target_chip == "rv1126b" and package_rknn_models:
+        if target_chip in ("rv1126b", "rk3588") and package_rknn_models:
             raise PackageAuditError(
-                "RV1126B models require a packaged model-bundle manifest"
+                f"{target_chip.upper()} models require a packaged model-bundle manifest"
             )
         return
 
