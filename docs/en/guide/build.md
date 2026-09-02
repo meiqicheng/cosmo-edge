@@ -237,6 +237,71 @@ directory and receive the same chip, size, and hash audit. `preserve` still
 validates code, toolchain, and package structure only and is not model/device
 acceptance. `docker-compose.rk3576.yml` remains a thin compatibility entry.
 
+### Debian 11 (bullseye) build flow and lock-file switching
+
+Production Rockchip devices run Debian 11 (glibc 2.31). Packages built with the
+Ubuntu 22.04 (glibc 2.35) image above cannot start on the device (missing
+`GLIBC_2.34/2.35`), so the repository ships a second Debian 11 build flow that
+assembles the toolchain and third-party dependencies from scratch:
+
+```bash
+# Flow 1 (Ubuntu 22.04 / glibc 2.35, default lock)
+./scripts/docker-compose.sh -f docker-compose.rockchip.yml build
+COSMO_TARGET_CHIP=rk3576 ./scripts/docker-compose.sh \
+  -f docker-compose.rockchip.yml run --rm cosmo-rockchip-package
+
+# Flow 2 (Debian 11 / glibc 2.31, bullseye lock; RK3588 is only on this flow)
+docker compose -f docker-compose.rockchip-bullseye.yml build
+COSMO_TARGET_CHIP=rk3588 docker compose -f docker-compose.rockchip-bullseye.yml \
+  run --rm cosmo-rockchip-bullseye-package
+sha256sum build_output/rk3588/cosmo-*.tar.gz
+```
+
+Differences and switching:
+
+- The lock files are isolated: flow 1 uses
+  `config/rockchip-build/builder-lock.json` (rk3576=legacy
+  `rk3576-build-env-v1`, rv1126b=repro `mpp-1.1.0-rga-1.10.6-repro-v1`); flow 2
+  uses `config/rockchip-build/builder-lock.bullseye.json` (three chips share the
+  bullseye media profile `mpp-1.1.0-rga-1.10.6-bullseye-v1`).
+  `scripts/build_rockchip_package.sh` selects the lock with the
+  `COSMO_BUILDER_LOCK_FILE` environment variable, and the image-side lock must
+  match the source checkout byte-for-byte or the build is rejected.
+- The compose files pin their own `COSMO_PLATFORM_PROFILE_DIR` and
+  `COSMO_BUILDER_LOCK_FILE` (the bullseye container reads the image-local
+  bullseye platform profiles, not the checked-in Ubuntu legacy ones).
+- The bullseye image is fully from-scratch: the debian:bullseye base is pinned
+  by digest, the arm64 cross toolchain/Node/Rust/RKNN are fetched under fixed
+  digests or SHA-256 checks, and MPP/RGA are cross-built from pinned git
+  commits and fanned out to the RK3588/RK3576/RV1126B chip roots. No
+  developer-machine leftovers such as a `.rk3588-build-cache` are used.
+- FFmpeg: the bullseye flow cross-compiles **FFmpeg 4.4.6 (LGPL)** from the
+  official source release with `--disable-gpl` (no libx264 or other GPL-only
+  components; the same version as the x86_64/Sophon prebuild roots, soname 58
+  unchanged). The packaged `libavcodec` embeds the
+  "LGPL version 2.1 or later" identity and matches the shipped
+  `COPYING.LGPLv2.1`, so no binary-level waiver is needed. Do not use the
+  Debian FFmpeg binary packages (their build enables GPL components and would
+  make the packaged runtime GPL while the license text claims LGPL).
+- RKLLM 1.3.0 is packaged only for `rkllm_required=true` targets (flow 1: only
+  RK3576; flow 2: includes RK3588) and carries only its
+  `share/licenses/rkllm/LICENSE`.
+
+Common failures:
+
+- `builder image lock does not match this source checkout`: the image-side lock
+  differs from the checkout. Use `docker-compose.rockchip-bullseye.yml` for the
+  bullseye lock instead of mixing in an Ubuntu image.
+- glibc gate failures (`GLIBC_2.34` and up): the package mixed in Ubuntu-built
+  artifacts; rebuild with the bullseye image and bullseye lock.
+- FFmpeg verification failure `not identified as LGPL-2.1-or-later`: the
+  image FFmpeg is not the self-built LGPL build; rebuild the bullseye image.
+
+Package verification and model provenance are covered by
+`test/test_package_profile.py` (the spec referenced by `model.rknn.build.json`
+must exist with a byte-identical SHA-256); see the next section for the
+device-evidence boundary.
+
 See [RK3576 / RKNN Integration](./rk3576-rknn-development.md) for the supported
 release profile, runtime selection, model contract, and device-evidence boundary.
 

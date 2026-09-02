@@ -218,7 +218,61 @@ RV1126B 的 `include` 构建从平台 profile 的 artifact manifest 自动生成
 大小和哈希审计。`preserve` 仍可只验证代码、工具链和包结构，但不能替代带模型的设备验收。
 旧 `docker-compose.rk3576.yml` 仅作为薄兼容入口保留。
 
-稳定版支持范围、运行时选择、模型约定和板端证据边界见
+### Debian 11（bullseye）构建流与锁文件切换
+
+生产 Rockchip 设备运行 Debian 11（glibc 2.31）。上面 Ubuntu 22.04（glibc 2.35）
+镜像构建的包无法在设备启动（缺少 `GLIBC_2.34/2.35`），因此仓库提供第二条
+Debian 11 构建流，从零（from-scratch）组装工具链与三方依赖：
+
+```bash
+# 方案一（Ubuntu 22.04 / glibc 2.35，默认锁）
+./scripts/docker-compose.sh -f docker-compose.rockchip.yml build
+COSMO_TARGET_CHIP=rk3576 ./scripts/docker-compose.sh \
+  -f docker-compose.rockchip.yml run --rm cosmo-rockchip-package
+
+# 方案二（Debian 11 / glibc 2.31，bullseye 锁；RK3588 仅此流可用）
+docker compose -f docker-compose.rockchip-bullseye.yml build
+COSMO_TARGET_CHIP=rk3588 docker compose -f docker-compose.rockchip-bullseye.yml \
+  run --rm cosmo-rockchip-bullseye-package
+sha256sum build_output/rk3588/cosmo-*.tar.gz
+```
+
+两条流的差异与切换：
+
+- 锁文件相互隔离：方案一使用 `config/rockchip-build/builder-lock.json`
+  （rk3576=legacy `rk3576-build-env-v1`，rv1126b=repro `mpp-1.1.0-rga-1.10.6-repro-v1`），
+  方案二使用 `config/rockchip-build/builder-lock.bullseye.json`
+  （三芯片共享 bullseye 媒体 profile `mpp-1.1.0-rga-1.10.6-bullseye-v1`）。
+  `scripts/build_rockchip_package.sh` 通过环境变量 `COSMO_BUILDER_LOCK_FILE`
+  选择锁文件，镜像内的锁必须与源码 checkout 逐字节一致，否则拒绝构建。
+- compose 分别固定各自的 `COSMO_PLATFORM_PROFILE_DIR` 与 `COSMO_BUILDER_LOCK_FILE`
+  （bullseye 容器使用镜像内的 bullseye platform profile，不使用仓库默认的
+  Ubuntu legacy profile）。
+- bullseye 镜像完全 from-scratch：debian:bullseye 基镜像按 digest 冻结，
+  arm64 交叉工具链、Node/Rust/RKNN 均按固定 digest 或 SHA-256 校验拉取，
+  MPP/RGA 从 git 锁定 commit 交叉构建并 fan out 到 RK3588/RK3576/RV1126B 三份
+  chip root，不依赖开发者机器上的 `.rk3588-build-cache` 之类的遗留文件。
+- FFmpeg：bullseye 流从官方源码交叉编译 **FFmpeg 4.4.6（LGPL）**（与
+  x86_64/Sophon prebuild 完全同版本，soname 58 不变），configure
+  使用 `--disable-gpl`，不启用 libx264 等 GPL 组件；打包的 `libavcodec`
+  内嵌 "LGPL version 2.1 or later" 身份，与随包 `COPYING.LGPLv2.1` 一致，
+  无需任何二进制级豁免。不要用 Debian 官方 ffmpeg 二进制包（其构建启用
+  GPL 组件，会导致许可证不匹配）。
+- RKLLM 1.3.0 只对 `rkllm_required=true` 的目标打包（方案一仅 RK3576，
+  方案二含 RK3588），并只携带其 `share/licenses/rkllm/LICENSE`。
+
+常见失败：
+
+- `builder image lock does not match this source checkout`：容器内的 lock 与
+  checkout 不一致。方案二请使用 `docker-compose.rockchip-bullseye.yml`
+  （固定 bullseye lock），不要混用 Ubuntu 镜像。
+- glibc gate 失败（`GLIBC_2.34` 之类）：包内混入了 Ubuntu 构建的产物；
+  确认使用 bullseye 镜像与 bullseye lock 重建。
+- FFmpeg 校验失败 `not identified as LGPL-2.1-or-later`：镜像内 FFmpeg 来源
+  不是自建 LGPL 构建；重建 bullseye 镜像即可。
+
+包校验与模型 provenance 见 `test/test_package_profile.py`
+（`model.rknn.build.json` 引用的 spec 必须存在且哈希逐字节一致），板端证据边界见
 [RK3576 / RKNN 集成指南](./rk3576-rknn-development.md)。
 
 ## CPU 测试构建
