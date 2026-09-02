@@ -46,7 +46,16 @@ case "${PLTFORM_TYPE}" in
         PLTFORM_TYPE="x86_64-cpu"
         ;;
     aarch64|arm64)
-        PLTFORM_TYPE="sophon"
+        # aarch64 is shared by Sophon, Rockchip and AXERA boards; prefer the
+        # packaged target-chip record when present so the log names the real
+        # platform. An unknown aarch64 board still falls back to "sophon",
+        # which matches the historic default for this deployment layout.
+        target_chip_record="${INSTALLPATH}/share/cosmo/target-chip.txt"
+        if [ -r "${target_chip_record}" ] && grep -q '^ax650n$' "${target_chip_record}"; then
+            PLTFORM_TYPE="axera"
+        else
+            PLTFORM_TYPE="sophon"
+        fi
         ;;
 esac
 cosmo_log "$logTag" "Install path=${INSTALLPATH}, platform=${PLTFORM_TYPE}" "$logFile"
@@ -114,8 +123,12 @@ fi
 mkdir -p "${COSMO_DATA_DIR}/audioMng"
 ln -sf "${INSTALLPATH}/files/Audio/beep.ogg" "${COSMO_DATA_DIR}/audioMng/beep.ogg"
 
-if [ ! -f /etc/netplan/01-failsafe.yaml.bak ] || ! cmp -s "${INSTALLPATH}/scripts/01-failsafe.yaml.bak" /etc/netplan/01-failsafe.yaml.bak; then
-    cp -f "${INSTALLPATH}/scripts/01-failsafe.yaml.bak" /etc/netplan/
+# Board images differ: some ship /etc/netplan, others (e.g. AX650N Ubuntu)
+# do not. The failsafe backup is best-effort and must not block startup.
+if [ -d /etc/netplan ] || mkdir -p /etc/netplan 2>/dev/null; then
+    if [ ! -f /etc/netplan/01-failsafe.yaml.bak ] || ! cmp -s "${INSTALLPATH}/scripts/01-failsafe.yaml.bak" /etc/netplan/01-failsafe.yaml.bak; then
+        cp -f "${INSTALLPATH}/scripts/01-failsafe.yaml.bak" /etc/netplan/
+    fi
 fi
 
 cd "${BINPATH}" || exit 1
