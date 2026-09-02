@@ -34,7 +34,7 @@
     "note": "x86 upstream source; RKNN input derived via extract_yolov8_heads.py (6-head) + opset 22->19 downgrade (input_sha256 in spec records exact RKNN input)"
   },
   "spec": {
-    "path": "config/rknn/models/yolov8_rk3588.json",
-    "sha256": "073f1e344b256bd697060f86582f40c9a0f223763f72fc8bf5ed58fb916cd5fe"
+    "path": "config/rknn/models/yolov8.json",
+    "sha256": "e437f7202ce79a253a60cc742aa41efaebacea04166dd65c840dc15b1bb060d9"
   }
 }
