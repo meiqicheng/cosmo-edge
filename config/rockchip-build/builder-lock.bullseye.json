@@ -17,6 +17,7 @@
       "media_runtime_profile": "mpp-1.1.0-rga-1.10.6-bullseye-v1",
       "media_root": "/opt/rockchip-media/rk3576",
       "rkllm_required": true,
+      "glibc_max": "2.31",
       "required_package_paths": [
         "lib/librkllmrt.so",
         "share/licenses/rkllm/LICENSE"
@@ -27,6 +28,7 @@
       "media_runtime_profile": "mpp-1.1.0-rga-1.10.6-bullseye-v1",
       "media_root": "/opt/rockchip-media/rv1126b",
       "rkllm_required": false,
+      "glibc_max": "2.31",
       "required_package_paths": [
         "share/cosmo/platform/rockchip-media-manifest.json",
         "share/licenses/rockchip-media/mpp/Apache-2.0",
