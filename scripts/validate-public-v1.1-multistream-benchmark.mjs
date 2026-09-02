@@ -34,6 +34,12 @@ if (!fs.existsSync(root)) {
 const manifest = readJsonIfPresent(root, 'release-manifest.json');
 const platformDefinitions = validateManifest(manifest);
 const canonicalPlatforms = validateCanonicalCases(manifest, platformDefinitions);
+const canonicalCaseCount = canonicalPlatforms
+  .filter((item) => item.scope === 'release-platform')
+  .reduce((count, item) => count + (item.cases?.length ?? 0), 0);
+const experimentalPlatforms = canonicalPlatforms.filter((item) => item.scope === 'additional-experimental-platform');
+const experimentalCaseCount = experimentalPlatforms
+  .reduce((count, item) => count + (item.cases?.length ?? 0), 0);
 const vlm = validateVlmEvidence(manifest, platformDefinitions);
 const dualCv72Hour = validateDualCv72HourEvidence(manifest, platformDefinitions, canonicalPlatforms);
 if (archivePath) validateArchivedEvidence(archivePath, manifest, canonicalPlatforms);
@@ -78,9 +84,10 @@ if (errors.length) {
   process.exit(1);
 }
 
-const totalCases = canonicalPlatforms.reduce((count, item) => count + item.cases.length, 0);
 console.log(
-  `Validation passed: ${platformDefinitions.length} manifest-defined platforms, ${totalCases} canonical cases, ` +
+  `Validation passed: ${platformDefinitions.length} manifest-defined platforms ` +
+  `(${platformDefinitions.filter((item) => item.scope === 'release-platform').length} release, ${experimentalPlatforms.length} additional-experimental), ` +
+  `${canonicalCaseCount} canonical cases, ${experimentalCaseCount} experimental cases, ` +
   `${generation.reportCount} generated bilingual reports, validated VLM performance, controlled dual-CV 72-hour evidence, ` +
   'relative links, public scrub, and source/generated checksums verified.',
 );
@@ -177,12 +184,28 @@ function validateManifest(value) {
     if (definition?.results !== `results/${definition.id}/cases.json`) fail(`${label} results reference must point to its canonical case file`);
   }
 
-  const expectedCaseFiles = definitions.map((item) => `results/${item.id}/cases.json`).sort();
+  // Canonical (release-platform) case inventory is the frozen 49-case set.
+  // Additional experimental platforms are declared separately so they can be
+  // structurally validated without polluting the canonical release evidence
+  // (P1-7: RK3588 stays additional-experimental-platform).
+  const releaseDefinitions = definitions.filter((item) => item?.scope === 'release-platform');
+  const experimentalDefinitions = definitions.filter((item) => item?.scope === 'additional-experimental-platform');
+  const expectedCaseFiles = releaseDefinitions.map((item) => `results/${item.id}/cases.json`).sort();
   const declaredCaseFiles = Array.isArray(value.evidence?.canonicalSmallModelCases)
     ? [...value.evidence.canonicalSmallModelCases].sort()
     : [];
   if (!sameArray(expectedCaseFiles, declaredCaseFiles)) {
-    fail('manifest evidence.canonicalSmallModelCases must exactly match the manifest platform inventory');
+    fail('manifest evidence.canonicalSmallModelCases must exactly match the release-platform case inventory');
+  }
+  const expectedExperimentalFiles = experimentalDefinitions.map((item) => `results/${item.id}/cases.json`).sort();
+  const declaredExperimentalFiles = Array.isArray(value.evidence?.experimentalSmallModelCases)
+    ? [...value.evidence.experimentalSmallModelCases].sort()
+    : [];
+  if (!sameArray(expectedExperimentalFiles, declaredExperimentalFiles)) {
+    fail('manifest evidence.experimentalSmallModelCases must exactly match the additional-experimental-platform case inventory');
+  }
+  if (experimentalDefinitions.length && !value.evidence?.experimentalScopeNote) {
+    fail('manifest evidence.experimentalScopeNote is required when an additional-experimental-platform is declared');
   }
   return definitions;
 }
@@ -197,7 +220,8 @@ function validateCanonicalCases(manifestValue, definitions) {
     const value = readJsonIfPresent(root, relativePath);
     if (!value) continue;
     result.push(value);
-    const label = `${definition.id} canonical cases`;
+    const experimental = definition.scope === 'additional-experimental-platform';
+    const label = experimental ? `${definition.id} experimental cases` : `${definition.id} canonical cases`;
     expectObjectKeys(value, [
       '$schema', 'schemaVersion', 'benchmark', 'platformId', 'platform', 'scope', 'evidenceDate', 'caseCount', 'gates', 'cases',
     ], label);
@@ -224,6 +248,10 @@ function validateCanonicalCases(manifestValue, definitions) {
         sourceSummaryHashes.add(benchmarkCase.sourceSummarySha256);
       }
     }
+    // Experimental platforms are validated structurally only; they are not
+    // required to reproduce the full release workload/FPS matrix or to count
+    // toward the frozen 49-case canonical total (P1-7).
+    if (experimental) continue;
     for (const workload of ['person-detector', 'no-safety-helmet-analysis']) {
       for (const fps of manifestValue?.controls?.smallModelTargetFps ?? []) {
         if (!cases.some((item) => item.workload === workload && item.targetFps === fps)) {
@@ -234,9 +262,11 @@ function validateCanonicalCases(manifestValue, definitions) {
     if (!cases.some((item) => item.workload === 'concurrent-mixed')) fail(`${label} is missing a concurrent-mixed case`);
   }
 
-  const actualCount = result.reduce((count, item) => count + (item.cases?.length ?? 0), 0);
-  if (manifestValue && actualCount !== manifestValue.evidence?.smallModelCaseCount) {
-    fail(`canonical case total ${actualCount} does not match manifest evidence.smallModelCaseCount ${manifestValue.evidence?.smallModelCaseCount}`);
+  const canonicalCount = result
+    .filter((item) => item?.scope === 'release-platform')
+    .reduce((count, item) => count + (item.cases?.length ?? 0), 0);
+  if (manifestValue && canonicalCount !== manifestValue.evidence?.smallModelCaseCount) {
+    fail(`canonical case total ${canonicalCount} does not match manifest evidence.smallModelCaseCount ${manifestValue.evidence?.smallModelCaseCount}`);
   }
   return result;
 }

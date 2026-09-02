@@ -24,13 +24,13 @@
     "version": "0.1.0",
     "role": "current publication and future-run tool; execution provenance remains attached to each evidence set",
     "nodeRequirement": ">=20",
-    "cliSha256": "3bdc34c65698d5e920eeffd6d8536ed14e8fc8bf54910d0887e53c2a5ac13c85",
-    "evaluatorSha256": "284874e838fa1a6f118105bb56770f75f7d8882e292a1d79028f6f1779963c3c",
-    "metricsSamplerSha256": "db1f753ff2810aec938f60f872cbc3fba92cc3403b0c38044ed6f79e7adc0e8d",
+    "cliSha256": "ac92b800ea00e856bccaec871b61ee76b6d1a74c575ce3750487509dd1b8994f",
+    "evaluatorSha256": "59e726f662f3d4ecba56d1d37208ab5675940d7ed46cff8fc377a777e457de21",
+    "metricsSamplerSha256": "0ce5a71f48847b89868dacc6d6ae51c426dcb3b4aa6516ec1b19ba39b8e6cbed",
     "reportWriterSha256": "538e3bb7fd1a4765bfa5e215eda1365c6add4eda9d66a3f756ab35a922c7017b",
     "vlmReadinessSha256": "8d51827dc51df9be9c47e7219db5c3768b5091e78df2bf7e2d8374a1a76a890b",
     "scenarioPackageSha256": "1779e426eeb82d230185166070192fea589a5b15bc64e74c574ef59ecf92da67",
-    "taskRunnerSha256": "43471a0a64943c41bc03386027079380f953712b11c85a041349c2c82678f2df",
+    "taskRunnerSha256": "557785c048e37295ad40721283f1834fe270632e5367d609b5b98d170822408d",
     "lockfileSha256": "8da33a2d1e27df0aac4e9ba5ec279f9d85ef7be1eb398cb555a0e3b45ca1a6a7",
     "classifierFpsOverride": "detector and classifier nodes receive the same requested FPS",
     "vlmCompletionCounter": "task-local completion queue, not shared Qwen worker batches",
@@ -62,7 +62,12 @@
     "previewLoad": false,
     "sampleIntervalSeconds": 3,
     "smallModelHoldSecondsPerStep": 30,
-    "smallModelTargetFps": [24, 10, 7, 5],
+    "smallModelTargetFps": [
+      24,
+      10,
+      7,
+      5
+    ],
     "vlmHoldSecondsPerStep": 60,
     "vlmTargetFpsPerChannel": 0.1,
     "vlmFpsGateEnabled": true,
@@ -130,6 +135,13 @@
       "environment": "environments/rv1126b.json",
       "models": "models/rv1126b.json",
       "results": "results/rv1126b/cases.json"
+    },
+    {
+      "id": "rk3588",
+      "scope": "additional-experimental-platform",
+      "environment": "environments/rk3588.json",
+      "models": "models/rk3588.json",
+      "results": "results/rk3588/cases.json"
     }
   ],
   "workloads": {
@@ -148,6 +160,10 @@
       "results/rk3576/cases.json",
       "results/rv1126b/cases.json"
     ],
+    "experimentalSmallModelCases": [
+      "results/rk3588/cases.json"
+    ],
+    "experimentalScopeNote": "RK3588 is declared as additional-experimental-platform: its environment, model, and case files are validated structurally but are not part of the canonical 49-case release evidence, the frozen report inventory, or the full evidence archive.",
     "vlm": "2026-08-24 formal three-platform validation with one executed readiness and throughput-gate protocol",
     "vlmObservations": "results/vlm-observations.json",
     "dualCv72HourObservation": "results/dual-cv-72h.json",
