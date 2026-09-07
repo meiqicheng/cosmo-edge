@@ -86,8 +86,8 @@ ExternalProject_Add(
     # jobserver to OpenSSL's recursive _build_sw invocation. Passing the epoch
     # as a make variable preserves the reproducible-build environment without
     # inserting a process wrapper that closes the jobserver file descriptors.
-    BUILD_COMMAND $(MAKE) ${OPENSSL_REPRODUCIBLE_MAKE_ARGS}
-    INSTALL_COMMAND $(MAKE) ${OPENSSL_REPRODUCIBLE_MAKE_ARGS} install_sw
+    BUILD_COMMAND $(MAKE) -j1 ${OPENSSL_REPRODUCIBLE_MAKE_ARGS}
+    INSTALL_COMMAND $(MAKE) -j1 ${OPENSSL_REPRODUCIBLE_MAKE_ARGS} install_sw
     
     UPDATE_COMMAND ""
     BUILD_ALWAYS OFF

@@ -69,7 +69,7 @@ fi
 
 MEDIA_CPU_BACKEND=ON
 MEDIA_ROCKCHIP_BACKEND=OFF
-if [ -n "${ROCKCHIP_MEDIA_ROOT_PATH}" ]; then
+if [ -n "${ROCKCHIP_MEDIA_ROOT_PATH}" ] && [ "${COSMO_FORCE_CPU_MEDIA:-OFF}" != "ON" ]; then
     python3 "${PROJECT_ROOT_PATH}/tools/rknn/media_sysroot_lock.py" verify \
         --platform-profile "${PLATFORM_PROFILE}" \
         --root "${ROCKCHIP_MEDIA_ROOT_PATH}"
@@ -158,8 +158,8 @@ cmake -S "${PROJECT_ROOT_PATH}" -B "${BUILD_DIR}" \
     -DRESOURCE_MODELS_DIR="${RESOURCE_MODELS_DIR}"
 
 ln -sf "${BUILD_DIR}/compile_commands.json" "${PROJECT_ROOT_PATH}/compile_commands.json" 2>/dev/null || true
-cmake --build "${BUILD_DIR}" --target install -j"${BUILD_JOBS}"
+cmake --build "${BUILD_DIR}" --target install -j1
 if [ "${BUILD_TESTS_FLAG}" = "ON" ]; then
-    cmake --build "${BUILD_DIR}" --target cosmo-tests -j"${BUILD_JOBS}"
+    cmake --build "${BUILD_DIR}" --target cosmo-tests -j1
 fi
 cmake --build "${BUILD_DIR}" --target package_all

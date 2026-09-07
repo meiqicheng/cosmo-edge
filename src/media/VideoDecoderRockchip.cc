@@ -293,9 +293,60 @@ namespace {
             return CopyMppFrameCpu(decoder_name, frame);
         }
 
-        // Decoder copy-out uses the CPU path. RGA-based DMA-BUF copy-out was observed to
-        // fail 100% of the time on this platform (see rk3588_rga_fix_plan.md), so we skip
-        // the RGA attempt entirely to avoid wasted RGA jobs and dmesg rga_job errors.
+        auto output = std::make_shared<VideoFrame>(static_cast<int>(width), static_cast<int>(height),
+                                                   PixelFormat::PIXEL_I420);
+        if (!output || !output->Active() || !output->GetData()) {
+            GetPreviewPipelineMetrics().RecordMppRgaCopyOut(false);
+            return nullptr;
+        }
+
+        if (mpp_buffer_sync_ro_begin(buffer) != MPP_OK) {
+            GetPreviewPipelineMetrics().RecordMppRgaCopyOut(false);
+            GetPreviewPipelineMetrics().RecordMppCpuCopyOutFallback();
+            return CopyMppFrameCpu(decoder_name, frame);
+        }
+        struct ReadSyncGuard {
+            MppBuffer buffer;
+            ~ReadSyncGuard() { mpp_buffer_sync_ro_end(buffer); }
+        } sync_guard{buffer};
+
+        const auto rga_started = std::chrono::steady_clock::now();
+        ScopedRgaBufferHandle target_handle(output->GetData(), output->GetSize());
+        const int source_fd = mpp_buffer_get_fd(buffer);
+        IM_STATUS status = IM_STATUS_OUT_OF_MEMORY;
+        if (source_fd >= 0 && target_handle) {
+            // Pass the decoder-owned dma-buf directly so librga retains the
+            // MPP plane/stride metadata on RK3588.
+            const auto source = wrapbuffer_fd_t(source_fd, static_cast<int>(width),
+                                                static_cast<int>(height), static_cast<int>(horizontal_stride),
+                                                static_cast<int>(vertical_stride), source_format);
+            const auto target = wrapbuffer_handle_t(target_handle.Get(), static_cast<int>(width),
+                                                    static_cast<int>(height), static_cast<int>(width),
+                                                    static_cast<int>(height), RK_FORMAT_YCbCr_420_P);
+            std::lock_guard<std::mutex> rga_lock(media::RgaGlobalLock());
+            if (source_format == RK_FORMAT_YCbCr_420_P) {
+                const im_rect rect{0, 0, static_cast<int>(width), static_cast<int>(height)};
+                const im_rect empty_rect{};
+                const rga_buffer_t empty_buffer{};
+                status = improcess(source, target, empty_buffer, rect, rect, empty_rect, IM_SYNC);
+            } else {
+                status = imcvtcolor_t(source, target, source_format, RK_FORMAT_YCbCr_420_P,
+                                      IM_COLOR_SPACE_DEFAULT, 1);
+            }
+        }
+        const bool rga_success = RockchipRgaSucceeded(status);
+        GetPreviewPipelineMetrics().RecordRgaOperation(rga_success, ElapsedNanoseconds(rga_started));
+        GetPreviewPipelineMetrics().RecordMppRgaCopyOut(rga_success);
+        if (rga_success) {
+            return output;
+        }
+
+        static std::atomic_flag fallback_logged = ATOMIC_FLAG_INIT;
+        if (!fallback_logged.test_and_set(std::memory_order_relaxed)) {
+            LOG_WARN("{} RGA DMA-BUF materialization failed with status {} ({}); using CPU copy-out",
+                     decoder_name, status, imStrError_t(status));
+        }
+        GetPreviewPipelineMetrics().RecordMppCpuCopyOutFallback();
         return CopyMppFrameCpu(decoder_name, frame);
     }
 

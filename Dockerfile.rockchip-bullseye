@@ -109,6 +109,7 @@ RUN sed -i 's|http://deb.debian.org/debian-security|http://mirrors.tuna.tsinghua
     && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg wget git make pkg-config \
         autoconf automake libtool bison flex nasm yasm \
+        xz-utils \
         python3 python3-pip patch file \
         binutils gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
         binutils-aarch64-linux-gnu libc6-dev-arm64-cross \
@@ -120,21 +121,30 @@ RUN sed -i 's|http://deb.debian.org/debian-security|http://mirrors.tuna.tsinghua
 # CMake: bullseye's 3.18.4 is too old for cryptopp (needs >= 3.20). Install a
 # newer CMake via pip (lands in /usr/local/bin, ahead of /usr/bin in PATH).
 RUN python3 -m pip install --no-cache-dir cmake==3.22.1 \
-    && cmake --version | head -1
+    && cmake --version | head -1 \
+    && rm -rf /root/.cache/pip /tmp/pip-*
 
 # Node.js 20 for the Vue3/Vite web frontend build (bullseye's node 12 is too
 # old for Vite 6). Downloaded from the npmmirror mirror (nodejs.org is flaky
 # on this network) and verified against the official SHASUMS256.txt. No
 # dependency on the legacy rk3576 build image.
+#
+# TEMP-LOCAL-RESILIENCE: retry flags + download name aligned with SHASUMS
+# entry (was node.tar.xz vs node-<ver>-linux-x64.tar.xz mismatch). Revert.
 RUN set -eux; \
-    curl -fsSL -o /tmp/node.tar.xz \
+    curl -fSL --retry 12 --retry-delay 5 --retry-all-errors \
+         --connect-timeout 30 --max-time 900 --continue-at - \
+         -C - -o /root/node-${NODE_VERSION}-linux-x64.tar.xz \
       "https://npmmirror.com/mirrors/node/${NODE_VERSION}/node-${NODE_VERSION}-linux-x64.tar.xz"; \
-    curl -fsSL "https://npmmirror.com/mirrors/node/${NODE_VERSION}/SHASUMS256.txt" \
-      | grep -F "node-${NODE_VERSION}-linux-x64.tar.xz" > /tmp/node.sha256; \
-    (cd /tmp && sha256sum -c node.sha256); \
+    test -s /root/node-${NODE_VERSION}-linux-x64.tar.xz; \
+    curl -fSL --retry 12 --retry-delay 5 --retry-all-errors \
+         --connect-timeout 30 --max-time 120 \
+         "https://npmmirror.com/mirrors/node/${NODE_VERSION}/SHASUMS256.txt" \
+      | grep -F "node-${NODE_VERSION}-linux-x64.tar.xz" > /root/node.sha256; \
+    (cd /root && sha256sum -c node.sha256); \
     mkdir -p /usr/local/node; \
-    tar -xJf /tmp/node.tar.xz -C /usr/local/node --strip-components=1; \
-    rm -f /tmp/node.tar.xz /tmp/node.sha256
+    tar -xJf /root/node-${NODE_VERSION}-linux-x64.tar.xz -C /usr/local/node --strip-components=1; \
+    rm -f /root/node-${NODE_VERSION}-linux-x64.tar.xz /root/node.sha256
 ENV NODE_HOME=/usr/local/node \
     PATH=/usr/local/node/bin:$PATH
 RUN node --version && npm --version
@@ -142,20 +152,35 @@ RUN node --version && npm --version
 # Rust toolchain for tokenizers-c build. Installed from scratch with rustup
 # via the rsproxy.cn mirror (static.rust-lang.org is flaky on this network).
 # Pinned to the same toolchain version the legacy image shipped (1.95.0).
+# TEMP-LOCAL-RESILIENCE: retry flags added locally. Revert before commit.
 RUN set -eux; \
-    curl -fsSL -o /tmp/rustup-init \
+    curl -fSL --retry 12 --retry-delay 5 --retry-all-errors \
+         --connect-timeout 30 --max-time 300 \
+         -o /tmp/rustup-init \
       "https://rsproxy.cn/rustup/dist/x86_64-unknown-linux-gnu/rustup-init"; \
+    test -s /tmp/rustup-init; \
     chmod +x /tmp/rustup-init; \
     CARGO_HOME=/usr/local/cargo RUSTUP_HOME=/usr/local/rustup \
     RUSTUP_DIST_SERVER=https://rsproxy.cn RUSTUP_UPDATE_ROOT=https://rsproxy.cn/rustup \
+    RUSTUP_MAX_RETRIES=12 \
       /tmp/rustup-init -y --no-modify-path --profile minimal \
       --default-toolchain "${RUST_VERSION}" \
-      --target x86_64-unknown-linux-gnu; \
+      --target x86_64-unknown-linux-gnu \
+      --target aarch64-unknown-linux-gnu; \
     rm -f /tmp/rustup-init
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
 RUN rustc --version && cargo --version
+
+# Rust is required at package-build time, but rustup downloads and registry
+# metadata are not. Keep the compiler/stdlib while removing transient caches
+# and documentation from the final builder layer.
+RUN rm -rf /usr/local/cargo/registry /usr/local/cargo/git /root/.cargo/registry \
+           /root/.cargo/git /root/.cache \
+           /usr/local/rustup/toolchains/*/share/doc \
+           /usr/local/rustup/toolchains/*/share/man \
+           /usr/local/rustup/toolchains/*/share/info
 
 # Step 4: RKNN Runtime 2.3.2 downloaded from the pinned rknn-toolkit2 commit
 # (raw.githubusercontent.com; the same source the legacy image's copy came
@@ -164,9 +189,13 @@ RUN rustc --version && cargo --version
 # config/rknn/toolchain-lock.json (runtime.librknnrt_sha256 / rknn_api_header_sha256).
 RUN set -eux; \
     mkdir -p /opt/rknn/include /opt/rknn/lib; \
-    curl -fsSL -o /opt/rknn/lib/librknnrt.so \
+    curl -fSL --retry 12 --retry-delay 5 --retry-all-errors \
+         --connect-timeout 30 --max-time 300 \
+         -o /opt/rknn/lib/librknnrt.so \
       "https://raw.githubusercontent.com/airockchip/rknn-toolkit2/${RKNN_COMMIT}/rknpu2/runtime/Linux/librknn_api/aarch64/librknnrt.so"; \
-    curl -fsSL -o /opt/rknn/include/rknn_api.h \
+    curl -fSL --retry 12 --retry-delay 5 --retry-all-errors \
+         --connect-timeout 30 --max-time 120 \
+         -o /opt/rknn/include/rknn_api.h \
       "https://raw.githubusercontent.com/airockchip/rknn-toolkit2/${RKNN_COMMIT}/rknpu2/runtime/Linux/librknn_api/include/rknn_api.h"; \
     echo "d31fc19c85b85f6091b2bd0f6af9d962d5264a4e410bfb536402ec92bac738e8  /opt/rknn/lib/librknnrt.so" | sha256sum -c -; \
     echo "c48e11a6f41b451a5fd1e4ad774ea60252d3d94f78bee9b21ea3d21b21deba9a  /opt/rknn/include/rknn_api.h" | sha256sum -c -
@@ -189,8 +218,11 @@ RUN set -eux; \
 # (the device is Debian 11 bullseye, same distro release as this build base,
 # so its own copies are ABI-compatible).
 RUN set -eux; \
-    curl -fsSL -o /tmp/ffmpeg.tar.xz \
+    curl -fSL --retry 12 --retry-delay 5 --retry-all-errors \
+         --connect-timeout 30 --max-time 1800 --continue-at - \
+         -C - -o /tmp/ffmpeg.tar.xz \
       "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz"; \
+    test -s /tmp/ffmpeg.tar.xz; \
     echo "${FFMPEG_TARBALL_SHA256}  /tmp/ffmpeg.tar.xz" | sha256sum -c -; \
     mkdir -p /tmp/ffmpeg; \
     tar -xJf /tmp/ffmpeg.tar.xz -C /tmp/ffmpeg --strip-components=1; \
@@ -312,7 +344,8 @@ RUN set -eux; \
     cp /tmp/src/librga/COPYING "$root/share/licenses/rockchip-media/librga/COPYING"; \
     test -s "$root/share/licenses/rockchip-media/librga/COPYING"; \
     ls -la "$root/lib"; \
-    git -C /tmp/src/mpp show -s --format=%ct HEAD > /opt/rockchip-media/mpp-source-date-epoch
+    git -C /tmp/src/mpp show -s --format=%ct HEAD > /opt/rockchip-media/mpp-source-date-epoch; \
+    rm -rf /tmp/src
 
 # Step 7: fan out the shared media to each chip root and verify against the
 # chip platform profile (shared runtime profile "mpp-1.1.0-rga-1.10.6-bullseye-v1",

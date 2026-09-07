@@ -113,7 +113,7 @@ else
     rkllm_root="${rknn_root}"
 fi
 
-rm -rf "${PROJECT_ROOT_PATH}/build_rknn"
+: 
 # env (not a ${var:+ASSIGN=val} command prefix): word expansion there does
 # not re-parse into an assignment, so the whole token becomes the command name.
 env COSMO_PACKAGE_MODELS="${package_models}" \
