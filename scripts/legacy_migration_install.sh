@@ -130,6 +130,7 @@ validate_target_storage() {
         fail "target data root must be a directory"
 
     if [ -z "${COSMO_MIGRATION_TEST_ROOT:-}" ] &&
+       [ "${COSMO_ALLOW_UNMOUNTED_USERDATA:-0}" != 1 ] &&
        [ "$COSMO_PACKAGE_DATA_DIR" = /userdata/cwaiuserdata ]; then
         [ -d /userdata ] || fail "/userdata is unavailable for this Rockchip package"
         [ -r /proc/mounts ] || fail "cannot verify the /userdata mount"
@@ -177,6 +178,13 @@ assess_data_root_migration() {
             return 0
         fi
         if [ "$legacy_has_persistent_state" -eq 1 ]; then
+            legacy_realpath="$(readlink -f "$legacy_data_root" 2>/dev/null || true)"
+            target_realpath="$(readlink -f "$target_data_root" 2>/dev/null || true)"
+            if [ "${COSMO_ALLOW_UNMOUNTED_USERDATA:-0}" = 1 ] &&
+               [ "$legacy_realpath" = "$target_realpath" ]; then
+                log "Test mode: legacy and target data roots resolve to the same directory; keeping it authoritative"
+                return 0
+            fi
             fail "both legacy and target data roots contain persistent state; refusing an ambiguous merge"
         fi
         log "Only ${COSMO_PACKAGE_DATA_DIR} contains persistent state; keeping it authoritative"

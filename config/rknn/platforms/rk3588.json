@@ -21,8 +21,10 @@
   "packaging": {
     "directory_token": "RK3588",
     "resource_template_directory": "data/resource/aiboxresource_rk3588",
-    "resource_overlay_directory": "data/resource/aiboxresource_rk3588",
-    "legacy_models_directory": "data/resource/aiboxresource_rk3588/models"
+    "resource_overlay_directory": "output/platform-artifacts/rk3588/resource-overlay",
+    "resource_manifest_required": true,
+    "artifact_manifest": "data/resource/aiboxresource_rk3588/model-artifacts/rk3588/artifact-manifest.json",
+    "legacy_models_directory": "output/platform-artifacts/rk3588/resource-overlay/models"
   },
   "device": {
     "compatible_tokens": ["rk3588"]

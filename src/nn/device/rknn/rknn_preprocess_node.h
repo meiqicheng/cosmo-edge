@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "media/RockchipRgaBuffer.h"
 #include "nn/device/cpu/cpu_crop_resize_node.h"
 #include "nn/node/node.h"
 
@@ -56,6 +57,11 @@ private:
     uint64_t rga_bound_target_generation_{0};
     bool rga_bound_target_unavailable_{false};
     bool rga_bound_guard_logged_{false};
+    // Persistent dma32 staging for the host (process-heap) resize path: per-frame
+    // alloc+mmap costs more than the CPU fallback it replaces. Single-threaded;
+    // only mutated inside ResizeWithRga().
+    media::Dma32Buffer rga_host_src_buf_;
+    media::Dma32Buffer rga_host_dst_buf_;
 };
 
 class RknnCropResizeNode final : public CpuCropResizeNode {

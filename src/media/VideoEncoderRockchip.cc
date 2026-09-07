@@ -394,6 +394,7 @@ VideoPacketPtr VideoEncoderRockchip::SendYUVFrame(void* data) {
             const im_rect target_rect = source_rect;
             const im_rect empty_rect{};
             const rga_buffer_t empty_buffer{};
+            std::lock_guard<std::mutex> rga_lock(media::RgaGlobalLock());
             status = improcess(source_image, target_image, empty_buffer, source_rect, target_rect, empty_rect,
                                IM_SYNC);
         }

@@ -305,26 +305,35 @@ namespace {
             return nullptr;
         }
 
+        if (mpp_buffer_sync_ro_begin(buffer) != MPP_OK) {
+            GetPreviewPipelineMetrics().RecordMppRgaCopyOut(false);
+            GetPreviewPipelineMetrics().RecordMppCpuCopyOutFallback();
+            return CopyMppFrameCpu(decoder_name, frame);
+        }
+        struct ReadSyncGuard {
+            MppBuffer buffer;
+            ~ReadSyncGuard() { mpp_buffer_sync_ro_end(buffer); }
+        } sync_guard{buffer};
+
         const auto rga_started = std::chrono::steady_clock::now();
-        ScopedRgaBufferHandle source_handle;
         ScopedRgaBufferHandle target_handle(output->GetData(), output->GetSize());
         const int source_fd = mpp_buffer_get_fd(buffer);
-        source_handle.ImportFd(source_fd, mpp_buffer_get_size(buffer));
         IM_STATUS status = IM_STATUS_OUT_OF_MEMORY;
-        if (source_handle && target_handle) {
-            auto source = wrapbuffer_handle_t(source_handle.Get(), static_cast<int>(width),
-                                              static_cast<int>(height), static_cast<int>(horizontal_stride),
-                                              static_cast<int>(vertical_stride), source_format);
-            auto target =
-                wrapbuffer_handle_t(target_handle.Get(), static_cast<int>(width), static_cast<int>(height),
-                                    static_cast<int>(width), static_cast<int>(height), RK_FORMAT_YCbCr_420_P);
+        if (source_fd >= 0 && target_handle) {
+            // Pass the decoder-owned dma-buf directly so librga retains the
+            // MPP plane/stride metadata on RK3588.
+            const auto source = wrapbuffer_fd_t(source_fd, static_cast<int>(width),
+                                                static_cast<int>(height), static_cast<int>(horizontal_stride),
+                                                static_cast<int>(vertical_stride), source_format);
+            const auto target = wrapbuffer_handle_t(target_handle.Get(), static_cast<int>(width),
+                                                    static_cast<int>(height), static_cast<int>(width),
+                                                    static_cast<int>(height), RK_FORMAT_YCbCr_420_P);
+            std::lock_guard<std::mutex> rga_lock(media::RgaGlobalLock());
             if (source_format == RK_FORMAT_YCbCr_420_P) {
-                const im_rect source_rect{0, 0, static_cast<int>(width), static_cast<int>(height)};
-                const im_rect target_rect = source_rect;
+                const im_rect rect{0, 0, static_cast<int>(width), static_cast<int>(height)};
                 const im_rect empty_rect{};
                 const rga_buffer_t empty_buffer{};
-                status =
-                    improcess(source, target, empty_buffer, source_rect, target_rect, empty_rect, IM_SYNC);
+                status = improcess(source, target, empty_buffer, rect, rect, empty_rect, IM_SYNC);
             } else {
                 status = imcvtcolor_t(source, target, source_format, RK_FORMAT_YCbCr_420_P,
                                       IM_COLOR_SPACE_DEFAULT, 1);
