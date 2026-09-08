@@ -108,7 +108,8 @@ void ModelServiceImpl::ValidateModelOutputFormat(const nlohmann::json& doc) {
             }
         }
     } else if (model_type == "yolov8_det" || model_type == "yolov9_det" || model_type == "yolov11_det" ||
-               model_type == "yolov12_det") {
+               model_type == "yolov12_det" || model_type == "yolo26_det" || model_type == "yolov8_pose" ||
+               model_type == "yolo11_pose" || model_type == "yolo26_pose") {
         bool reject = (outputs.size() > 1);
         if (!reject) {
             for (const auto& out : outputs) {
@@ -122,8 +123,7 @@ void ModelServiceImpl::ValidateModelOutputFormat(const nlohmann::json& doc) {
         if (reject) {
             throw cosmo::util::ErrorMessage(
                 cosmo::util::make_error_condition(cosmo::util::ErrorEnum::ParameterException),
-                "当前模型输出格式与 yolov8/yolov9/yolov11/yolov12 "
-                "检测模型不匹配，请确认选择的是检测模型而不是分类模型。添加不成功");
+                "当前模型输出格式与 YOLOv8/YOLOv9/YOLOv11/YOLOv12 检测或 Pose 模型不匹配。添加不成功");
         }
     }
 }

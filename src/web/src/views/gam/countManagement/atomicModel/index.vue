@@ -343,6 +343,7 @@ const allModelsCount = ref(0)
 const subTypeToMain = {
   yolov5_det: 'detect', yolov8_det: 'detect', yolov9_det: 'detect',
   yolov11_det: 'detect', yolov12_det: 'detect', yolo26_det: 'detect',
+  yolov8_pose: 'keypoints', yolo11_pose: 'keypoints', yolo26_pose: 'keypoints',
   classify: 'classify', keypoints: 'keypoints', feature: 'feature', ocr: 'ocr',
   dino: 'foundation', sam2: 'foundation', qwen3vl: 'foundation', qwen3_5: 'foundation'
 }
@@ -594,7 +595,12 @@ const modelTypeGroups = computed(() => {
   {
     label: t('glossary.keypointsAlg'),
     value: 'keypoints',
-    children: [{ label: 'keypoints', value: 'keypoints' }]
+    children: [
+      { label: 'keypoints', value: 'keypoints' },
+      { label: 'yolov8_pose', value: 'yolov8_pose' },
+      { label: 'yolo11_pose', value: 'yolo11_pose' },
+      { label: 'yolo26_pose', value: 'yolo26_pose' }
+    ]
   },
   {
     label: t('glossary.featureAlg'),

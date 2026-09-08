@@ -207,6 +207,28 @@ util::ErrorEnum AiDetectorUnify::Forward(const std::vector<VideoFramePtr>& image
             el.confidence.atomic_code = atomic_code_;
             el.classId                = obj.infos.at(0).class_id + 1;
             el.targetId               = util::GenerateUUID();
+            if (!obj.key_points.empty()) {
+                el.landmark.keypoints.kind = obj.key_points.size() == 17
+                                                 ? AiKeypointKind::HumanPose
+                                                 : (obj.key_points.size() == 4 ? AiKeypointKind::LicensePlate
+                                                                                : AiKeypointKind::Unknown);
+                el.landmark.keypoints.coordinateSpace = AiKeypointCoordinateSpace::Pixel;
+                el.landmark.keypoints.schema = obj.key_points.size() == 17
+                                                   ? "coco17"
+                                                   : (obj.key_points.size() == 4 ? "plate4" : "custom");
+                el.landmark.landmark.reserve(obj.key_points.size());
+                el.landmark.keypoints.points.reserve(obj.key_points.size());
+                for (size_t point_index = 0; point_index < obj.key_points.size(); ++point_index) {
+                    const auto& point = obj.key_points[point_index];
+                    el.landmark.landmark.emplace_back(static_cast<int>(point.first),
+                                                      static_cast<int>(point.second));
+                    const float confidence = point_index < obj.key_point_confidences.size()
+                                                 ? obj.key_point_confidences[point_index]
+                                                 : -1.0f;
+                    el.landmark.keypoints.points.push_back(
+                        {point.first, point.second, confidence, -1.0f, static_cast<int>(point_index)});
+                }
+            }
             result.push_back(el);
         }
         results.push_back(result);

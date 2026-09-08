@@ -138,6 +138,16 @@ void to_json(nlohmann::json& j, const MsgTarget& t) {
     j["box"]               = t.box;
     j["aiBox"]             = t.aiBox;
     j["confidence"]        = t.confidence;
+    if (!t.landmark.empty())
+        j["landmark"] = t.landmark;
+    if (!t.keypointKind.empty())
+        j["keypointKind"] = t.keypointKind;
+    if (!t.keypointSchema.empty())
+        j["keypointSchema"] = t.keypointSchema;
+    if (!t.ocrString.empty())
+        j["ocrString"] = t.ocrString;
+    if (t.ocrConfidence > 0.0F)
+        j["ocrConfidence"] = t.ocrConfidence;
     j["attrs"]             = t.attrs;
     j["areas"]             = t.areas;
     j["shiledAreas"]       = t.shiledAreas;
@@ -160,6 +170,11 @@ void from_json(const nlohmann::json& j, MsgTarget& t) {
     JSON_OPT(j, t, box);
     JSON_OPT(j, t, aiBox);
     JSON_OPT(j, t, confidence);
+    JSON_OPT(j, t, landmark);
+    JSON_OPT(j, t, keypointKind);
+    JSON_OPT(j, t, keypointSchema);
+    JSON_OPT(j, t, ocrString);
+    JSON_OPT(j, t, ocrConfidence);
     JSON_OPT(j, t, attrs);
     JSON_OPT(j, t, areas);
     JSON_OPT(j, t, shiledAreas);

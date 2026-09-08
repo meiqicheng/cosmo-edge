@@ -72,11 +72,13 @@ void to_json(nlohmann::json& j, const MsgAiConfidence& v) {
 void from_json(const nlohmann::json& j, MsgAiAttribute& v) {
     JSON_OPT(j, v, category);
     JSON_OPT(j, v, label);
+    JSON_OPT(j, v, confidence);
 }
 
 void to_json(nlohmann::json& j, const MsgAiAttribute& v) {
     j["category"] = v.category;
     j["label"]    = v.label;
+    j["confidence"] = v.confidence;
 }
 
 void from_json(const nlohmann::json& j, MsgMatchInfo& v) {

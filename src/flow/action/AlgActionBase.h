@@ -40,6 +40,7 @@ enum class AlgActionType {
     AlgActionAiRecognizer,          // Feature extraction
     AlgActionAiPersonFace,          // Face detection in human body
     AlgActionAiOcr,                 // OCR detection
+    AlgActionAiPlateRecognition,    // New independent plate OCR/color action
     AlgActionAiFilter,              // Filtering
     AlgActionAiVideoQuality,        // Video diagnosis
     AlgActionBAFilter,              // Filtering

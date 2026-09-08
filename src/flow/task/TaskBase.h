@@ -29,6 +29,7 @@
 #include "flow/logical/FaceLogicMng.h"
 #include "flow/logical/LogicalJudgmentMng.h"
 #include "flow/ocr/AiOcrMng.h"
+#include "flow/plate/AiPlateRecognitionMng.h"
 #include "flow/qwen3vl/Qwen3VLMng.h"
 #include "flow/recognizer/AiRecognizerMng.h"
 #include "flow/sam2/Sam2SegmentMng.h"
@@ -140,6 +141,7 @@ private:
     AiClassifyAttrMng classify_attr_mng_;      // Attribute management instance
     AiLandmarkMng landmark_mng_;               // Landmark management instance
     AiOcrMng ocr_mng_;                         // Landmark-driven license plate OCR management instance
+    AiPlateRecognitionMng plate_recognition_mng_;
     AiRecognizerMng recognizer_mng_;           // Recognition management instance
     AiVideoQualityMng ai_video_quality_mng_;   // Video diagnosis management instance
     TargetFilterMng filter_mng_;               // Filtering management instance

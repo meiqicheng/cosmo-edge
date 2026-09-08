@@ -86,6 +86,40 @@ static Status DetectionParseOutput(std::vector<std::shared_ptr<Blob>> output_blo
                                           thresholds_copy, classnames_copy, outputs);
 }
 
+static float PoseIou(const ObjectInfoV1& lhs, const ObjectInfoV1& rhs) {
+    const float left = std::max(lhs.x1, rhs.x1);
+    const float top = std::max(lhs.y1, rhs.y1);
+    const float right = std::min(lhs.x2, rhs.x2);
+    const float bottom = std::min(lhs.y2, rhs.y2);
+    const float intersection = std::max(0.0f, right - left) * std::max(0.0f, bottom - top);
+    const float lhs_area = std::max(0.0f, lhs.x2 - lhs.x1) * std::max(0.0f, lhs.y2 - lhs.y1);
+    const float rhs_area = std::max(0.0f, rhs.x2 - rhs.x1) * std::max(0.0f, rhs.y2 - rhs.y1);
+    const float denominator = lhs_area + rhs_area - intersection;
+    return denominator > 0.0f ? intersection / denominator : 0.0f;
+}
+
+static void ApplyPoseNms(std::vector<ObjectInfoV1>& objects, float threshold, int top_k) {
+    std::sort(objects.begin(), objects.end(), [](const ObjectInfoV1& lhs, const ObjectInfoV1& rhs) {
+        return lhs.infos.front().confidence > rhs.infos.front().confidence;
+    });
+    std::vector<ObjectInfoV1> selected;
+    selected.reserve(std::min(static_cast<size_t>(std::max(top_k, 0)), objects.size()));
+    for (const auto& object : objects) {
+        bool suppressed = false;
+        for (const auto& kept : selected) {
+            if (object.infos.front().class_id == kept.infos.front().class_id && PoseIou(object, kept) >= threshold) {
+                suppressed = true;
+                break;
+            }
+        }
+        if (!suppressed)
+            selected.push_back(object);
+        if (top_k > 0 && static_cast<int>(selected.size()) >= top_k)
+            break;
+    }
+    objects = std::move(selected);
+}
+
 // ============================= YOLOv5 =====================================
 
 Status YoloV5DetPipeline::Init(const PipelineConfig& config, const std::string& model_path,
@@ -336,6 +370,90 @@ Status Yolo26DetPipeline::ParseDetectionOutput(std::vector<std::vector<ObjectInf
                                 selected_thresholds_, selected_classnames_, outputs);
 }
 
+Status YoloPosePipeline::Init(const PipelineConfig& config, const std::string& model_path,
+                              DeviceType device_type, int device_id, IProfiler* profiler,
+                              const std::string& tokenizer_path, const std::string& word_table_path,
+                              bool use_skip) {
+    model_info_.algorithmcode = config.algorithm_code;
+    model_info_.reduce = config.reduce;
+    model_info_.type = config.model_type;
+    for (const auto& mc : config.models) {
+        const auto p = pipeline_utils::ParseJsonObject(mc.params_json);
+        ModelInfo model;
+        model.name = mc.name;
+        model.filename = mc.file_name;
+        model.file_md5 = mc.file_md5;
+        model.max_batch = mc.max_batch;
+        max_batch_ = mc.max_batch;
+    class_count_ = pipeline_utils::ReadInt(p, "class_count", 1);
+    keypoint_count_ = pipeline_utils::ReadInt(p, "keypoint_count", 17);
+    keypoint_values_per_point_ = pipeline_utils::ReadInt(p, "keypoint_values_per_point", 3);
+        confidence_threshold_ = pipeline_utils::ReadFloat(p, "confidence_threshold", 0.25f);
+        nms_threshold_ = pipeline_utils::ReadFloat(p, "nms_threshold", 0.7f);
+        top_k_ = pipeline_utils::ReadInt(p, "top_k", 300);
+        const auto input_size = pipeline_utils::ReadIntArray(p, "input_size", {640, 640}, 2);
+        if (input_size.size() >= 2) {
+            input_width_ = input_size[0];
+            input_height_ = input_size[1];
+        }
+        for (const auto& in_def : mc.inputs) {
+            InputNodeInfo input;
+            input.name = in_def.name;
+            input.shape = in_def.shape;
+            input.data_type = in_def.data_type;
+            input.ops = MakeDetPreprocess(p);
+            model.input_node_infos.push_back(std::move(input));
+        }
+        for (const auto& out_def : mc.outputs) {
+            OutputNodeInfo output;
+            output.name = out_def.name;
+            output.shape = out_def.shape;
+            output.data_type = out_def.data_type;
+            model.output_node_infos.push_back(std::move(output));
+        }
+        model_info_.models.push_back(std::move(model));
+    }
+    InitThresholdsAndLabels();
+    InitNetInputSize();
+    return InitGraph(model_path, device_type, device_id, profiler, tokenizer_path, use_skip);
+}
+
+Status YoloPosePipeline::Forward(std::initializer_list<std::vector<std::shared_ptr<Blob>>> inputs) {
+    RETURN_ON_FAIL(RunGraph(inputs));
+    image_sizes_.clear();
+    const auto iter = inputs.begin();
+    for (size_t i = 0; i < iter->size(); ++i) {
+        Size size;
+        RETURN_ON_FAIL(NetUtils::GetImageSize(iter->at(i)->GetBlobDesc().dims,
+                                              iter->at(i)->GetBlobDesc().data_format, size));
+        image_sizes_.push_back(size);
+    }
+    return COSMO_NN_OK;
+}
+
+Status YoloPosePipeline::ParseDetectionOutput(std::vector<std::vector<ObjectInfoV1>>& outputs) {
+    outputs.clear();
+    const auto blobs = GetGraphOutput();
+    if (blobs.size() != 1 || blobs.front()->GetBlobDesc().dims.size() != 3)
+        return Status(COSMO_NN_ERR_INVALID_INPUT, "YOLO pose requires one rank-3 output");
+    const auto dims = blobs.front()->GetBlobDesc().dims;
+    const auto* data = static_cast<const float*>(blobs.front()->GetHandle().base);
+    const int batch = dims[0];
+    const size_t stride = static_cast<size_t>(dims[1]) * static_cast<size_t>(dims[2]);
+    for (int i = 0; i < batch; ++i) {
+        std::vector<ObjectInfoV1> decoded;
+        std::string error;
+        auto status = DecodeYoloPoseTensor(data + static_cast<size_t>(i) * stride, dims, input_width_,
+                                           input_height_, class_count_, keypoint_count_,
+                                           confidence_threshold_, decoded, error, keypoint_values_per_point_);
+        if (!status)
+            return status;
+        ApplyPoseNms(decoded, nms_threshold_, top_k_);
+        outputs.push_back(std::move(decoded));
+    }
+    return COSMO_NN_OK;
+}
+
 // ========================= Generic Detector ===============================
 
 Status GenericDetectorPipeline::Init(const PipelineConfig& config, const std::string& model_path,
@@ -440,6 +558,9 @@ REGISTER_MODEL_PIPELINE("yolov9_det", YoloV8DetPipeline);
 REGISTER_MODEL_PIPELINE("yolov11_det", YoloV8DetPipeline);
 REGISTER_MODEL_PIPELINE("yolov12_det", YoloV8DetPipeline);
 REGISTER_MODEL_PIPELINE("yolo26_det", Yolo26DetPipeline);
+REGISTER_MODEL_PIPELINE("yolov8_pose", YoloPosePipeline);
+REGISTER_MODEL_PIPELINE("yolo11_pose", YoloPosePipeline);
+REGISTER_MODEL_PIPELINE("yolo26_pose", YoloPosePipeline);
 REGISTER_MODEL_PIPELINE("detector", GenericDetectorPipeline);
 
 }  // namespace cosmo::nn

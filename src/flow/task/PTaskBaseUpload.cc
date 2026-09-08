@@ -104,6 +104,13 @@ static void DetTarget2MsgTarget(const AiDetectRstEl& target, MsgPTaskTarget& msg
     }
 }
 
+// COCO-17 human pose skeleton. Invalid/missing points are skipped at draw time.
+static constexpr int kCocoPoseEdges[][2] = {
+    {5, 6},   {5, 7},   {7, 9},   {6, 8},   {8, 10},  {5, 11},  {6, 12},
+    {11, 12}, {11, 13}, {13, 15}, {12, 14}, {14, 16}, {0, 1},   {0, 2},
+    {1, 3},   {2, 4},   {0, 5},   {0, 6},
+};
+
 static MsgPTaskArea ProcessAreaTargets(const MsgTaskArea& area, const std::vector<AiDetectRstEl>& targets,
                                        bool bHaveLogic) {
     MsgPTaskArea recArea;
@@ -258,15 +265,40 @@ void PTaskBase::DetTargetHandFullPicture(AlgDataPtr algData, const std::vector<M
         }
     }
 
-    // Overlay landmark keypoints (green cross markers)
+    // Overlay landmarks. Human YOLO pose uses the COCO-17 skeleton; other landmark
+    // models retain the existing point-only visualization.
     if (algData->chanDataDetect.detRet) {
         media::Color landmark_color{uint8_t(0), uint8_t(255), uint8_t(0)};
+        media::Color skeleton_color{uint8_t(255), uint8_t(180), uint8_t(0)};
         int lmLineWidth = 2;
         int imgW        = origImg->GetWidth();
         int imgH        = origImg->GetHeight();
         for (auto& target : algData->chanDataDetect.detRet->targets) {
             if (target.landmark.landmark.empty()) {
                 continue;
+            }
+            const auto& points = target.landmark.landmark;
+            const auto& keypoints = target.landmark.keypoints;
+            const bool is_coco_pose = keypoints.kind == AiKeypointKind::HumanPose && points.size() == 17;
+            auto is_visible = [&](size_t index) {
+                return index < points.size() &&
+                       (index >= keypoints.points.size() || keypoints.points[index].confidence >= 0.25F);
+            };
+
+            if (is_coco_pose) {
+                std::vector<std::pair<util::Point, util::Point>> skeleton_lines;
+                for (const auto& edge : kCocoPoseEdges) {
+                    const size_t first = static_cast<size_t>(edge[0]);
+                    const size_t second = static_cast<size_t>(edge[1]);
+                    if (!is_visible(first) || !is_visible(second)) {
+                        continue;
+                    }
+                    skeleton_lines.push_back({points[first], points[second]});
+                }
+                if (!skeleton_lines.empty()) {
+                    service::ServiceRegistry::Instance().Get<service::IVideoFrameOSD>().DrawLines(
+                        origImg, skeleton_lines, skeleton_color, lmLineWidth);
+                }
             }
             for (auto& pt : target.landmark.landmark) {
                 int px = static_cast<int>(pt.x);

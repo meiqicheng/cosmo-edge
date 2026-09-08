@@ -139,13 +139,30 @@ void AiLandmarkerUnify::DispatchLandmarkResults(
             int imgIndex = indexes[static_cast<size_t>(out)].first;
             int boxIndex = indexes[static_cast<size_t>(out)].second;
             auto& target = ioRst[static_cast<size_t>(imgIndex)][static_cast<size_t>(boxIndex)];
-            auto& lm =
-                target.relatedEl.bActive ? target.relatedEl.landmark.landmark : target.landmark.landmark;
+            auto& landmark_data = target.relatedEl.bActive ? target.relatedEl.landmark : target.landmark;
+            auto& lm = landmark_data.landmark;
+            auto& keypoints = landmark_data.keypoints;
+            // The landmark model metadata does not currently identify a semantic family.
+            // Keep it unknown rather than mislabeling face or OCR points as human pose.
+            keypoints.kind = AiKeypointKind::Unknown;
+            if (keypoints.schema.empty())
+                keypoints.schema = "custom";
+            keypoints.coordinateSpace = AiKeypointCoordinateSpace::Pixel;
             std::transform(outputEl.key_points.begin(), outputEl.key_points.end(), std::back_inserter(lm),
                            [](const auto& point) {
                                return util::Point(static_cast<int>(point.first),
                                                   static_cast<int>(point.second));
                            });
+            const size_t base_index = keypoints.points.size();
+            for (size_t point_index = 0; point_index < outputEl.key_points.size(); ++point_index) {
+                const auto& point = outputEl.key_points[point_index];
+                const float confidence =
+                    point_index < outputEl.key_point_confidences.size()
+                        ? outputEl.key_point_confidences[point_index]
+                        : -1.0f;
+                keypoints.points.push_back({point.first, point.second, confidence, -1.0f,
+                                            static_cast<int>(base_index + point_index)});
+            }
             out++;
         }
     }

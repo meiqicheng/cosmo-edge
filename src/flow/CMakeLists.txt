@@ -25,6 +25,9 @@ if(COSMO_NN_USE_CPU_BACKEND)
         COSMO_NN_USE_CPU_BACKEND
         COSMO_NN_USE_HOST_BACKEND
         COSMO_NN_USE_ONNX_BACKEND)
+    # AiPlateRecognition (flow/plate) includes infer/AiPlateRecognizerUnify.h,
+    # which pulls in the ONNX Runtime C++ API headers.
+    target_link_libraries(cosmo_flow PRIVATE onnxruntime)
 endif()
 if(COSMO_NN_USE_RKNN_BACKEND)
     target_compile_definitions(cosmo_flow PRIVATE

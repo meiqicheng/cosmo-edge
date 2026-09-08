@@ -24,8 +24,10 @@ RUN find prebuild 3rd -path '*/lib/*.so*' -type f -size -256c -print | while IFS
 ARG RESOURCE_DIR=data/resource/aiboxresource_x86
 ARG COSMO_BUILD_JOBS
 RUN if [ -n "${RESOURCE_DIR}" ]; then \
+        unset MAKEFLAGS MFLAGS MAKELEVEL; \
         bash ./scripts/build_cpu.sh -t -m "${RESOURCE_DIR}"; \
     else \
+        unset MAKEFLAGS MFLAGS MAKELEVEL; \
         bash ./scripts/build_cpu.sh -t; \
     fi
 

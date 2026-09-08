@@ -837,7 +837,9 @@ const getModelSelectList = (code, type) => {
     params.modelType = arr[1]
   }
 
-  // qwen3vl 组件同时查询 qwen3_5 模型
+  // AA_00004 is the two-stage landmark action. YOLO Pose is a one-stage
+  // detector and must only be offered by AA_00001 (detector).
+  const detectorModelTypes = ['yolov8_pose', 'yolo11_pose', 'yolo26_pose']
   const needMergeQwen35 = (params.modelType === 'qwen3vl')
 
   const fetchList = (mt) => {
@@ -847,6 +849,9 @@ const getModelSelectList = (code, type) => {
   }
 
   const promises = [fetchList(params.modelType)]
+  if (params.modelType === 'detector') {
+    detectorModelTypes.forEach((poseType) => promises.push(fetchList(poseType)))
+  }
   if (needMergeQwen35) {
     promises.push(fetchList('qwen3_5'))
   }
@@ -864,14 +869,26 @@ const getModelSelectList = (code, type) => {
     if (atomic) {
       selectedAtomic.value = atomic
       let labelListTemp = []
+      const isPoseModel = detectorModelTypes.includes(
+        atomic.modelType || atomic.type
+      )
 
       if (type === 'modelSelectCategories_classify') {
         if (!atomic.categories) return
         labelListTemp = JSON.parse(atomic.categories)
         atomic.label && (categoriesLabelList.value = JSON.parse(atomic.label))
       } else {
-        if (!atomic.label) return
-        labelListTemp = JSON.parse(atomic.label)
+        if (atomic.label) labelListTemp = JSON.parse(atomic.label)
+      }
+      if (!labelListTemp.length && isPoseModel) {
+        labelListTemp = [{
+          label: '0',
+          id: '0',
+          class_name: 'person',
+          nameCN: '人体',
+          name_cn: '人体',
+          threshold: [0.25, 0.25]
+        }]
       }
       labelListTemp &&
         labelListTemp.forEach((item) => {
@@ -881,7 +898,9 @@ const getModelSelectList = (code, type) => {
           })
           labelList.value.push({
             ...item,
-            used: flag ? true : false
+            // A pose model has exactly one detector class (person). Enable it
+            // by default so a newly selected model also supplies tracker labels.
+            used: flag ? true : isPoseModel
           })
         })
     }
@@ -992,6 +1011,9 @@ const modelSelectChange = (val) => {
   selectedAtomic.value = atomic
 
   let labelListTemp = []
+  const isPoseModel = ['yolov8_pose', 'yolo11_pose', 'yolo26_pose'].includes(
+    atomic?.modelType || atomic?.type
+  )
   if (modelSelectType.value === 'modelSelectCategories_classify') {
     if (atomic.categories) {
       labelListTemp = JSON.parse(atomic.categories)
@@ -1002,11 +1024,23 @@ const modelSelectChange = (val) => {
       labelListTemp = JSON.parse(atomic.label)
     }
   }
+  // Pose models are one-stage detectors. Some legacy model records have no
+  // serialized label field, but the runtime still requires at least person.
+  if (!labelListTemp.length && isPoseModel) {
+    labelListTemp = [{
+      label: '0',
+      id: '0',
+      class_name: 'person',
+      nameCN: '人体',
+      name_cn: '人体',
+      threshold: [0.25, 0.25]
+    }]
+  }
   labelListTemp &&
     labelListTemp.forEach((item) => {
       labelList.value.push({
         ...item,
-        used: false
+        used: isPoseModel
       })
     })
   emitAtomicUpdate()

@@ -1,0 +1,16 @@
+{
+  "model_type": "yolo11_pose",
+  "chip_type": "X86",
+  "algorithm_code": "4000017",
+  "version": "V1.0.0",
+  "models": [{
+    "name": "yolo11n-pose",
+    "file_name": "yolo11n-pose.onnx",
+    "file_md5": "",
+    "max_batch": 1,
+    "inputs": [{"name": "images", "shape": [1, 3, 640, 640], "data_type": 0}],
+    "outputs": [{"name": "output0", "shape": [1, 56, 8400], "data_type": 0}],
+    "params": {"input_size": [640, 640], "padding_color": [114, 114, 114], "normalize_scale": 0.00392157, "is_bgr": false, "confidence_threshold": 0.25, "nms_threshold": 0.7, "top_k": 300, "class_count": 1, "keypoint_count": 17}
+  }],
+  "labels": [{"id": "0", "name": "person", "threshold": [0.25, 0.25]}]
+}

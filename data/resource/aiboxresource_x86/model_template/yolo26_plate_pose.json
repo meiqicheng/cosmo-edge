@@ -1,0 +1,34 @@
+{
+  "model_type": "yolo26_plate_pose",
+  "chip_type": "X86",
+  "algorithm_code": "9003001",
+  "version": "V1.0.0",
+  "decoder": "yolo_pose_end_to_end",
+  "keypoint_kind": "license_plate",
+  "keypoint_schema": "plate4",
+  "keypoint_count": 4,
+  "keypoint_values_per_point": 2,
+  "output_layout": "[B,N,C]",
+  "nms_completed": true,
+  "models": [{
+    "name": "yolo26s-plate-detect",
+    "file_name": "yolo26s-plate-detect.onnx",
+    "file_md5": "",
+    "max_batch": 1,
+    "inputs": [{"name": "images", "shape": [1, 3, 640, 640], "data_type": 0}],
+    "outputs": [{"name": "output0", "shape": [1, 300, 14], "data_type": 0}],
+    "params": {
+      "input_size": [640, 640],
+      "padding_color": [114, 114, 114],
+      "normalize_scale": 0.00392157,
+      "is_bgr": true,
+      "confidence_threshold": 0.35,
+      "nms_threshold": 0.45,
+      "top_k": 300,
+      "class_count": 2,
+      "keypoint_count": 4,
+      "keypoint_values_per_point": 2,
+      "output_layout": "[B,N,C]"
+    }
+  }]
+}

@@ -91,6 +91,8 @@ void TaskBase::RegisterActionHandlers() {
         MakeHandler<AiClassifyAttrMng, AiClassifierAttr>(classify_attr_mng_);
     action_handlers_[AALandmark_Code] = MakeHandler<AiLandmarkMng, AiLandmark>(landmark_mng_);
     action_handlers_[AAOcr_Code]      = MakeHandler<AiOcrMng, AiOcr>(ocr_mng_);
+    action_handlers_[AAPlateRecognize_Code] =
+        MakeHandler<AiPlateRecognitionMng, AiPlateRecognition>(plate_recognition_mng_);
 
     // Video diagnosis (special: DeleteInst requires taskId)
     action_handlers_[AAVideoDiagnosis_Code] = {

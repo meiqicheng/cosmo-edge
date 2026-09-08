@@ -188,6 +188,13 @@ private:
     static constexpr float kEmaAlpha =
         0.85f;  // responsive: Kalman already smooths, EMA just suppresses jitter
     static constexpr int64_t kSmoothExpireMs = 3000;  // expire after 3s unseen (frame-rate independent)
+
+    // ── Keypoint EMA smoothing (same policy as the box, keyed by trackId) ──
+    struct SmoothedKeypoints {
+        std::vector<std::pair<double, double>> points;  // smoothed pixel coords, aligned with landmark
+        int64_t lastSeenTimestamp{0};
+    };
+    std::unordered_map<int, SmoothedKeypoints> smoothed_keypoints_;  // key: trackId
 };
 using StreamViewerOverviewPtr = std::shared_ptr<StreamViewerOverview>;
 }  // namespace cosmo

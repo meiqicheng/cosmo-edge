@@ -8,6 +8,9 @@ add_library(cosmo_infer OBJECT
     AiDetectorUnify.cc              AiDetectorUnify.h
     AiLandmarkInterface.cc          AiLandmarkInterface.h
     AiLandmarkerUnify.cc            AiLandmarkerUnify.h
+    AiPlateResultParser.cc           AiPlateResultParser.h
+    AiPlateDetectorUnify.cc           AiPlateDetectorUnify.h
+    AiPlateRecognizerUnify.cc        AiPlateRecognizerUnify.h
     AiOcrWordClassifierUnify.cc     AiOcrWordClassifierUnify.h
     AiRecognizerInterface.cc        AiRecognizerInterface.h
     AiRecognizerUnify.cc            AiRecognizerUnify.h
