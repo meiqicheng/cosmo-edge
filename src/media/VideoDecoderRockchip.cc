@@ -311,18 +311,21 @@ namespace {
         } sync_guard{buffer};
 
         const auto rga_started = std::chrono::steady_clock::now();
-        ScopedRgaBufferHandle target_handle(output->GetData(), output->GetSize());
         const int source_fd = mpp_buffer_get_fd(buffer);
+        Dma32Buffer target_dma;
         IM_STATUS status = IM_STATUS_OUT_OF_MEMORY;
-        if (source_fd >= 0 && target_handle) {
+        if (source_fd >= 0 && target_dma.Allocate(output->GetSize())) {
             // Pass the decoder-owned dma-buf directly so librga retains the
             // MPP plane/stride metadata on RK3588.
             const auto source = wrapbuffer_fd_t(source_fd, static_cast<int>(width),
                                                 static_cast<int>(height), static_cast<int>(horizontal_stride),
                                                 static_cast<int>(vertical_stride), source_format);
-            const auto target = wrapbuffer_handle_t(target_handle.Get(), static_cast<int>(width),
-                                                    static_cast<int>(height), static_cast<int>(width),
-                                                    static_cast<int>(height), RK_FORMAT_YCbCr_420_P);
+            // RGA's legacy scheduler requires an FD-only contract here. MPP
+            // supplies the source FD; stage the current host-frame boundary
+            // through a dma32 FD until native VideoFrame DMA-BUF propagation
+            // is available downstream.
+            const auto target = RgaFdBuffer(target_dma.Fd(), static_cast<int>(width),
+                                            static_cast<int>(height), RK_FORMAT_YCbCr_420_P);
             std::lock_guard<std::mutex> rga_lock(media::RgaGlobalLock());
             if (source_format == RK_FORMAT_YCbCr_420_P) {
                 const im_rect rect{0, 0, static_cast<int>(width), static_cast<int>(height)};
@@ -338,7 +341,12 @@ namespace {
         GetPreviewPipelineMetrics().RecordRgaOperation(rga_success, ElapsedNanoseconds(rga_started));
         GetPreviewPipelineMetrics().RecordMppRgaCopyOut(rga_success);
         if (rga_success) {
-            return output;
+            const auto* mapped = static_cast<const uint8_t*>(target_dma.Map());
+            if (mapped) {
+                std::memcpy(output->GetData(), mapped, output->GetSize());
+                return output;
+            }
+            GetPreviewPipelineMetrics().RecordMppRgaCopyOut(false);
         }
 
         static std::atomic_flag fallback_logged = ATOMIC_FLAG_INIT;
@@ -736,6 +744,16 @@ DecodedVideoFrame VideoDecoderRockchip::ReceiveMppFrame(bool& made_progress) {
     }
     const size_t frame_width  = mpp_frame_get_width(frame);
     const size_t frame_height = mpp_frame_get_height(frame);
+    if (mpp_frame_get_buffer(frame)) {
+        static std::atomic_flag frame_contract_logged = ATOMIC_FLAG_INIT;
+        if (!frame_contract_logged.test_and_set(std::memory_order_relaxed)) {
+            auto contract_buffer = mpp_frame_get_buffer(frame);
+            LOG_INFO("{} MPP frame contract: {}x{} stride={}x{} fmt=0x{:x} fd={} size={}",
+                     idx_name_, frame_width, frame_height, mpp_frame_get_hor_stride(frame),
+                     mpp_frame_get_ver_stride(frame), mpp_frame_get_fmt(frame),
+                     mpp_buffer_get_fd(contract_buffer), mpp_buffer_get_size(contract_buffer));
+        }
+    }
     width_                    = frame_width;
     height_                   = frame_height;
     auto holder               = std::make_shared<MppFrameHolder>(frame);

@@ -379,17 +379,19 @@ VideoPacketPtr VideoEncoderRockchip::SendYUVFrame(void* data) {
     bool rga_copied = false;
     if (state_->rga_copy_in_available) {
         const auto rga_started = std::chrono::steady_clock::now();
-        ScopedRgaBufferHandle source_handle(const_cast<uint8_t*>(source),
-                                            compact_y_size + compact_uv_size * 2);
+        Dma32Buffer source_dma;
         IM_STATUS status = IM_STATUS_OUT_OF_MEMORY;
-        if (source_handle && width_ % 16 == 0) {
-            auto source_image = wrapbuffer_handle_t(source_handle.Get(), static_cast<int>(width_),
-                                                    static_cast<int>(height_), static_cast<int>(width_),
-                                                    static_cast<int>(height_), RK_FORMAT_YCbCr_420_P);
-            auto target_image =
-                wrapbuffer_handle_t(state_->frame_rga_handle.Get(), static_cast<int>(width_),
-                                    static_cast<int>(height_), static_cast<int>(state_->horizontal_stride),
-                                    static_cast<int>(state_->vertical_stride), RK_FORMAT_YCbCr_420_P);
+        if (width_ % 16 == 0 && source_dma.Allocate(compact_y_size + compact_uv_size * 2)) {
+            auto* source_dma_ptr = const_cast<uint8_t*>(static_cast<const uint8_t*>(source_dma.Map()));
+            if (source_dma_ptr) {
+                std::memcpy(source_dma_ptr, source, compact_y_size + compact_uv_size * 2);
+                const auto source_image = RgaFdBuffer(source_dma.Fd(), static_cast<int>(width_),
+                                                      static_cast<int>(height_), RK_FORMAT_YCbCr_420_P);
+                const auto target_fd = mpp_buffer_get_fd(state_->frame_buffer);
+                auto target_image = RgaFdBuffer(target_fd, static_cast<int>(width_),
+                                                static_cast<int>(height_), RK_FORMAT_YCbCr_420_P);
+                target_image.wstride = static_cast<int>(state_->horizontal_stride);
+                target_image.hstride = static_cast<int>(state_->vertical_stride);
             const im_rect source_rect{0, 0, static_cast<int>(width_), static_cast<int>(height_)};
             const im_rect target_rect = source_rect;
             const im_rect empty_rect{};
@@ -397,6 +399,7 @@ VideoPacketPtr VideoEncoderRockchip::SendYUVFrame(void* data) {
             std::lock_guard<std::mutex> rga_lock(media::RgaGlobalLock());
             status = improcess(source_image, target_image, empty_buffer, source_rect, target_rect, empty_rect,
                                IM_SYNC);
+            }
         }
         rga_copied = RockchipRgaSucceeded(status);
         GetPreviewPipelineMetrics().RecordRgaOperation(rga_copied, ElapsedNanoseconds(rga_started));
