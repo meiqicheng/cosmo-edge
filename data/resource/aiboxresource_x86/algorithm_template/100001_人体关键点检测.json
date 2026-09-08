@@ -1,0 +1,94 @@
+{
+  "algorithmCategory": 1,
+  "algorithmId": "100001",
+  "id": "100001",
+  "algorithmCode": 100001,
+  "algorithmName": "人体关键点检测",
+  "algorithmUsage": 1,
+  "checkType": 100001,
+  "algorithmMetadata": {
+    "params": [],
+    "region": {
+      "heads": [],
+      "regionType": "hexagon",
+      "scheduleSupport": false,
+      "enableShieldedRegion": false,
+      "maxAreaCount": 4,
+      "defaultFullScreen": true
+    }
+  },
+  "configVersionList": [],
+  "algorithmProcessdata": [
+    {
+      "actionId": "BA_00001",
+      "actionName": "视频解码",
+      "remark": "读取视频或摄像头画面",
+      "flowActionId": "1",
+      "preFlowActionId": "-1",
+      "configObject": {
+        "webConfig": {
+          "labelList": [],
+          "labelFilterList": [],
+          "metaDataParams": [],
+          "atomic": {}
+        },
+        "params": []
+      },
+      "actionNameI18nKey": "resource.action.ba_00001.actionname"
+    },
+    {
+      "actionId": "AA_00001",
+      "actionName": "人体关键点检测",
+      "remark": "使用 YOLO Pose 检测人体框并输出 COCO-17 关键点",
+      "flowActionId": "2",
+      "preFlowActionId": "1",
+      "configObject": {
+        "webConfig": {
+          "labelList": [
+            {
+              "label": "0",
+              "class_name": "person",
+              "nameCN": "人体",
+              "threshold": [
+                0.25,
+                0.25
+              ],
+              "used": true,
+              "position": "2",
+              "atomicCode": ""
+            }
+          ],
+          "labelFilterList": [],
+          "metaDataParams": [],
+          "atomic": {
+            "atomicCode": "",
+            "atomicName": "YOLO Pose",
+            "position": "2",
+            "labelList": []
+          }
+        },
+        "params": [
+          {
+            "key": "atomicCode",
+            "value": ""
+          },
+          {
+            "key": "Enableftp",
+            "value": "0"
+          },
+          {
+            "key": "fps",
+            "value": "-1"
+          }
+        ]
+      },
+      "actionNameI18nKey": "resource.action.aa_00001.actionname"
+    }
+  ],
+  "atomicList": "[]",
+  "remark": "人体姿态关键点检测。导入后在目标检测节点选择 yolov8_pose、yolo11_pose 或 yolo26_pose 模型。模型输出包含人体框和 COCO-17 关键点，并支持骨架绘制。",
+  "description": "YOLO Pose 人体关键点检测模板",
+  "status": 1,
+  "visualized": 1,
+  "supplier": "CWAI"
+}
