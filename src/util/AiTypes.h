@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -10,6 +11,25 @@
 #include "util/Rect.h"
 
 namespace cosmo {
+
+// Generic keypoint metadata shared by face, pose, plate and OCR models.
+enum class AiKeypointKind : uint8_t { Unknown = 0, Face, HumanPose, LicensePlate, OcrQuad };
+enum class AiKeypointCoordinateSpace : uint8_t { Pixel = 0, Normalized };
+
+struct AiKeypoint {
+    float x{0.0f};
+    float y{0.0f};
+    float confidence{-1.0f};
+    float visibility{-1.0f};
+    int index{-1};
+};
+
+struct AiKeypointSet {
+    AiKeypointKind kind{AiKeypointKind::Unknown};
+    AiKeypointCoordinateSpace coordinateSpace{AiKeypointCoordinateSpace::Pixel};
+    std::string schema;
+    std::vector<AiKeypoint> points;
+};
 
 enum class AITrackingStatus { NEW, TRACKING, LOSS, UNKNOW };
 
@@ -105,6 +125,8 @@ struct AiOcrValue {
 
 struct AiLandmarkData {
     std::vector<util::Point> landmark;
+    // Extended representation; landmark remains for backward compatibility.
+    AiKeypointSet keypoints;
 };
 
 struct AiFeature {

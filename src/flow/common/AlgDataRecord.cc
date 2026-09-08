@@ -50,6 +50,9 @@ void DetData2RecData(DataDetTrackClassifyPtr frame, MsgAiDetFrame& recData) {
         recTarget.aiBox.y           = target.box.y;
         recTarget.aiBox.width       = target.box.width;
         recTarget.aiBox.height      = target.box.height;
+        for (const auto& point : target.landmark.landmark) {
+            recTarget.landmark.push_back({point.x, point.y});
+        }
         recTarget.hwRatio           = target.hwRatio;
         recTarget.hwRatioVariation  = target.hwRatioVariation;
         recTarget.bHaveMatchInfo    = false;

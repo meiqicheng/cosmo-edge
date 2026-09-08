@@ -15,6 +15,12 @@
 
 namespace cosmo {
 
+static constexpr int kCocoPoseEdges[][2] = {
+    {5, 6}, {5, 7}, {7, 9}, {6, 8}, {8, 10}, {5, 11}, {6, 12}, {11, 12},
+    {11, 13}, {13, 15}, {12, 14}, {14, 16}, {0, 1}, {0, 2}, {1, 3}, {2, 4},
+    {0, 5}, {0, 6},
+};
+
 void StreamViewerOverview::AddTextToLocal(int64_t streamIndex, uint64_t index, int64_t timestamp,
                                           util::Point pos, StreamOverviewTextEl& text) {
     // data is expired (VOD strictly aligns frame sequence; live preview does not discard by frame seq,
@@ -132,6 +138,9 @@ void StreamViewerOverview::AddLineToLocal(int64_t streamIndex, uint64_t index, i
 
 void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t index, int64_t timestamp,
                                               MsgTarget& target) {
+    LOG_DEBUG("[OSD_TARGET] task:{} stream:{} frame:{} track:{} box=({},{} {}x{}) confs:{} landmarks:{}",
+             task_id_, streamIndex, index, target.trackId, target.aiBox.x, target.aiBox.y,
+             target.aiBox.width, target.aiBox.height, target.confidence.size(), target.landmark.size());
     // skip invalid targets in tracker LOSS state (confidence = -1 is tracker internal sentinel)
     bool hasValidConfidence = std::any_of(target.confidence.begin(), target.confidence.end(),
                                           [](const auto& conf) { return conf.confidence >= 0; });
@@ -173,6 +182,43 @@ void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t inde
             sb.lastSeenTimestamp = timestamp;
         } else {
             smoothed_boxes_[target.trackId] = {bx, by, bw, bh, timestamp};
+        }
+    }
+
+    // ── Keypoint EMA smoothing: same policy as the box, keyed by trackId. ──
+    // Only blends when the landmark count is stable (4 for plate quad, 17 for
+    // pose); a changed count reseeds the buffer instead of blending mismatched
+    // points. Invalid keypoints (negative coords = not detected) stay raw.
+    std::vector<MsgPoint> drawLandmarks = target.landmark;
+    if (target.trackId >= 0 && !target.landmark.empty()) {
+        auto kit = smoothed_keypoints_.find(target.trackId);
+        if (kit != smoothed_keypoints_.end() &&
+            kit->second.points.size() == target.landmark.size() &&
+            timestamp - kit->second.lastSeenTimestamp <= kSmoothExpireMs) {
+            auto& sk = kit->second;
+            for (size_t i = 0; i < target.landmark.size(); ++i) {
+                const auto& raw = target.landmark[i];
+                if (raw.x < 0 || raw.y < 0) {
+                    sk.points[i] = {raw.x, raw.y};
+                    continue;
+                }
+                sk.points[i].first  = kEmaAlpha * raw.x + (1.0 - kEmaAlpha) * sk.points[i].first;
+                sk.points[i].second = kEmaAlpha * raw.y + (1.0 - kEmaAlpha) * sk.points[i].second;
+            }
+            sk.lastSeenTimestamp = timestamp;
+            drawLandmarks.clear();
+            drawLandmarks.reserve(sk.points.size());
+            for (const auto& p : sk.points) {
+                drawLandmarks.push_back({p.first, p.second});
+            }
+        } else {
+            SmoothedKeypoints seed;
+            seed.points.reserve(target.landmark.size());
+            for (const auto& raw : target.landmark) {
+                seed.points.push_back({raw.x, raw.y});
+            }
+            seed.lastSeenTimestamp = timestamp;
+            smoothed_keypoints_[target.trackId] = std::move(seed);
         }
     }
 
@@ -236,6 +282,87 @@ void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t inde
         AddLineToLocal(streamIndex, index, timestamp, lbV);
     }
 
+    // ── Keypoint overlay driven by semantic kind/schema (carried from inference),
+    //    never by guessing from the landmark count alone. ─────────────────────────
+    // Plate quads ("plate4") must not jump into the COCO-17 skeleton; pose
+    // ("coco17"/"human_pose") renders the skeleton. A count==17 fallback is kept for
+    // legacy targets that were recorded before the kind/schema fields existed, and it
+    // can never mis-trigger for a 4-point plate quad.
+    const bool isPlateQuad = (target.keypointKind == "license_plate") ||
+                             (target.keypointSchema == "plate4");
+    const bool isPose17 = (target.keypointKind == "human_pose") ||
+                          (target.keypointSchema == "coco17");
+
+    bool showPlateCaption = false;
+    if (isPlateQuad && target.landmark.size() == 4) {
+        // Draw a closed four-corner plate outline plus per-corner tick marks from the
+        // plate4 keypoints, ordered TL -> TR -> BR -> BL -> TL (pixel coordinates).
+        const media::Color quadColor{244, 114, 182};  // plate-pink, distinguishes plate quad
+        const auto quadPts = drawLandmarks;
+        for (size_t q = 0; q < 4; ++q) {
+            const auto& cur = quadPts[q];
+            const auto& nxt = quadPts[(q + 1) % 4];
+            if (cur.x < 0 || cur.y < 0 || nxt.x < 0 || nxt.y < 0) {
+                continue;
+            }
+            util::Point pCur(static_cast<int>(cur.x), static_cast<int>(cur.y));
+            util::Point pNxt(static_cast<int>(nxt.x), static_cast<int>(nxt.y));
+            StreamOverviewLine edge{VideoOverviewAttrPriority::kBox, {pCur, pNxt}, quadColor};
+            AddLineToLocal(streamIndex, index, timestamp, edge);
+        }
+        // Emphasize each corner with a small L-shaped tick.
+        for (size_t q = 0; q < 4; ++q) {
+            const auto& pt = quadPts[q];
+            if (pt.x < 0 || pt.y < 0) {
+                continue;
+            }
+            util::Point centre(static_cast<int>(pt.x), static_cast<int>(pt.y));
+            const int tick = std::clamp(minSide / 6, 4, 14);
+            StreamOverviewLine h{VideoOverviewAttrPriority::kBox,
+                                 {centre, {centre.x + tick, centre.y}}, quadColor};
+            StreamOverviewLine v{VideoOverviewAttrPriority::kBox,
+                                 {centre, {centre.x, centre.y + tick}}, quadColor};
+            AddLineToLocal(streamIndex, index, timestamp, h);
+            AddLineToLocal(streamIndex, index, timestamp, v);
+        }
+        showPlateCaption = true;
+    } else if (isPose17 || (!isPlateQuad && target.landmark.size() == 17)) {
+        // Pose landmarks are carried in pixel coordinates by MsgTarget. Draw the
+        // COCO-17 skeleton in the same overview cache as the detection box. Only
+        // record the edges whose two endpoints are both valid so a partially-occluded
+        // person never draws disconnected segments outside the frame.
+        const media::Color poseColor{255, 180, 0};
+        // Add a small cross at every valid joint so points remain visible even
+        // when a limb edge is occluded or the video is scaled down.
+        for (const auto& point : drawLandmarks) {
+            if (point.x < 0 || point.y < 0)
+                continue;
+            const util::Point center(static_cast<int>(point.x), static_cast<int>(point.y));
+            constexpr int kJointRadius = 3;
+            AddLineToLocal(streamIndex, index, timestamp,
+                           StreamOverviewLine{VideoOverviewAttrPriority::kBox,
+                                              {{center.x - kJointRadius, center.y},
+                                               {center.x + kJointRadius, center.y}},
+                                              poseColor});
+            AddLineToLocal(streamIndex, index, timestamp,
+                           StreamOverviewLine{VideoOverviewAttrPriority::kBox,
+                                              {{center.x, center.y - kJointRadius},
+                                               {center.x, center.y + kJointRadius}},
+                                              poseColor});
+        }
+        for (const auto& edge : kCocoPoseEdges) {
+            const auto& p1 = drawLandmarks[static_cast<size_t>(edge[0])];
+            const auto& p2 = drawLandmarks[static_cast<size_t>(edge[1])];
+            if (p1.x < 0 || p1.y < 0 || p2.x < 0 || p2.y < 0)
+                continue;
+            StreamOverviewLine poseLine{VideoOverviewAttrPriority::kBox,
+                                        {{static_cast<int>(p1.x), static_cast<int>(p1.y)},
+                                         {static_cast<int>(p2.x), static_cast<int>(p2.y)}},
+                                        poseColor};
+            AddLineToLocal(streamIndex, index, timestamp, poseLine);
+        }
+    }
+
     bool trackIdShown = false;
     for (auto& confidence : target.confidence) {
         // skip invalid confidence entries
@@ -267,10 +394,61 @@ void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t inde
         }
         AddTextToLocal(streamIndex, index, timestamp, pos, text);
     }
+
+    // ── Level-1 plate caption: draw the recognized number and the color label below
+    //    the plate. The number is never fabricated: if ocrString is empty (recognition
+    //    had no confident text) only the box/quads and color remain visible. ───────────
+    if (showPlateCaption) {
+        std::string colorLabel;
+        float colorConfidence = 0.0F;
+        for (const auto& attr : target.attrs) {
+            if (attr.category == "plateColor" && !attr.label.empty()) {
+                colorLabel      = attr.label;
+                colorConfidence = attr.confidence;
+                break;
+            }
+        }
+        std::string caption = target.ocrString;
+        if (caption.empty()) {
+            caption = colorLabel;  // no number trust → show only the color label
+        } else if (!colorLabel.empty()) {
+            caption += " [" + colorLabel + "]";
+        }
+        // Append the real number/color confidences from the recognizer. The number is
+        // never fabricated: when ocrString is empty only the color (and its confidence)
+        // is shown.
+        if (!target.ocrString.empty() && target.ocrConfidence > 0.0F) {
+            caption += COSMO_FORMAT(" (num:{:.2f}", target.ocrConfidence);
+            if (colorConfidence > 0.0F) {
+                caption += COSMO_FORMAT(" col:{:.2f})", colorConfidence);
+            } else {
+                caption += ")";
+            }
+        } else if (colorConfidence > 0.0F) {
+            caption += COSMO_FORMAT(" (col:{:.2f})", colorConfidence);
+        }
+        if (!caption.empty()) {
+            util::Point plateTextPos(drawX, drawY + drawH + 12);
+            StreamOverviewTextEl plateText;
+            plateText.attrPriority = VideoOverviewAttrPriority::kConfidence;
+            plateText.text         = caption;
+            plateText.bgColor      = {5, 8, 22};
+            plateText.hasBgColor   = true;
+            plateText.hasColor     = true;
+            if (!target.ocrString.empty()) {
+                plateText.color = {255, 209, 102};  // gold — number trusted
+            } else {
+                plateText.color = {138, 148, 184};  // slate — color only, number absent
+            }
+            AddTextToLocal(streamIndex, index, timestamp, plateTextPos, plateText);
+        }
+    }
 }
 
 void StreamViewerOverview::LiveDataAiFrameToLocal(std::vector<MsgAiDetFrame>& aiDatas) {
     for (auto& aiData : aiDatas) {
+        LOG_DEBUG("[OSD_FRAME] task:{} stream:{} frame:{} targets:{} ts:{}",
+                 task_id_, aiData.streamIndex, aiData.index, aiData.targets.size(), aiData.timestamp);
         for (auto& target : aiData.targets) {
             LiveDataHandTarget(aiData.streamIndex, aiData.index, aiData.timestamp, target);
         }
@@ -280,6 +458,7 @@ void StreamViewerOverview::LiveDataAiFrameToLocal(std::vector<MsgAiDetFrame>& ai
 void StreamViewerOverview::LiveDataToLocal() {
     auto liveDatas =
         service::ServiceRegistry::Instance().Get<service::ITaskQuery>().GetTaskLiveOverviewInfo(task_id_);
+    LOG_DEBUG("[OSD_QUERY] task:{} live_records:{}", task_id_, liveDatas.size());
 
     // ── Collect all AIData frames from every pipeline action, then deduplicate ──
     // Multiple actions (Track, Classify, Logic, ...) each record the same target;
@@ -307,6 +486,11 @@ void StreamViewerOverview::LiveDataToLocal() {
                                 if (newTarget.confidence.size() > targetIt->confidence.size()) {
                                     targetIt->confidence = newTarget.confidence;
                                     targetIt->attrs      = newTarget.attrs;
+                                }
+                                // The tracked result is the authoritative OSD target. Preserve
+                                // pose/face/plate keypoints when merging another pipeline stage.
+                                if (!newTarget.landmark.empty() && targetIt->landmark.empty()) {
+                                    targetIt->landmark = newTarget.landmark;
                                 }
                                 merged = true;
                             }

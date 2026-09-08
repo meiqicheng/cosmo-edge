@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #include "nn/utils/tracker_wrap.h"
+#include "util/GeometricPos.h"
 #include "util/Log.h"
 #include "util/UuidUtil.h"
 
@@ -220,14 +221,32 @@ std::vector<AiDetectRstEl> AiTrackerUnify::TrackEl2DetEl(std::vector<cosmo::nn::
 void AiTrackerUnify::TrackDataSignDetId(std::vector<AiDetectRstEl>& track_out,
                                         const std::vector<AiDetectRstEl>& input) {
     for (auto& target : track_out) {
-        bool find_it  = false;
+        bool find_it = false;
         auto match_it = std::find_if(input.begin(), input.end(), [&target](const auto& track_in) {
             return (track_in.confidence.label == target.confidence.label) &&
                    (track_in.box.x == target.box.x) && (track_in.box.y == target.box.y) &&
                    (track_in.box.width == target.box.width) && (track_in.box.height == target.box.height);
         });
+        // Tracker boxes can move slightly between frames. Associate the closest
+        // same-label detection by IoU so pose landmarks survive box smoothing.
+        if (match_it == input.end()) {
+            float best_iou = 0.10F;
+            for (auto it = input.begin(); it != input.end(); ++it) {
+                if (it->confidence.label != target.confidence.label) {
+                    continue;
+                }
+                const float iou = util::IntersectionUnionRatio(it->box, target.box);
+                if (iou > best_iou) {
+                    best_iou = iou;
+                    match_it = it;
+                }
+            }
+        }
         if (match_it != input.end()) {
             target.targetId = match_it->targetId;
+            // The tracker rebuilds detection boxes. Preserve one-stage Pose
+            // keypoints so they remain available to real-time OSD.
+            target.landmark = match_it->landmark;
             find_it         = true;
         }
         if (!find_it) {

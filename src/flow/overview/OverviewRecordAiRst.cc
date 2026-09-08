@@ -182,6 +182,42 @@ MsgAiDetFrame OverviewRecordAiRst::SrcData2MsgData(const DataDetTrackClassifyPtr
         rec_target.aiBox.y           = target.box.y;
         rec_target.aiBox.width       = target.box.width;
         rec_target.aiBox.height      = target.box.height;
+        for (const auto& point : target.landmark.landmark) {
+            rec_target.landmark.push_back({point.x, point.y});
+        }
+        // Carry the semantic keypoint family so the live overlay composites by kind/schema
+        // instead of inferring HumanPose from "count == 17". Empty kind/schema on a target
+        // with points only means the model did not label the family; renderers must then stay
+        // conservative (never jump to the cobra-pose skeleton from plate/face quad points).
+        switch (target.landmark.keypoints.kind) {
+            case AiKeypointKind::HumanPose:
+                rec_target.keypointKind = "human_pose";
+                break;
+            case AiKeypointKind::LicensePlate:
+                rec_target.keypointKind = "license_plate";
+                break;
+            case AiKeypointKind::Face:
+                rec_target.keypointKind = "face";
+                break;
+            case AiKeypointKind::OcrQuad:
+                rec_target.keypointKind = "ocr_quad";
+                break;
+            default:
+                // Custom/unidentified family: keep "" unless the legacy landmark carries
+                // points, in which case it is a generic point set with no semantics known yet.
+                if (!target.landmark.landmark.empty())
+                    rec_target.keypointKind = "custom";
+                break;
+        }
+        rec_target.keypointSchema = target.landmark.keypoints.schema;
+        // OCR text (e.g. plate number) attached by an OCR/plate action. Keep the empty result
+        // empty so the UI shows the box/quads without inventing a number.
+        for (const auto& ocr : target.ocrRst) {
+            if (!ocr.value.empty()) {
+                rec_target.ocrString += ocr.value;
+                rec_target.ocrConfidence = ocr.confidence;
+            }
+        }
         rec_target.hwRatio           = target.hwRatio;
         rec_target.hwRatioVariation  = target.hwRatioVariation;
         rec_target.bHaveMatchInfo    = false;
@@ -216,8 +252,9 @@ MsgAiDetFrame OverviewRecordAiRst::SrcData2MsgData(const DataDetTrackClassifyPtr
 
         for (const auto& attr_rst : target.attrRst) {
             MsgAiAttribute attr;
-            attr.label    = attr_rst.label;
-            attr.category = attr_rst.category;
+            attr.label      = attr_rst.label;
+            attr.category   = attr_rst.category;
+            attr.confidence = attr_rst.confidence;
             if (!attr.label.empty())
                 rec_target.attrs.push_back(attr);
         }
