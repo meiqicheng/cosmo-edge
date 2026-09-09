@@ -202,6 +202,7 @@ bool ActionServiceImpl::UpdateActionAlg(cosmo::ActionAlg& actionAlg) {
                (id == cosmo::AACluster_Code) || (id == cosmo::AAFightClassify_Code) ||
                (id == cosmo::BATaskCollect_Code) || (id == cosmo::AAVideoDiagnosis_Code) ||
                (id == cosmo::AAOcr_Code) || (id == cosmo::AAIrCheck_Code) ||
+               (id == cosmo::AAPlateRecognize_Code) ||
                (id == cosmo::DADinoDetect_Code) || (id == cosmo::DASam2Segment_Code) ||
                (id == cosmo::DAQwen3VL_Code);
     };

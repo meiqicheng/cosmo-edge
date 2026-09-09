@@ -66,6 +66,17 @@
     "remarkI18nKey": "resource.action.aa_00011.remark"
   },
   {
+    "id": "AA_00013",
+    "actionUsage": 1,
+    "actionType": 1,
+    "businessCategory": "1",
+    "actionName": "车牌号码颜色识别",
+    "inputParamConfig": "[{\"type\":\"modelSelect_ocr\",\"defaultValue\":\"\",\"description\":\"选择车牌号码颜色识别原子模型\",\"failedTip\":\"请选择\",\"key\":\"atomicCode\",\"name\":\"选择车牌识别模型\",\"level\":\"1\",\"regexpr\":\"\"}]",
+    "remark": "裁剪车牌区域并识别号码与颜色",
+    "actionNameI18nKey": "resource.action.aa_00013.actionname",
+    "remarkI18nKey": "resource.action.aa_00013.remark"
+  },
+  {
     "id": "BA_00001",
     "actionUsage": 1,
     "actionType": 2,

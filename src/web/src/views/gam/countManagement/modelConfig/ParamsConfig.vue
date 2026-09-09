@@ -399,6 +399,8 @@ const TYPE_SCHEMA = computed(() => {
   schemas.yolov8_pose = schemas.yolov8_det
   schemas.yolo11_pose = schemas.yolov8_det
   schemas.yolo26_pose = schemas.yolo26_det
+  schemas.yolo26_plate_pose = schemas.yolo26_det
+  schemas.plate_rec_color = schemas.ocr
   schemas.qwen3_5 = schemas.qwen3vl
   return schemas
 })

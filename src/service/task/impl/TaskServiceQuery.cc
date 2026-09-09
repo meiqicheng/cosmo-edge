@@ -305,6 +305,7 @@ std::vector<std::pair<std::string, cosmo::util::DurationStatInfo>> TaskServiceIm
         {cosmo::AAFightClassify_Code, "FightClassify"},
         {cosmo::AAVideoDiagnosis_Code, "VideoDiag"},
         {cosmo::AAOcr_Code, "OCR"},
+        {cosmo::AAPlateRecognize_Code, "PlateRec"},
         {cosmo::AAIrCheck_Code, "IrCheck"},
         {cosmo::DADinoDetect_Code, "DinoDet"},
         {cosmo::DASam2Segment_Code, "Sam2Seg"},

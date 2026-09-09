@@ -14,6 +14,7 @@ export const ICON_KEY_MAP = {
   'AA_00002': { key: 'grid', color: 'icon-purple' },       // 目标分类算法
   'AA_00009': { key: 'grid', color: 'icon-purple' },       // 序列化分类算法
   'AA_00011': { key: 'target', color: 'icon-purple' },     // 车牌文字识别
+  'AA_00013': { key: 'target', color: 'icon-purple' },     // 车牌号码颜色识别
   'AA_10002': { key: 'grid', color: 'icon-purple' },       // 关联目标分类
   'AA_20002': { key: 'grid', color: 'icon-purple' },       // 指定区域分类
   'AA_30002': { key: 'grid', color: 'icon-purple' },       // 目标属性算法

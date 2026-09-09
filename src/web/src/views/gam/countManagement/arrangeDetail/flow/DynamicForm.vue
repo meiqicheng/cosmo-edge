@@ -839,8 +839,9 @@ const getModelSelectList = (code, type) => {
 
   // AA_00004 is the two-stage landmark action. YOLO Pose is a one-stage
   // detector and must only be offered by AA_00001 (detector).
-  const detectorModelTypes = ['yolov8_pose', 'yolo11_pose', 'yolo26_pose']
+  const detectorModelTypes = ['yolov8_pose', 'yolo11_pose', 'yolo26_pose', 'yolo26_plate_pose']
   const needMergeQwen35 = (params.modelType === 'qwen3vl')
+  const needMergePlateRec = (params.modelType === 'ocr')
 
   const fetchList = (mt) => {
     return $API.atomicModelList({ ...params, modelType: mt }).then((res) => {
@@ -854,6 +855,9 @@ const getModelSelectList = (code, type) => {
   }
   if (needMergeQwen35) {
     promises.push(fetchList('qwen3_5'))
+  }
+  if (needMergePlateRec) {
+    promises.push(fetchList('plate_rec_color'))
   }
 
   Promise.all(promises).then((results) => {

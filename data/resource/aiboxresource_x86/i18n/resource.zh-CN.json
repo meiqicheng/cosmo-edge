@@ -287,6 +287,8 @@
   "resource.action.aa_00005.remark": "支持人脸、人体、机物提取特征",
   "resource.action.aa_00011.actionname": "文字识别",
   "resource.action.aa_00011.remark": "识别关键点定位后的车牌文字，需要选择 OCR 模型",
+  "resource.action.aa_00013.actionname": "车牌号码颜色识别",
+  "resource.action.aa_00013.remark": "用四角关键点矫正车牌并识别号码与颜色",
   "resource.action.ba_00001.actionname": "视频解码",
   "resource.action.ba_00001.remark": "视频解码",
   "resource.action.ba_00002.actionname": "类别筛选",
