@@ -1,6 +1,5 @@
 #include "infer/AiPlateResultParser.h"
 #include "infer/AiPlateRecognizerUnify.h"
-#include "infer/AiPlateDetectorUnify.h"
 
 #include "flow/common/AlgDetectTypes.h"
 #include "flow/overview/OverviewRecordAiRst.h"
@@ -71,13 +70,6 @@ TEST_CASE("plate parser decodes end-to-end pose and multi-output heads", "[ai][p
     REQUIRE(cosmo::AiPlateResultParser::DecodeColor(colors, {1, 5}, color_index, color_score, error));
     CHECK(color_index == 2);
     CHECK(color_score > 0.9F);
-}
-
-TEST_CASE("plate detector rejects decode before initialization", "[ai][plate]") {
-    cosmo::AiPlateDetectorUnify detector("missing.json", "missing.onnx");
-    std::vector<cosmo::AiPlatePoseResult> detections;
-    std::string error;
-    CHECK(detector.Run({}, {1, 3, 640, 640}, detections, 100, 100, 0.3F, error) == cosmo::util::ErrorEnum::NotInit);
 }
 
 TEST_CASE("plate OCR decoder computes real number confidence", "[ai][plate]") {
