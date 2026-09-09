@@ -3,6 +3,14 @@ ARG RUNTIME_BASE_IMAGE=debian:12-slim
 
 FROM ${BUILD_ENV_IMAGE} AS builder
 
+# Allow the build to use a network proxy (e.g. Docker Desktop's daemon proxy) for
+# source fetches that need internet (tokenizers' cargo download, etc.). Passed in
+# via --build-arg; defaults to empty so offline / no-proxy builds are unaffected.
+ARG HTTP_PROXY=""
+ARG HTTPS_PROXY=""
+ENV HTTP_PROXY=${HTTP_PROXY}
+ENV HTTPS_PROXY=${HTTPS_PROXY}
+
 WORKDIR /src
 COPY . .
 
