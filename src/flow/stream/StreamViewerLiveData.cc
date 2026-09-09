@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <map>
 
+#include "flow/common/PoseSkeleton.h"
 #include "flow/stream/StreamViewerOverview.h"
 #include "flow/stream/StreamViewerOverviewTypes.h"
 #include "service/detail/ServiceRegistry.h"
@@ -14,12 +15,6 @@
 #include "util/FormatString.h"
 
 namespace cosmo {
-
-static constexpr int kCocoPoseEdges[][2] = {
-    {5, 6}, {5, 7}, {7, 9}, {6, 8}, {8, 10}, {5, 11}, {6, 12}, {11, 12},
-    {11, 13}, {13, 15}, {12, 14}, {14, 16}, {0, 1}, {0, 2}, {1, 3}, {2, 4},
-    {0, 5}, {0, 6},
-};
 
 // A joint scoring below this is treated as invisible. Pose heads output a
 // visibility score per joint, and an occluded joint still yields finite

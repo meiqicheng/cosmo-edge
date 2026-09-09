@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <filesystem>
 
+#include "flow/common/PoseSkeleton.h"
 #include "flow/detect/PDinoDetector.h"
 #include "flow/detect/PSamDetector.h"
 #include "flow/landmark/PLandmark.h"
@@ -103,13 +104,6 @@ static void DetTarget2MsgTarget(const AiDetectRstEl& target, MsgPTaskTarget& msg
         msgTarget.featurePreview = preview;
     }
 }
-
-// COCO-17 human pose skeleton. Invalid/missing points are skipped at draw time.
-static constexpr int kCocoPoseEdges[][2] = {
-    {5, 6},   {5, 7},   {7, 9},   {6, 8},   {8, 10},  {5, 11},  {6, 12},
-    {11, 12}, {11, 13}, {13, 15}, {12, 14}, {14, 16}, {0, 1},   {0, 2},
-    {1, 3},   {2, 4},   {0, 5},   {0, 6},
-};
 
 static MsgPTaskArea ProcessAreaTargets(const MsgTaskArea& area, const std::vector<AiDetectRstEl>& targets,
                                        bool bHaveLogic) {
