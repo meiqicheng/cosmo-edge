@@ -1,23 +1,24 @@
 {
-  "model_type": "yolov8_pose",
+  "model_type": "yolo26_pose",
   "chip_type": "X86",
-  "algorithm_code": "4000017",
+  "algorithm_code": "4020001",
   "version": "V1.0.0",
-  "decoder": "yolo_pose_tensor",
-  "keypoint_kind": "human_pose",
-  "keypoint_schema": "coco17",
-  "keypoint_count": 17,
+  "decoder": "yolo_pose_end_to_end",
+  "keypoint_kind": "face",
+  "keypoint_schema": "face5",
+  "keypoint_count": 5,
   "keypoint_values_per_point": 3,
-  "keypoint_layout": "channel_major",
-  "keypoint_score_activation": "sigmoid",
+  "keypoint_layout": "end_to_end",
+  "output_layout": "[B,N,C]",
+  "nms_completed": true,
   "models": [
     {
-      "name": "yolov8n-pose",
-      "file_name": "yolov8n-pose.onnx",
+      "name": "yolo26n-pose-face",
+      "file_name": "yolo26n-pose-face.onnx",
       "file_md5": "",
       "max_batch": 1,
       "inputs": [{"name": "images", "shape": [1, 3, 640, 640], "data_type": 0}],
-      "outputs": [{"name": "output0", "shape": [1, 56, 8400], "data_type": 0}],
+      "outputs": [{"name": "output0", "shape": [1, 300, 21], "data_type": 0}],
       "params": {
         "input_size": [640, 640],
         "padding_color": [114, 114, 114],
@@ -27,17 +28,17 @@
         "nms_threshold": 0.7,
         "top_k": 300,
         "class_count": 1,
-        "keypoint_count": 17,
+        "keypoint_count": 5,
         "keypoint_values_per_point": 3
       }
     },
     {
-      "name": "yolo11n-pose",
-      "file_name": "yolo11n-pose.onnx",
+      "name": "yolo26s-pose-face",
+      "file_name": "yolo26s-pose-face.onnx",
       "file_md5": "",
       "max_batch": 1,
       "inputs": [{"name": "images", "shape": [1, 3, 640, 640], "data_type": 0}],
-      "outputs": [{"name": "output0", "shape": [1, 56, 8400], "data_type": 0}],
+      "outputs": [{"name": "output0", "shape": [1, 300, 21], "data_type": 0}],
       "params": {
         "input_size": [640, 640],
         "padding_color": [114, 114, 114],
@@ -47,12 +48,12 @@
         "nms_threshold": 0.7,
         "top_k": 300,
         "class_count": 1,
-        "keypoint_count": 17,
+        "keypoint_count": 5,
         "keypoint_values_per_point": 3
       }
     }
   ],
   "labels": [
-    { "id": "0", "name": "person", "threshold": [0.25, 0.25] }
+    { "id": "0", "name": "face", "threshold": [0.25, 0.25] }
   ]
 }

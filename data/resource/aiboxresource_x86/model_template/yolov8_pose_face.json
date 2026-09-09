@@ -1,0 +1,99 @@
+{
+  "model_type": "yolov8_pose",
+  "chip_type": "X86",
+  "algorithm_code": "4020001",
+  "version": "V1.0.0",
+  "decoder": "yolo_pose_tensor",
+  "keypoint_kind": "face",
+  "keypoint_schema": "face5",
+  "keypoint_count": 5,
+  "keypoint_values_per_point": 3,
+  "keypoint_layout": "channel_major",
+  "keypoint_score_activation": "sigmoid",
+  "note_point_order": "RetinaFace: [left_eye, right_eye, nose, left_mouth_corner, right_mouth_corner]; eyes/mouth-corners are the symmetric pair (flip 0<->1, 3<->4)",
+  "models": [
+    {
+      "name": "yolov8n-pose_widerface",
+      "file_name": "yolov8n-pose_widerface.onnx",
+      "file_md5": "",
+      "max_batch": 1,
+      "inputs": [{"name": "images", "shape": [1, 3, 640, 640], "data_type": 0}],
+      "outputs": [{"name": "output0", "shape": [1, 20, 8400], "data_type": 0}],
+      "params": {
+        "input_size": [640, 640],
+        "padding_color": [114, 114, 114],
+        "normalize_scale": 0.00392157,
+        "is_bgr": false,
+        "confidence_threshold": 0.25,
+        "nms_threshold": 0.7,
+        "top_k": 300,
+        "class_count": 1,
+        "keypoint_count": 5,
+        "keypoint_values_per_point": 3
+      }
+    },
+    {
+      "name": "yolov8s-pose_widerface",
+      "file_name": "yolov8s-pose_widerface.onnx",
+      "file_md5": "",
+      "max_batch": 1,
+      "inputs": [{"name": "images", "shape": [1, 3, 640, 640], "data_type": 0}],
+      "outputs": [{"name": "output0", "shape": [1, 20, 8400], "data_type": 0}],
+      "params": {
+        "input_size": [640, 640],
+        "padding_color": [114, 114, 114],
+        "normalize_scale": 0.00392157,
+        "is_bgr": false,
+        "confidence_threshold": 0.25,
+        "nms_threshold": 0.7,
+        "top_k": 300,
+        "class_count": 1,
+        "keypoint_count": 5,
+        "keypoint_values_per_point": 3
+      }
+    },
+    {
+      "name": "yolo11n-pose_widerface",
+      "file_name": "yolo11n-pose_widerface.onnx",
+      "file_md5": "",
+      "max_batch": 1,
+      "inputs": [{"name": "images", "shape": [1, 3, 640, 640], "data_type": 0}],
+      "outputs": [{"name": "output0", "shape": [1, 20, 8400], "data_type": 0}],
+      "params": {
+        "input_size": [640, 640],
+        "padding_color": [114, 114, 114],
+        "normalize_scale": 0.00392157,
+        "is_bgr": false,
+        "confidence_threshold": 0.25,
+        "nms_threshold": 0.7,
+        "top_k": 300,
+        "class_count": 1,
+        "keypoint_count": 5,
+        "keypoint_values_per_point": 3
+      }
+    },
+    {
+      "name": "yolo11s-pose_widerface",
+      "file_name": "yolo11s-pose_widerface.onnx",
+      "file_md5": "",
+      "max_batch": 1,
+      "inputs": [{"name": "images", "shape": [1, 3, 640, 640], "data_type": 0}],
+      "outputs": [{"name": "output0", "shape": [1, 20, 8400], "data_type": 0}],
+      "params": {
+        "input_size": [640, 640],
+        "padding_color": [114, 114, 114],
+        "normalize_scale": 0.00392157,
+        "is_bgr": false,
+        "confidence_threshold": 0.25,
+        "nms_threshold": 0.7,
+        "top_k": 300,
+        "class_count": 1,
+        "keypoint_count": 5,
+        "keypoint_values_per_point": 3
+      }
+    }
+  ],
+  "labels": [
+    { "id": "0", "name": "face", "threshold": [0.25, 0.25] }
+  ]
+}
