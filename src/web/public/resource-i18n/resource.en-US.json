@@ -287,6 +287,8 @@
   "resource.action.aa_00005.remark": "Supports face, body, and object feature extraction",
   "resource.action.aa_00011.actionname": "Text Recognition",
   "resource.action.aa_00011.remark": "Recognizes license plates located by landmarks; requires an OCR model",
+  "resource.action.aa_00013.actionname": "Plate Number & Color Recognition",
+  "resource.action.aa_00013.remark": "Warps the plate by its four corner keypoints and recognizes number and color",
   "resource.action.ba_00001.actionname": "Video Decode",
   "resource.action.ba_00001.remark": "Video Decode",
   "resource.action.ba_00002.actionname": "Category Filter",
