@@ -7,7 +7,10 @@
 #include "service/detail/ServiceRegistry.h"
 #include "service/system/IOverviewConfig.h"
 
-#include <catch2/catch_test_macros.hpp>
+// clang-format off
+#include "catch_amalgamated.hpp"
+// clang-format on
+
 #include <limits>
 #include <memory>
 

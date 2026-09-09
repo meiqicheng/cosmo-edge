@@ -396,6 +396,7 @@ Status YoloPosePipeline::Init(const PipelineConfig& config, const std::string& m
             input_width_ = input_size[0];
             input_height_ = input_size[1];
         }
+        resize_gravity_ = pipeline_utils::ReadInt(p, "gravity", pipeline_utils::ReadInt(p, "padding_gravity", 0));
         for (const auto& in_def : mc.inputs) {
             InputNodeInfo input;
             input.name = in_def.name;
@@ -412,6 +413,17 @@ Status YoloPosePipeline::Init(const PipelineConfig& config, const std::string& m
             model.output_node_infos.push_back(std::move(output));
         }
         model_info_.models.push_back(std::move(model));
+    }
+    // Build label instructions exactly like the other detection pipelines. Without
+    // them the class names stay empty, the decoder falls back to "class_<id>", and
+    // a downstream tracker rejects every pose target because its label never
+    // matches the configured one.
+    if (!config.labels.empty() && !model_info_.models.empty()) {
+        auto& last           = model_info_.models.back();
+        std::string out_name = "output0";
+        if (!last.output_node_infos.empty())
+            out_name = last.output_node_infos.front().name;
+        BuildLabels(config, out_name, {-1, -1, 6}, model_info_);
     }
     InitThresholdsAndLabels();
     InitNetInputSize();
@@ -449,6 +461,28 @@ Status YoloPosePipeline::ParseDetectionOutput(std::vector<std::vector<ObjectInfo
         if (!status)
             return status;
         ApplyPoseNms(decoded, nms_threshold_, top_k_);
+        // The decoder can only synthesise "class_<id>". Replace it with the
+        // configured label so the target matches the tracker's label set (the
+        // tracker drops anything whose label it does not know) and so the overlay
+        // shows a meaningful name.
+        for (auto& object : decoded) {
+            if (object.infos.empty())
+                continue;
+            const int cls = object.infos.front().class_id;
+            if (cls >= 0 && cls < static_cast<int>(selected_classnames_.size()) &&
+                !selected_classnames_[static_cast<size_t>(cls)].empty()) {
+                object.infos.front().class_name = selected_classnames_[static_cast<size_t>(cls)];
+            }
+        }
+        // Decoded boxes and keypoints live in model-input space. Project them onto
+        // the original frame size captured by Forward() before anything consumes
+        // them, otherwise the live OSD draws a 640x640 skeleton into the corner of
+        // a 1080p picture. Falling back to the net size keeps the mapping a no-op
+        // when the frame size is unknown.
+        const Size net_size(input_width_, input_height_);
+        const Size frame_size =
+            i < static_cast<int>(image_sizes_.size()) ? image_sizes_[static_cast<size_t>(i)] : net_size;
+        MapYoloPoseToFrame(decoded, net_size, frame_size, resize_gravity_);
         outputs.push_back(std::move(decoded));
     }
     return COSMO_NN_OK;

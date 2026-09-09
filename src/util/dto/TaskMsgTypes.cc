@@ -144,6 +144,8 @@ void to_json(nlohmann::json& j, const MsgTarget& t) {
         j["keypointKind"] = t.keypointKind;
     if (!t.keypointSchema.empty())
         j["keypointSchema"] = t.keypointSchema;
+    if (!t.keypointConfidences.empty())
+        j["keypointConfidences"] = t.keypointConfidences;
     if (!t.ocrString.empty())
         j["ocrString"] = t.ocrString;
     if (t.ocrConfidence > 0.0F)
@@ -173,6 +175,7 @@ void from_json(const nlohmann::json& j, MsgTarget& t) {
     JSON_OPT(j, t, landmark);
     JSON_OPT(j, t, keypointKind);
     JSON_OPT(j, t, keypointSchema);
+    JSON_OPT(j, t, keypointConfidences);
     JSON_OPT(j, t, ocrString);
     JSON_OPT(j, t, ocrConfidence);
     JSON_OPT(j, t, attrs);

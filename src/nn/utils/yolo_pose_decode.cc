@@ -81,8 +81,12 @@ Status DecodeYoloPoseTensor(const float* data, const std::vector<int>& shape, in
             const int offset = keypoint_offset + keypoint * keypoint_values_per_point;
             const float keypoint_x = at(point, offset);
             const float keypoint_y = at(point, offset + 1);
+            // A joint the model did not find must be reported as a negative
+            // sentinel, not as (0, 0): downstream renderers skip a joint when the
+            // coordinate is negative, so writing (0, 0) would place every occluded
+            // joint on the frame origin and draw bogus skeleton edges to it.
             if (!std::isfinite(keypoint_x) || !std::isfinite(keypoint_y)) {
-                object.key_points.emplace_back(0.0F, 0.0F);
+                object.key_points.emplace_back(-1.0F, -1.0F);
                 object.key_point_confidences.push_back(-1.0F);
                 continue;
             }
@@ -97,5 +101,50 @@ Status DecodeYoloPoseTensor(const float* data, const std::vector<int>& shape, in
         outputs.push_back(std::move(object));
     }
     return COSMO_NN_OK;
+}
+
+void MapYoloPoseToFrame(std::vector<ObjectInfoV1>& objects, Size net_size, Size frame_size, int gravity) {
+    if (objects.empty() || net_size.width <= 0 || net_size.height <= 0 || frame_size.width <= 0 ||
+        frame_size.height <= 0)
+        return;
+
+    float scale_x  = 1.0f;
+    float scale_y  = 1.0f;
+    float offset_x = 0.0f;
+    float offset_y = 0.0f;
+    if (gravity == 0) {
+        // Stretch resize: independent per-axis scale, no padding to remove.
+        scale_x = static_cast<float>(frame_size.width) / static_cast<float>(net_size.width);
+        scale_y = static_cast<float>(frame_size.height) / static_cast<float>(net_size.height);
+    } else {
+        // Letterbox resize: uniform scale, plus padding that must be subtracted.
+        const float scale = std::min(static_cast<float>(net_size.width) / static_cast<float>(frame_size.width),
+                                     static_cast<float>(net_size.height) / static_cast<float>(frame_size.height));
+        if (!(scale > 0.0f))
+            return;
+        scale_x = 1.0f / scale;
+        scale_y = 1.0f / scale;
+        if (gravity == 1) {
+            // Content is centered inside the padded model input.
+            offset_x = (net_size.width - frame_size.width * scale) * 0.5f;
+            offset_y = (net_size.height - frame_size.height * scale) * 0.5f;
+        }
+        // gravity == 2 keeps the content top-left aligned: no offset to remove.
+    }
+
+    for (auto& object : objects) {
+        object.x1 = (object.x1 - offset_x) * scale_x;
+        object.x2 = (object.x2 - offset_x) * scale_x;
+        object.y1 = (object.y1 - offset_y) * scale_y;
+        object.y2 = (object.y2 - offset_y) * scale_y;
+        for (auto& point : object.key_points) {
+            // Keep the "joint not detected" sentinel negative so renderers can
+            // still filter on x < 0 after the projection.
+            if (point.first < 0.0f || point.second < 0.0f)
+                continue;
+            point.first  = (point.first - offset_x) * scale_x;
+            point.second = (point.second - offset_y) * scale_y;
+        }
+    }
 }
 }  // namespace cosmo::nn

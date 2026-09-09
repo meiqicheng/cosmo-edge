@@ -116,6 +116,16 @@ void StreamViewerOverview::OldLocalData() {
                 ++it;
             }
         }
+        // The keypoint cache is keyed by trackId exactly like the box cache and
+        // must be expired too; without this every track ever seen is retained for
+        // the lifetime of the task.
+        for (auto it = smoothed_keypoints_.begin(); it != smoothed_keypoints_.end();) {
+            if (frame_identity_.timestamp > it->second.lastSeenTimestamp + kSmoothExpireMs) {
+                it = smoothed_keypoints_.erase(it);
+            } else {
+                ++it;
+            }
+        }
         return;
     }
 

@@ -116,6 +116,11 @@ struct MsgTarget {
     // ("", "coco17", "plate4", "custom") for keypointSchema.
     std::string keypointKind;    // Semantic kind, empty when the target has no keypoints.
     std::string keypointSchema;  // Keypoint point ordering schema, empty when no keypoints.
+    // Per-keypoint confidence, index-aligned with landmark. Empty when the producing
+    // model emits no per-point score. -1 marks a joint the model did not find, and a
+    // low positive score marks a joint it is not confident about; renderers should
+    // treat both as invisible so occluded limbs are not drawn at a bogus position.
+    std::vector<float> keypointConfidences;
     // Recognized OCR text (e.g. plate number) attached by an OCR/plate action. Left empty
     // when recognition had no confident text so the UI never fabricates a number.
     std::string ocrString;

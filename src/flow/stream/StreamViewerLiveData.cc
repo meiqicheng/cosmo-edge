@@ -21,6 +21,12 @@ static constexpr int kCocoPoseEdges[][2] = {
     {0, 5}, {0, 6},
 };
 
+// A joint scoring below this is treated as invisible. Pose heads output a
+// visibility score per joint, and an occluded joint still yields finite
+// coordinates, so without this cutoff every limb is drawn whether or not the
+// model actually saw it. Matches the default pose confidence_threshold.
+static constexpr float kPoseJointMinConfidence = 0.25F;
+
 void StreamViewerOverview::AddTextToLocal(int64_t streamIndex, uint64_t index, int64_t timestamp,
                                           util::Point pos, StreamOverviewTextEl& text) {
     // data is expired (VOD strictly aligns frame sequence; live preview does not discard by frame seq,
@@ -332,29 +338,45 @@ void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t inde
         // record the edges whose two endpoints are both valid so a partially-occluded
         // person never draws disconnected segments outside the frame.
         const media::Color poseColor{255, 180, 0};
+        // A joint counts as visible only when its coordinates are valid and, when the
+        // model supplied a score, that score clears the cutoff. -1 means "no score
+        // available", which must not be read as a failed threshold.
+        const auto jointVisible = [&](size_t idx) {
+            if (idx >= drawLandmarks.size())
+                return false;
+            if (drawLandmarks[idx].x < 0 || drawLandmarks[idx].y < 0)
+                return false;
+            if (idx < target.keypointConfidences.size()) {
+                const float score = target.keypointConfidences[idx];
+                if (score >= 0.0F && score < kPoseJointMinConfidence)
+                    return false;
+            }
+            return true;
+        };
         // Add a small cross at every valid joint so points remain visible even
         // when a limb edge is occluded or the video is scaled down.
-        for (const auto& point : drawLandmarks) {
-            if (point.x < 0 || point.y < 0)
+        for (size_t joint = 0; joint < drawLandmarks.size(); ++joint) {
+            if (!jointVisible(joint))
                 continue;
-            const util::Point center(static_cast<int>(point.x), static_cast<int>(point.y));
+            const util::Point center(static_cast<int>(drawLandmarks[joint].x),
+                                     static_cast<int>(drawLandmarks[joint].y));
             constexpr int kJointRadius = 3;
-            AddLineToLocal(streamIndex, index, timestamp,
-                           StreamOverviewLine{VideoOverviewAttrPriority::kBox,
-                                              {{center.x - kJointRadius, center.y},
-                                               {center.x + kJointRadius, center.y}},
-                                              poseColor});
-            AddLineToLocal(streamIndex, index, timestamp,
-                           StreamOverviewLine{VideoOverviewAttrPriority::kBox,
-                                              {{center.x, center.y - kJointRadius},
-                                               {center.x, center.y + kJointRadius}},
-                                              poseColor});
+            StreamOverviewLine hLine{VideoOverviewAttrPriority::kBox,
+                                     {{center.x - kJointRadius, center.y},
+                                      {center.x + kJointRadius, center.y}},
+                                     poseColor};
+            StreamOverviewLine vLine{VideoOverviewAttrPriority::kBox,
+                                     {{center.x, center.y - kJointRadius},
+                                      {center.x, center.y + kJointRadius}},
+                                     poseColor};
+            AddLineToLocal(streamIndex, index, timestamp, hLine);
+            AddLineToLocal(streamIndex, index, timestamp, vLine);
         }
         for (const auto& edge : kCocoPoseEdges) {
+            if (!jointVisible(static_cast<size_t>(edge[0])) || !jointVisible(static_cast<size_t>(edge[1])))
+                continue;
             const auto& p1 = drawLandmarks[static_cast<size_t>(edge[0])];
             const auto& p2 = drawLandmarks[static_cast<size_t>(edge[1])];
-            if (p1.x < 0 || p1.y < 0 || p2.x < 0 || p2.y < 0)
-                continue;
             StreamOverviewLine poseLine{VideoOverviewAttrPriority::kBox,
                                         {{static_cast<int>(p1.x), static_cast<int>(p1.y)},
                                          {static_cast<int>(p2.x), static_cast<int>(p2.y)}},
@@ -491,6 +513,11 @@ void StreamViewerOverview::LiveDataToLocal() {
                                 // pose/face/plate keypoints when merging another pipeline stage.
                                 if (!newTarget.landmark.empty() && targetIt->landmark.empty()) {
                                     targetIt->landmark = newTarget.landmark;
+                                    // Carry the semantic family along with the points. Copying
+                                    // only the coordinates drops the kind/schema and forces the
+                                    // renderer to guess the family from the point count.
+                                    targetIt->keypointKind   = newTarget.keypointKind;
+                                    targetIt->keypointSchema = newTarget.keypointSchema;
                                 }
                                 merged = true;
                             }

@@ -98,6 +98,10 @@ private:
     float confidence_threshold_{0.25f};
     float nms_threshold_{0.7f};
     int top_k_{300};
+    // Resize gravity used by the preprocessing resize op. It decides how the
+    // model input maps back onto the original frame (0=stretch, 1=letterbox
+    // centered, 2=letterbox top-left). Must mirror MakeDetPreprocess.
+    int resize_gravity_{0};
 };
 
 class GenericDetectorPipeline : public ModelPipeline {

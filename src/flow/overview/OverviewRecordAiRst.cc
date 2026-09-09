@@ -185,6 +185,12 @@ MsgAiDetFrame OverviewRecordAiRst::SrcData2MsgData(const DataDetTrackClassifyPtr
         for (const auto& point : target.landmark.landmark) {
             rec_target.landmark.push_back({point.x, point.y});
         }
+        // Per-joint scores travel with the points so the overlay can drop joints the
+        // model is not confident about instead of drawing them at a guessed position.
+        rec_target.keypointConfidences.reserve(target.landmark.keypoints.points.size());
+        for (const auto& joint : target.landmark.keypoints.points) {
+            rec_target.keypointConfidences.push_back(joint.confidence);
+        }
         // Carry the semantic keypoint family so the live overlay composites by kind/schema
         // instead of inferring HumanPose from "count == 17". Empty kind/schema on a target
         // with points only means the model did not label the family; renderers must then stay
