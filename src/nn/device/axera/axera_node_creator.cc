@@ -2,6 +2,8 @@
 
 #include "nn/device/axera/axera_node_creator.h"
 
+#include "nn/device/axera/axera_ivps_node.h"
+#include "nn/device/axera/axera_ivps_normalize_node.h"
 #include "nn/device/axera/axera_net_node.h"
 #include "nn/device/host/host_node_factory.h"
 
@@ -12,6 +14,10 @@ AxeraNodeCreator::AxeraNodeCreator(DeviceType device_type) : NodeCreator(device_
 std::unique_ptr<Node> AxeraNodeCreator::CreateNode(NodeType type) {
     if (type == NODE_NET)
         return std::make_unique<AxeraNetNode>();
+    if (type == NODE_RESIZE)
+        return std::make_unique<AxIvpsNode>();
+    if (type == NODE_NORMALIZE)
+        return std::make_unique<AxIvpsNormalizeNode>();
     return CreateHostNode(type);
 }
 

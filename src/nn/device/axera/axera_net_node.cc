@@ -2,6 +2,8 @@
 
 #include "nn/device/axera/axera_net_node.h"
 
+#include <chrono>
+
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -12,6 +14,8 @@
 #include "ax_sys_api.h"
 
 #include "nn/core/status.h"
+#include "nn/device/axera/axera_sys_init.h"
+#include "nn/core/inference_pipeline_metrics.h"
 #include "util/Log.h"
 
 namespace cosmo::nn {
@@ -47,7 +51,7 @@ namespace {
         static std::once_flag flag;
         static bool initialized = false;
         std::call_once(flag, []() {
-            if (AX_SYS_Init() != 0) {
+            if (!cosmo::nn::EnsureAxeraSysInitialized()) {
                 LOG_ERRO("[Axera] AX_SYS_Init failed; NPU driver may not be loaded");
                 return;
             }
@@ -324,26 +328,66 @@ Status AxeraNetNode::Forward(std::vector<std::shared_ptr<Blob>>& bottom_blobs,
         return Status(COSMO_NN_ERR_INVALID_INPUT, "AXERA output blob count mismatch");
 
     int input_height = 0, input_width = 0;
-    auto prepare_status = PrepareInput(*bottom_blobs[0], input_nhwc_, input_height, input_width);
-    if (!prepare_status)
-        return prepare_status;
+    const auto& bottom_handle = bottom_blobs[0]->GetHandle();
+    const auto& native_image  = bottom_handle.native_image;
+    // Zero-copy fast path: when the upstream IVPS node produced an RGB buffer in
+    // device (CMM) memory, bind the NPU input directly to that physical address
+    // instead of staging through a host memcpy. The model contract
+    // (kAxeraRgbUint8InputContract) expects RGB uint8 NHWC 0-255, which is
+    // exactly what AX_IVPS_CropResizeVpp emits.
+    const bool use_native_input =
+        native_image.Valid() && native_image.phy != 0 && native_image.format == IMAGE_RGB;
+
+    if (!use_native_input) {
+        auto prepare_status = PrepareInput(*bottom_blobs[0], input_nhwc_, input_height, input_width);
+        if (!prepare_status)
+            return prepare_status;
+    } else {
+        input_height = native_image.height;
+        input_width  = native_image.width;
+    }
 
     auto* info = static_cast<AX_ENGINE_IO_INFO_T*>(io_info_);
     AX_ENGINE_IO_T io_data{};
-    io_data.pInputs = new AX_ENGINE_IO_BUFFER_T[input_metas_.size()];
-    io_data.pOutputs = new AX_ENGINE_IO_BUFFER_T[output_metas_.size()];
+    // Value-initialize: the driver consumes every field of these POD buffers
+    // (including pStride and the reserved tail); a plain new[] leaves them
+    // indeterminate and RunSync fails with 0x80060084.
+    io_data.pInputs  = new AX_ENGINE_IO_BUFFER_T[input_metas_.size()]();
+    io_data.pOutputs = new AX_ENGINE_IO_BUFFER_T[output_metas_.size()]();
+    // The engine iterates the input/output arrays by count; without these the
+    // driver sees zero buffers and RunSync fails with 0x80060084.
+    io_data.nInputSize  = static_cast<AX_U32>(input_metas_.size());
+    io_data.nOutputSize = static_cast<AX_U32>(output_metas_.size());
 
-    const size_t input_bytes = input_nhwc_.size() * sizeof(float);
-    if (input_bytes > io_input_buffers_[0].size) {
-        delete[] io_data.pInputs;
-        delete[] io_data.pOutputs;
-        return Status(COSMO_NN_ERR_INVALID_INPUT, "AXERA input exceeds the allocated IO buffer");
+    uint64_t input_phy  = 0;
+    void* input_vir     = nullptr;
+    uint32_t input_size = 0;
+    if (use_native_input) {
+        input_phy  = native_image.phy;
+        input_vir  = bottom_handle.base;
+        input_size = static_cast<AX_U32>(native_image.bytes);
+    } else {
+        const size_t input_bytes = input_nhwc_.size() * sizeof(float);
+        if (input_bytes > io_input_buffers_[0].size) {
+            delete[] io_data.pInputs;
+            delete[] io_data.pOutputs;
+            return Status(COSMO_NN_ERR_INVALID_INPUT, "AXERA input exceeds the allocated IO buffer");
+        }
+        std::memcpy(io_input_buffers_[0].vir_addr, input_nhwc_.data(), input_bytes);
+        input_phy  = io_input_buffers_[0].phy_addr;
+        input_vir  = io_input_buffers_[0].vir_addr;
+        input_size = io_input_buffers_[0].size;
     }
-    std::memcpy(io_input_buffers_[0].vir_addr, input_nhwc_.data(), input_bytes);
     for (size_t i = 0; i < input_metas_.size(); ++i) {
-        io_data.pInputs[i].phyAddr  = io_input_buffers_[i].phy_addr;
-        io_data.pInputs[i].pVirAddr = io_input_buffers_[i].vir_addr;
-        io_data.pInputs[i].nSize    = io_input_buffers_[i].size;
+        if (use_native_input && i == 0) {
+            io_data.pInputs[i].phyAddr  = input_phy;
+            io_data.pInputs[i].pVirAddr = input_vir;
+            io_data.pInputs[i].nSize    = input_size;
+        } else {
+            io_data.pInputs[i].phyAddr  = io_input_buffers_[i].phy_addr;
+            io_data.pInputs[i].pVirAddr = io_input_buffers_[i].vir_addr;
+            io_data.pInputs[i].nSize    = io_input_buffers_[i].size;
+        }
     }
     for (size_t i = 0; i < output_metas_.size(); ++i) {
         io_data.pOutputs[i].phyAddr  = io_output_buffers_[i].phy_addr;
@@ -351,8 +395,19 @@ Status AxeraNetNode::Forward(std::vector<std::shared_ptr<Blob>>& bottom_blobs,
         io_data.pOutputs[i].nSize    = io_output_buffers_[i].size;
     }
 
+    const auto run_started = std::chrono::steady_clock::now();
     const int ret = AX_ENGINE_RunSync(static_cast<AX_ENGINE_HANDLE>(engine_handle_), &io_data);
+    const auto elapsed_ns = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - run_started).count());
+    cosmo::nn::GetInferencePipelineMetrics().RecordGraphForward(elapsed_ns, 1, ret == 0);
     if (ret != 0) {
+        LOG_ERRO("[Axera][FWD] RunSync failed: handle={} in={} out={} hw={}x{} in_size={} "
+                 "in0(phy={:#x} vir={} size={}) out0(phy={:#x} vir={} size={})",
+                 static_cast<const void*>(engine_handle_), input_metas_.size(), output_metas_.size(),
+                 input_height, input_width, input_size,
+                 input_phy, input_vir, input_size,
+                 io_output_buffers_[0].phy_addr, io_output_buffers_[0].vir_addr,
+                 io_output_buffers_[0].size);
         delete[] io_data.pInputs;
         delete[] io_data.pOutputs;
         return AxeraError("AX_ENGINE_RunSync", ret);

@@ -56,8 +56,16 @@ struct PUBLIC BlobHandle {
         NativeImageColorSpace color_space{NativeImageColorSpace::Unspecified};
         NativeImageColorRange color_range{NativeImageColorRange::Unspecified};
 
+        // Physical (device) address of the image when it lives in a hardware
+        // buffer (e.g. AX650 VDEC/IVPS CMM pool) rather than a DMA-BUF fd.
+        // Either fd >= 0 or phy != 0 must be set for the image to be valid.
+        unsigned long phy{0};
+        // Virtual (host) mapping of the same hardware buffer, when exposed.
+        void* vir{nullptr};
+
         [[nodiscard]] bool Valid() const {
-            return fd >= 0 && bytes > 0 && width > 0 && height > 0 && width_stride >= width &&
+            const bool has_backing = fd >= 0 || phy != 0;
+            return has_backing && bytes > 0 && width > 0 && height > 0 && width_stride >= width &&
                    height_stride >= height && format != IMAGE_UNKNOWN;
         }
     } native_image;

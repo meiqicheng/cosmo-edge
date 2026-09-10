@@ -13,8 +13,16 @@ namespace media {
 
     class VideoFrame {
     public:
+        VideoFrame() = default;
         VideoFrame(int width, int height, PixelFormat format = PixelFormat::PIXEL_I420,
                    uint64_t frameIndex = 0, int64_t timestamp = 0);
+
+        // Metadata-only carrier for hardware-native pipelines. It preserves
+        // dimensions/timestamps and Active() semantics without allocating a
+        // host pixel buffer; native_buffer owns the actual image storage.
+        static std::shared_ptr<VideoFrame> CreateMetadata(int width, int height, PixelFormat format,
+                                                          uint64_t frameIndex = 0,
+                                                          int64_t timestamp = 0);
 
         VideoFrame& operator=(VideoFrame&& data) noexcept;
 

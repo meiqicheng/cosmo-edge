@@ -48,6 +48,20 @@ namespace media {
         active_      = true;
     }
 
+    std::shared_ptr<VideoFrame> VideoFrame::CreateMetadata(int w, int h, PixelFormat fmt,
+                                                           uint64_t frameIndex, int64_t ts) {
+        auto frame = std::shared_ptr<VideoFrame>(new VideoFrame());
+        frame->pixel_fmt_   = fmt;
+        frame->width_       = static_cast<size_t>(w);
+        frame->height_      = static_cast<size_t>(h);
+        frame->channel_     = PixelFormatUtils::PixelFormatChannels(fmt);
+        frame->frame_index_ = frameIndex;
+        frame->timestamp_   = ts;
+        frame->uuid_        = util::GenerateUUID();
+        frame->active_      = (w > 0 && h > 0 && fmt != PixelFormat::PIXEL_UNKNOWN);
+        return frame;
+    }
+
     VideoFrame& VideoFrame::operator=(VideoFrame&& data) noexcept {
         if (&data != this) {
             size_        = data.GetSize();

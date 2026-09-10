@@ -41,8 +41,15 @@ struct NativeVideoBuffer {
     NativeVideoColorRange color_range{NativeVideoColorRange::Unspecified};
     std::shared_ptr<void> owner;
 
+    // Physical and virtual device addresses when the buffer lives in a
+    // hardware pool (e.g. AX650 VDEC/IVPS CMM) rather than a DMA-BUF fd.
+    // Either fd >= 0 or phy_addr != 0 must be set for the buffer to be valid.
+    uint64_t phy_addr{0};
+    uint64_t vir_addr{0};
+
     [[nodiscard]] bool Valid() const {
-        return fd >= 0 && bytes > 0 && width > 0 && height > 0 && width_stride >= width &&
+        const bool has_backing = fd >= 0 || phy_addr != 0;
+        return has_backing && bytes > 0 && width > 0 && height > 0 && width_stride >= width &&
                height_stride >= height && format != NativeVideoBufferFormat::Unknown && owner;
     }
 };
