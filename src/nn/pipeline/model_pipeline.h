@@ -60,6 +60,11 @@ struct PUBLIC PipelineConfig {
     std::vector<PipelineLabelInfo> labels;
 
     std::string extra_config_json;
+
+    // Template-level fields other than models/labels/config, kept verbatim so a
+    // pipeline can be configured by explicit declarations (decoder, layout, ...)
+    // instead of inferring behaviour from file names or output shapes.
+    std::string template_json;
 };
 
 // ─── Output Category ─────────────────────────────────────────────

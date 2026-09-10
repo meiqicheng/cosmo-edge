@@ -508,6 +508,17 @@ namespace pipeline_utils {
             if (extra_config)
                 config.extra_config_json = extra_config->dump();
 
+            // Preserve every other template-level field (decoder, keypoint_layout,
+            // nms_completed, ...) so pipelines can read the declarations that tell
+            // them how a variant must be decoded.
+            nlohmann::json top_level = nlohmann::json::object();
+            for (auto it = root.begin(); it != root.end(); ++it) {
+                if (it.key() == "models" || it.key() == "labels" || it.key() == "config")
+                    continue;
+                top_level[it.key()] = it.value();
+            }
+            config.template_json = top_level.dump();
+
             return COSMO_NN_OK;
         } catch (const nlohmann::json::exception& e) {
             return Status(COSMO_NN_ERR_JSON_PARSE, e.what());

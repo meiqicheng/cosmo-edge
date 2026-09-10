@@ -1,5 +1,7 @@
 #include "nn/pipeline/detection_pipeline.h"
 
+#include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <nlohmann/json.hpp>
 
@@ -118,6 +120,121 @@ static void ApplyPoseNms(std::vector<ObjectInfoV1>& objects, float threshold, in
             break;
     }
     objects = std::move(selected);
+}
+
+// ─── Pose Variant Declarations ─────────────────────────────────
+//
+// A pose head comes in at least two shapes: the YOLOv8/11 channel-major tensor
+// ([1, 4+classes+V*K, points]) and the YOLO26 end-to-end row-major tensor
+// ([1, points, 6+V*K]). Their channel arithmetic overlaps often enough that
+// inferring the layout from the output shape silently decodes the wrong model
+// (a 2-class plate detector has 6 channels, exactly what a 4-point/2-value pose
+// head would leave behind). Variants are therefore selected by the model
+// template instead of by inspection.
+//
+// Every pose declaration is written once at the template level. A per-model
+// params object may still repeat one (older templates) and then wins, so
+// existing templates keep loading while the duplicates are removed.
+
+struct PoseContract {
+    YoloPoseLayout layout          = YoloPoseLayout::kChannelMajor;
+    bool nms_completed             = false;
+    int keypoint_count             = 0;  // 0 = not declared, caller keeps its default
+    int keypoint_values_per_point  = 0;
+    std::string kind;
+    std::string schema;
+};
+
+static std::string NormalizeDeclaredValue(std::string value) {
+    value.erase(std::remove_if(value.begin(), value.end(),
+                               [](unsigned char c) { return std::isspace(c) != 0; }),
+                value.end());
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
+static std::string DeclaredString(const nlohmann::json& top, const nlohmann::json& params, const char* key) {
+    std::string value = pipeline_utils::ReadString(params, key, std::string());
+    if (value.empty())
+        value = pipeline_utils::ReadString(top, key, std::string());
+    return NormalizeDeclaredValue(value);
+}
+
+static int DeclaredInt(const nlohmann::json& top, const nlohmann::json& params, const char* key,
+                       int fallback) {
+    const int from_params = pipeline_utils::ReadInt(params, key, 0);
+    if (from_params > 0)
+        return from_params;
+    const int from_template = pipeline_utils::ReadInt(top, key, 0);
+    return from_template > 0 ? from_template : fallback;
+}
+
+static bool DeclaredBool(const nlohmann::json& top, const nlohmann::json& params, const char* key,
+                         bool fallback) {
+    if (params.contains(key))
+        return pipeline_utils::ReadBool(params, key, fallback);
+    return pipeline_utils::ReadBool(top, key, fallback);
+}
+
+// Resolve every pose declaration in one pass. Only the layout is mandatory: a
+// template that declares none of keypoint_layout/decoder/output_layout is
+// rejected instead of being guessed from the output shape.
+static Status ResolvePoseContract(const nlohmann::json& top, const nlohmann::json& params,
+                                  PoseContract& contract, std::string& error) {
+    contract.kind            = pipeline_utils::ReadString(top, "keypoint_kind", std::string());
+    contract.schema          = pipeline_utils::ReadString(top, "keypoint_schema", std::string());
+    contract.keypoint_count  = DeclaredInt(top, params, "keypoint_count", contract.keypoint_count);
+    contract.keypoint_values_per_point =
+        DeclaredInt(top, params, "keypoint_values_per_point", contract.keypoint_values_per_point);
+    contract.nms_completed = DeclaredBool(top, params, "nms_completed", contract.nms_completed);
+
+    const std::string keypoint_layout = DeclaredString(top, params, "keypoint_layout");
+    if (!keypoint_layout.empty()) {
+        if (keypoint_layout == "channel_major") {
+            contract.layout = YoloPoseLayout::kChannelMajor;
+            return COSMO_NN_OK;
+        }
+        if (keypoint_layout == "end_to_end" || keypoint_layout == "row_major") {
+            contract.layout = YoloPoseLayout::kEndToEnd;
+            return COSMO_NN_OK;
+        }
+        error = "unsupported keypoint_layout '" + keypoint_layout +
+                "' (expected channel_major or end_to_end)";
+        return Status(COSMO_NN_ERR_PARAM, error);
+    }
+
+    const std::string decoder = DeclaredString(top, params, "decoder");
+    if (!decoder.empty()) {
+        if (decoder == "yolo_pose_tensor") {
+            contract.layout = YoloPoseLayout::kChannelMajor;
+            return COSMO_NN_OK;
+        }
+        if (decoder == "yolo_pose_end_to_end") {
+            contract.layout = YoloPoseLayout::kEndToEnd;
+            return COSMO_NN_OK;
+        }
+        error = "unsupported pose decoder '" + decoder +
+                "' (expected yolo_pose_tensor or yolo_pose_end_to_end)";
+        return Status(COSMO_NN_ERR_PARAM, error);
+    }
+
+    const std::string output_layout = DeclaredString(top, params, "output_layout");
+    if (!output_layout.empty()) {
+        if (output_layout == "[b,c,n]") {
+            contract.layout = YoloPoseLayout::kChannelMajor;
+            return COSMO_NN_OK;
+        }
+        if (output_layout == "[b,n,c]") {
+            contract.layout = YoloPoseLayout::kEndToEnd;
+            return COSMO_NN_OK;
+        }
+        error = "unsupported output_layout '" + output_layout + "' (expected [B,C,N] or [B,N,C])";
+        return Status(COSMO_NN_ERR_PARAM, error);
+    }
+
+    error = "pose model template must declare keypoint_layout, decoder or output_layout";
+    return Status(COSMO_NN_ERR_PARAM, error);
 }
 
 // ============================= YOLOv5 =====================================
@@ -377,6 +494,9 @@ Status YoloPosePipeline::Init(const PipelineConfig& config, const std::string& m
     model_info_.algorithmcode = config.algorithm_code;
     model_info_.reduce = config.reduce;
     model_info_.type = config.model_type;
+    // Template-level declarations. They tell us which pose variant this is, so
+    // the decoding path never has to guess from the output shape.
+    const auto top = pipeline_utils::ParseJsonObject(config.template_json);
     for (const auto& mc : config.models) {
         const auto p = pipeline_utils::ParseJsonObject(mc.params_json);
         ModelInfo model;
@@ -386,8 +506,41 @@ Status YoloPosePipeline::Init(const PipelineConfig& config, const std::string& m
         model.max_batch = mc.max_batch;
         max_batch_ = mc.max_batch;
     class_count_ = pipeline_utils::ReadInt(p, "class_count", 1);
-    keypoint_count_ = pipeline_utils::ReadInt(p, "keypoint_count", 17);
-    keypoint_values_per_point_ = pipeline_utils::ReadInt(p, "keypoint_values_per_point", 3);
+        PoseContract contract;
+        std::string contract_error;
+        auto contract_status = ResolvePoseContract(top, p, contract, contract_error);
+        if (!contract_status)
+            return contract_status;
+        pose_layout_     = contract.layout;
+        // End-to-end heads already ran NMS inside the model; running the CPU pass
+        // again would suppress the detections the model deliberately kept.
+        nms_completed_   = contract.nms_completed;
+        keypoint_kind_   = contract.kind;
+        keypoint_schema_ = contract.schema;
+        keypoint_count_  = contract.keypoint_count > 0 ? contract.keypoint_count : 17;
+        keypoint_values_per_point_ =
+            contract.keypoint_values_per_point > 0 ? contract.keypoint_values_per_point : 3;
+        // The template declares the geometry, so the declared output shape must be
+        // validated against it. A mismatch is a broken template and has to fail at
+        // load time instead of producing silently wrong keypoints later.
+        if (!mc.outputs.empty()) {
+            const auto& out_shape    = mc.outputs.front().shape;
+            const int expected_channels =
+                PoseChannelCount(pose_layout_, class_count_, keypoint_count_, keypoint_values_per_point_);
+            const int actual_channels =
+                out_shape.size() == 3
+                    ? (pose_layout_ == YoloPoseLayout::kChannelMajor ? out_shape[1] : out_shape[2])
+                    : -1;
+            if (actual_channels != expected_channels) {
+                const std::string kind   = keypoint_kind_.empty() ? std::string("unknown") : keypoint_kind_;
+                const std::string schema =
+                    keypoint_schema_.empty() ? std::string("unknown") : keypoint_schema_;
+                return Status(COSMO_NN_ERR_PARAM, "pose model '" + mc.name + "' (" + kind + "/" + schema +
+                                                      ") declares " + std::to_string(actual_channels) +
+                                                      " output channels but the configured layout needs " +
+                                                      std::to_string(expected_channels));
+            }
+        }
         confidence_threshold_ = pipeline_utils::ReadFloat(p, "confidence_threshold", 0.25f);
         nms_threshold_ = pipeline_utils::ReadFloat(p, "nms_threshold", 0.7f);
         top_k_ = pipeline_utils::ReadInt(p, "top_k", 300);
@@ -455,12 +608,13 @@ Status YoloPosePipeline::ParseDetectionOutput(std::vector<std::vector<ObjectInfo
     for (int i = 0; i < batch; ++i) {
         std::vector<ObjectInfoV1> decoded;
         std::string error;
-        auto status = DecodeYoloPoseTensor(data + static_cast<size_t>(i) * stride, dims, input_width_,
-                                           input_height_, class_count_, keypoint_count_,
+        auto status = DecodeYoloPoseTensor(data + static_cast<size_t>(i) * stride, dims, pose_layout_,
+                                           input_width_, input_height_, class_count_, keypoint_count_,
                                            confidence_threshold_, decoded, error, keypoint_values_per_point_);
         if (!status)
             return status;
-        ApplyPoseNms(decoded, nms_threshold_, top_k_);
+        if (!nms_completed_)
+            ApplyPoseNms(decoded, nms_threshold_, top_k_);
         // The decoder can only synthesise "class_<id>". Replace it with the
         // configured label so the target matches the tracker's label set (the
         // tracker drops anything whose label it does not know) and so the overlay
