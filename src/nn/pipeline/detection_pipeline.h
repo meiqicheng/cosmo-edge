@@ -107,8 +107,6 @@ private:
     // CPU-side NMS is then skipped; running it again would drop valid detections
     // that the model intentionally kept.
     bool nms_completed_{false};
-    std::string keypoint_kind_;
-    std::string keypoint_schema_;
     // Resize gravity used by the preprocessing resize op. It decides how the
     // model input maps back onto the original frame (0=stretch, 1=letterbox
     // centered, 2=letterbox top-left). Must mirror MakeDetPreprocess.

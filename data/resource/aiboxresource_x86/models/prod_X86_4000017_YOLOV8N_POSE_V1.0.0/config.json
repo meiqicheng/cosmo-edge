@@ -1,0 +1,40 @@
+{
+  "algorithm_code": "4000017",
+  "chip_type": "X86",
+  "model_type": "yolov8_pose",
+  "version": "V1.0.0",
+  "keypoint_kind": "human_pose",
+  "keypoint_schema": "coco17",
+  "keypoint_count": 17,
+  "keypoint_values_per_point": 3,
+  "models": [
+    {
+      "description": "YOLOv8n 姿态估计（人体 17 关键点）",
+      "name": "yolov8n-pose",
+      "file_name": "",
+      "file_md5": "",
+      "max_batch": 1,
+      "inputs": [
+        { "name": "images", "shape": [1, 3, 640, 640], "data_type": 0 }
+      ],
+      "outputs": [
+        { "name": "output0", "shape": [1, 56, 8400], "data_type": 0 }
+      ],
+      "params": {
+        "input_size": [640, 640],
+        "padding_color": [114, 114, 114],
+        "normalize_mean": [0, 0, 0],
+        "normalize_scale": 0.00392157,
+        "is_bgr": false,
+        "confidence_threshold": 0.25,
+        "nms_threshold": 0.7,
+        "top_k": 300,
+        "class_count": 1
+      }
+    }
+  ],
+  "labels": [
+    { "id": "0", "name": "person", "threshold": [0.25, 0.25] }
+  ],
+  "reduce": ""
+}

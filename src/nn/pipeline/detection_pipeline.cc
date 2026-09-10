@@ -132,34 +132,18 @@ static void ApplyPoseNms(std::vector<ObjectInfoV1>& objects, float threshold, in
 // head would leave behind). Variants are therefore selected by the model
 // template instead of by inspection.
 //
-// Every pose declaration is written once at the template level. A per-model
-// params object may still repeat one (older templates) and then wins, so
-// existing templates keep loading while the duplicates are removed.
+// The pose variant (tensor layout + whether NMS is already applied) is selected
+// solely by model_type — e.g. yolov8_pose/yolo11_pose decode in channel-major
+// order and rely on the CPU-side NMS pass, while yolo26_pose is an end-to-end head
+// with NMS baked in. There is intentionally no second layout/decoder field on the
+// template, so a layout can never be declared twice and contradicted.
 
 struct PoseContract {
-    YoloPoseLayout layout          = YoloPoseLayout::kChannelMajor;
-    bool nms_completed             = false;
     int keypoint_count             = 0;  // 0 = not declared, caller keeps its default
     int keypoint_values_per_point  = 0;
     std::string kind;
     std::string schema;
 };
-
-static std::string NormalizeDeclaredValue(std::string value) {
-    value.erase(std::remove_if(value.begin(), value.end(),
-                               [](unsigned char c) { return std::isspace(c) != 0; }),
-                value.end());
-    std::transform(value.begin(), value.end(), value.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return value;
-}
-
-static std::string DeclaredString(const nlohmann::json& top, const nlohmann::json& params, const char* key) {
-    std::string value = pipeline_utils::ReadString(params, key, std::string());
-    if (value.empty())
-        value = pipeline_utils::ReadString(top, key, std::string());
-    return NormalizeDeclaredValue(value);
-}
 
 static int DeclaredInt(const nlohmann::json& top, const nlohmann::json& params, const char* key,
                        int fallback) {
@@ -170,71 +154,33 @@ static int DeclaredInt(const nlohmann::json& top, const nlohmann::json& params, 
     return from_template > 0 ? from_template : fallback;
 }
 
-static bool DeclaredBool(const nlohmann::json& top, const nlohmann::json& params, const char* key,
-                         bool fallback) {
-    if (params.contains(key))
-        return pipeline_utils::ReadBool(params, key, fallback);
-    return pipeline_utils::ReadBool(top, key, fallback);
+// The pose variant is selected entirely by model_type, mirroring how Frigate
+// routes an ONNX model to its post-processor via ModelTypeEnum. Adding a new
+// YOLO-pose head (or a non-YOLO keypoint model) means adding a branch here — or a
+// new pipeline class — never a second layout/decoder field on the template.
+static YoloPoseLayout PoseLayoutFromModelType(const std::string& model_type, bool& nms_completed) {
+    if (model_type == "yolo26_pose") {
+        nms_completed = true;  // end-to-end head: NMS already applied in-model
+        return YoloPoseLayout::kEndToEnd;
+    }
+    // yolov8_pose / yolo11_pose (and any future classic YOLO pose head) decode in
+    // channel-major order and rely on the CPU-side NMS pass.
+    nms_completed = false;
+    return YoloPoseLayout::kChannelMajor;
 }
 
-// Resolve every pose declaration in one pass. Only the layout is mandatory: a
-// template that declares none of keypoint_layout/decoder/output_layout is
-// rejected instead of being guessed from the output shape.
+// Resolve the pose geometry declarations. The tensor layout itself is NOT read
+// here: it is derived from model_type (see PoseLayoutFromModelType), which is the
+// single source of truth for the variant. Keeping the layout out of the template
+// means a template can never declare a layout that contradicts its model_type.
 static Status ResolvePoseContract(const nlohmann::json& top, const nlohmann::json& params,
-                                  PoseContract& contract, std::string& error) {
-    contract.kind            = pipeline_utils::ReadString(top, "keypoint_kind", std::string());
-    contract.schema          = pipeline_utils::ReadString(top, "keypoint_schema", std::string());
-    contract.keypoint_count  = DeclaredInt(top, params, "keypoint_count", contract.keypoint_count);
+                                  PoseContract& contract) {
+    contract.kind           = pipeline_utils::ReadString(top, "keypoint_kind", std::string());
+    contract.schema         = pipeline_utils::ReadString(top, "keypoint_schema", std::string());
+    contract.keypoint_count = DeclaredInt(top, params, "keypoint_count", contract.keypoint_count);
     contract.keypoint_values_per_point =
         DeclaredInt(top, params, "keypoint_values_per_point", contract.keypoint_values_per_point);
-    contract.nms_completed = DeclaredBool(top, params, "nms_completed", contract.nms_completed);
-
-    const std::string keypoint_layout = DeclaredString(top, params, "keypoint_layout");
-    if (!keypoint_layout.empty()) {
-        if (keypoint_layout == "channel_major") {
-            contract.layout = YoloPoseLayout::kChannelMajor;
-            return COSMO_NN_OK;
-        }
-        if (keypoint_layout == "end_to_end" || keypoint_layout == "row_major") {
-            contract.layout = YoloPoseLayout::kEndToEnd;
-            return COSMO_NN_OK;
-        }
-        error = "unsupported keypoint_layout '" + keypoint_layout +
-                "' (expected channel_major or end_to_end)";
-        return Status(COSMO_NN_ERR_PARAM, error);
-    }
-
-    const std::string decoder = DeclaredString(top, params, "decoder");
-    if (!decoder.empty()) {
-        if (decoder == "yolo_pose_tensor") {
-            contract.layout = YoloPoseLayout::kChannelMajor;
-            return COSMO_NN_OK;
-        }
-        if (decoder == "yolo_pose_end_to_end") {
-            contract.layout = YoloPoseLayout::kEndToEnd;
-            return COSMO_NN_OK;
-        }
-        error = "unsupported pose decoder '" + decoder +
-                "' (expected yolo_pose_tensor or yolo_pose_end_to_end)";
-        return Status(COSMO_NN_ERR_PARAM, error);
-    }
-
-    const std::string output_layout = DeclaredString(top, params, "output_layout");
-    if (!output_layout.empty()) {
-        if (output_layout == "[b,c,n]") {
-            contract.layout = YoloPoseLayout::kChannelMajor;
-            return COSMO_NN_OK;
-        }
-        if (output_layout == "[b,n,c]") {
-            contract.layout = YoloPoseLayout::kEndToEnd;
-            return COSMO_NN_OK;
-        }
-        error = "unsupported output_layout '" + output_layout + "' (expected [B,C,N] or [B,N,C])";
-        return Status(COSMO_NN_ERR_PARAM, error);
-    }
-
-    error = "pose model template must declare keypoint_layout, decoder or output_layout";
-    return Status(COSMO_NN_ERR_PARAM, error);
+    return COSMO_NN_OK;
 }
 
 // ============================= YOLOv5 =====================================
@@ -494,8 +440,11 @@ Status YoloPosePipeline::Init(const PipelineConfig& config, const std::string& m
     model_info_.algorithmcode = config.algorithm_code;
     model_info_.reduce = config.reduce;
     model_info_.type = config.model_type;
-    // Template-level declarations. They tell us which pose variant this is, so
-    // the decoding path never has to guess from the output shape.
+    // The pose variant (tensor layout + NMS status) is selected solely by
+    // model_type — there is no second layout field on the template to keep in sync.
+    pose_layout_ = PoseLayoutFromModelType(config.model_type, nms_completed_);
+    // Template-level declarations describe the geometry (points, per-point values,
+    // semantic kind/schema) so the decoding path never has to guess from shape.
     const auto top = pipeline_utils::ParseJsonObject(config.template_json);
     for (const auto& mc : config.models) {
         const auto p = pipeline_utils::ParseJsonObject(mc.params_json);
@@ -507,16 +456,9 @@ Status YoloPosePipeline::Init(const PipelineConfig& config, const std::string& m
         max_batch_ = mc.max_batch;
     class_count_ = pipeline_utils::ReadInt(p, "class_count", 1);
         PoseContract contract;
-        std::string contract_error;
-        auto contract_status = ResolvePoseContract(top, p, contract, contract_error);
+        auto contract_status = ResolvePoseContract(top, p, contract);
         if (!contract_status)
             return contract_status;
-        pose_layout_     = contract.layout;
-        // End-to-end heads already ran NMS inside the model; running the CPU pass
-        // again would suppress the detections the model deliberately kept.
-        nms_completed_   = contract.nms_completed;
-        keypoint_kind_   = contract.kind;
-        keypoint_schema_ = contract.schema;
         keypoint_count_  = contract.keypoint_count > 0 ? contract.keypoint_count : 17;
         keypoint_values_per_point_ =
             contract.keypoint_values_per_point > 0 ? contract.keypoint_values_per_point : 3;
@@ -532,9 +474,9 @@ Status YoloPosePipeline::Init(const PipelineConfig& config, const std::string& m
                     ? (pose_layout_ == YoloPoseLayout::kChannelMajor ? out_shape[1] : out_shape[2])
                     : -1;
             if (actual_channels != expected_channels) {
-                const std::string kind   = keypoint_kind_.empty() ? std::string("unknown") : keypoint_kind_;
+                const std::string kind   = contract.kind.empty() ? std::string("unknown") : contract.kind;
                 const std::string schema =
-                    keypoint_schema_.empty() ? std::string("unknown") : keypoint_schema_;
+                    contract.schema.empty() ? std::string("unknown") : contract.schema;
                 return Status(COSMO_NN_ERR_PARAM, "pose model '" + mc.name + "' (" + kind + "/" + schema +
                                                       ") declares " + std::to_string(actual_channels) +
                                                       " output channels but the configured layout needs " +
