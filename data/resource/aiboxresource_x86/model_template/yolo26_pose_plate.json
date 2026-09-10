@@ -8,6 +8,7 @@
   "keypoint_schema": "plate4",
   "keypoint_count": 4,
   "keypoint_values_per_point": 2,
+  "keypoint_layout": "end_to_end",
   "output_layout": "[B,N,C]",
   "nms_completed": true,
   "models": [{
@@ -25,10 +26,7 @@
       "confidence_threshold": 0.35,
       "nms_threshold": 0.45,
       "top_k": 300,
-      "class_count": 2,
-      "keypoint_count": 4,
-      "keypoint_values_per_point": 2,
-      "output_layout": "[B,N,C]"
+      "class_count": 2
     }
   }]
 }

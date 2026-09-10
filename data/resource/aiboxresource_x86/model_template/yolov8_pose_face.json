@@ -9,7 +9,6 @@
   "keypoint_count": 5,
   "keypoint_values_per_point": 3,
   "keypoint_layout": "channel_major",
-  "keypoint_score_activation": "sigmoid",
   "note_point_order": "RetinaFace: [left_eye, right_eye, nose, left_mouth_corner, right_mouth_corner]; eyes/mouth-corners are the symmetric pair (flip 0<->1, 3<->4)",
   "models": [
     {
@@ -27,9 +26,7 @@
         "confidence_threshold": 0.25,
         "nms_threshold": 0.7,
         "top_k": 300,
-        "class_count": 1,
-        "keypoint_count": 5,
-        "keypoint_values_per_point": 3
+        "class_count": 1
       }
     },
     {
@@ -47,9 +44,7 @@
         "confidence_threshold": 0.25,
         "nms_threshold": 0.7,
         "top_k": 300,
-        "class_count": 1,
-        "keypoint_count": 5,
-        "keypoint_values_per_point": 3
+        "class_count": 1
       }
     },
     {
@@ -67,9 +62,7 @@
         "confidence_threshold": 0.25,
         "nms_threshold": 0.7,
         "top_k": 300,
-        "class_count": 1,
-        "keypoint_count": 5,
-        "keypoint_values_per_point": 3
+        "class_count": 1
       }
     },
     {
@@ -87,9 +80,7 @@
         "confidence_threshold": 0.25,
         "nms_threshold": 0.7,
         "top_k": 300,
-        "class_count": 1,
-        "keypoint_count": 5,
-        "keypoint_values_per_point": 3
+        "class_count": 1
       }
     }
   ],
