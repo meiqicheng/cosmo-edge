@@ -20,8 +20,9 @@ struct AxeraDecoderState;
 /// data is materialized into the compact I420 VideoFrame expected by host-only
 /// business consumers (matching the Rockchip copy-out path).
 ///
-/// NOTE: this backend is UNVERIFIED on hardware until a real AX650N board is
-/// available; it is compiled against the official AX650 SDK V3.10.2 headers.
+/// NOTE: verified on hardware (2026-09-06): H.264 decode through AX_VDEC
+/// produced hardware frames (native phy != 0) in scenario-bench runs; compiled
+/// against the official AX650 SDK V3.10.2 headers.
 class VideoDecoderAxera final : public VideoDecoder {
 public:
     explicit VideoDecoderAxera(size_t name);

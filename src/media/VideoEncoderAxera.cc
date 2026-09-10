@@ -10,6 +10,7 @@
 #include "ax_venc_api.h"
 
 #include "media/VideoEncoderCpu.h"
+#include "nn/device/axera/axera_sys_init.h"
 #include "util/Log.h"
 
 namespace cosmo::media {
@@ -58,14 +59,15 @@ bool VideoEncoderAxera::Open() {
     }
     // The MPP path is UNVERIFIED on hardware; keep an FFmpeg software fallback
     // so a broken hardware init never silently blocks the pipeline.
-    static std::once_flag ax_sys_init_flag;
-    std::call_once(ax_sys_init_flag, []() {
-        AX_SYS_Init();
+    // AX_SYS is initialized exactly once process-wide via the shared helper.
+    if (!cosmo::nn::EnsureAxeraSysInitialized()) {
+        LOG_ERRO("[Axera] AX_SYS_Init failed; cannot init VENC");
+        return false;
+    }
+    static std::once_flag ax_venc_init_flag;
+    std::call_once(ax_venc_init_flag, []() {
         AX_VENC_Init(nullptr);
-        std::atexit([]() {
-            AX_VENC_Deinit();
-            AX_SYS_Deinit();
-        });
+        std::atexit([]() { AX_VENC_Deinit(); });
     });
 
     AX_VENC_CHN_ATTR_T attr;
@@ -77,11 +79,23 @@ bool VideoEncoderAxera::Open() {
     attr.stVencAttr.u32MaxPicWidth  = static_cast<AX_U32>(width_);
     attr.stVencAttr.u32MaxPicHeight = static_cast<AX_U32>(height_);
     attr.stVencAttr.enProfile     = AX_VENC_H264_MAIN_PROFILE;
+    // Level 4.0 covers 1920x1080@25fps; the enum starts at 10 (LEVEL_1), so 0
+    // (from memset) is out of range and makes AX_VENC_CreateChn fail with
+    // AX_ERR_VENC_ILLEGAL_PARAM.
+    attr.stVencAttr.enLevel       = AX_VENC_H264_LEVEL_4;
     attr.stRcAttr.enRcMode        = AX_VENC_RC_MODE_H264CBR;
     attr.stRcAttr.stFrameRate.fSrcFrameRate = 25.0f;
     attr.stRcAttr.stFrameRate.fDstFrameRate = 25.0f;
     attr.stRcAttr.stH264Cbr.u32Gop     = 30;
+    attr.stRcAttr.stH264Cbr.u32StatTime = 1;   // [1, 60]
     attr.stRcAttr.stH264Cbr.u32BitRate = kBitrate / 1000;  // kbps
+    attr.stRcAttr.stH264Cbr.u32MaxQp   = 36;   // [0, 51]
+    attr.stRcAttr.stH264Cbr.u32MinQp   = 28;   // [0, 51]
+    attr.stRcAttr.stH264Cbr.u32MaxIQp  = 36;   // [0, 51]
+    attr.stRcAttr.stH264Cbr.u32MinIQp  = 28;   // [0, 51]
+    attr.stRcAttr.stH264Cbr.u32MaxIprop = 100;  // [1, 100]
+    attr.stRcAttr.stH264Cbr.u32MinIprop = 1;    // [1, u32MaxIprop]
+    attr.stRcAttr.stH264Cbr.u32IdrQpDeltaRange = 2;  // [2, 10]
 
     state_->chn = kAxeraVencChn;
     const AX_S32 ret = AX_VENC_CreateChn(state_->chn, &attr);

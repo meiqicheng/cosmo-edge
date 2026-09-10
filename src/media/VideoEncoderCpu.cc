@@ -37,10 +37,22 @@ namespace media {
         }
 
         const AVCodec* FindEncoder(VideoCodecType type) {
-            const auto name = ApprovedEncoderName(type);
-            if (name.empty())
+            const auto preferred = ApprovedEncoderName(type);
+            if (preferred.empty())
                 return nullptr;
-            return avcodec_find_encoder_by_name(std::string(name).c_str());
+            if (const auto* codec = avcodec_find_encoder_by_name(std::string(preferred).c_str())) {
+                return codec;
+            }
+            // The preferred encoder (libopenh264/libx265) may not be registered
+            // in this FFmpeg build; fall back to the native encoder so preview
+            // still works instead of failing the whole stream.
+            const char* fallback = nullptr;
+            if (type == VideoCodecType::kH264) {
+                fallback = "h264";
+            } else if (type == VideoCodecType::kH265) {
+                fallback = "hevc";
+            }
+            return fallback ? avcodec_find_encoder_by_name(fallback) : nullptr;
         }
 
         struct H264NaluView {
@@ -236,7 +248,7 @@ namespace media {
         frame_pts_ = 0;
         closed_    = false;
         LOG_INFO("CPU encoder opened ({}x{}, codec_id={}, implementation={})", width_, height_,
-                 static_cast<int>(codec_id), capability.implementation);
+                 static_cast<int>(codec_id), codec->name);
         return true;
     }
 

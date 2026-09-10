@@ -33,12 +33,19 @@ void AlgChannelMp4::HandleFrame(VideoPacketPtr frame) {
         return;
     }
 
-    if (-1 == frame->GetSequence())  // Stream playback ended; stop all tasks.
+    if (-1 == frame->GetSequence())  // Stream playback ended; a loop boundary is not task termination.
     {
         std::unique_lock<std::mutex> lock(mtx_frame_que_);
+        // The demuxer uses a sentinel packet before reopening a local MP4.
+        // Keep algorithm bindings alive; only recording state belongs to the
+        // old stream and must be discarded. Clearing record_tasks_ here makes
+        // the next loop look like a stopped task to the web/runtime layer.
         record_tasks_.clear();
         video_frames_.clear();
-        LOG_INFO("[MP4 CHANNEL] {} End Stop All Task.", channel_id_);
+        last_index_ = -1;
+        last_stream_index_ = -1;
+        is_wait_i_frame_ = false;
+        LOG_INFO("[MP4 CHANNEL] {} Loop boundary: reset recorder state, keep algorithm bindings.", channel_id_);
         return;
     }
 
@@ -50,15 +57,17 @@ void AlgChannelMp4::HandleFrame(VideoPacketPtr frame) {
 
     bool b_reset = false;
     if (last_stream_index_ != frame->stream_idx) {
-        // Stream restarted (mp4 loop playback increments stream_idx);
-        // clear all recording tasks and pre-record buffer.
-        // Old tasks hold the previous streamIndex and cannot record new stream frames.
-        LOG_INFO("[MP4 CHANNEL] {} Stream Change: {} -> {}. Clear {} tasks & {} frames.", channel_id_,
+        // Stream restarted (mp4 loop playback increments stream_idx).  This is
+        // a recorder boundary only; detector/tracker bindings live in the
+        // decode distributor and must not be affected by a source loop.
+        LOG_INFO("[MP4 CHANNEL] {} Stream Change: {} -> {}. Reset {} record tasks & {} frames.", channel_id_,
                  last_stream_index_, frame->stream_idx, record_tasks_.size(), video_frames_.size());
         last_stream_index_ = frame->stream_idx;
         std::unique_lock<std::mutex> lock(mtx_frame_que_);
         record_tasks_.clear();
         video_frames_.clear();
+        last_index_ = -1;
+        is_wait_i_frame_ = false;
         b_reset = true;
     } else {
         CheckParam();

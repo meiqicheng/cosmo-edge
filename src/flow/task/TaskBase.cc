@@ -191,6 +191,28 @@ TaskElementPtr TaskBase::TaskCreate(const std::string& channelId, const std::str
         for (auto& actionKeyParam : actionNode.configObject.params) {
             auto keys = util::Split(actionKeyParam.key.ToRefString(), ".");
             actionKeyParam.keys.assign(keys.begin(), keys.end());
+
+            // Some imported v1.1 layouts keep the detector model selection in
+            // configObject.atomic instead of emitting the canonical
+            // configObject.params entry. Normalize it before constructing the
+            // action so AA_00001 cannot silently run as decode-only.
+            const auto key = actionKeyParam.key.ToString();
+            if (actionNode.atomicCode.empty() &&
+                (key == "atomicCode" || key == "atomCode" || key == "modelCode")) {
+                actionNode.atomicCode = actionKeyParam.value.ToString();
+                actionNode.atomAlgName = actionNode.atomicCode;
+            }
+        }
+        if (actionNode.atomicCode.empty() && actionNode.actionId == AADetect_Code &&
+            !actionNode.configObject.params.empty()) {
+            for (const auto& param : actionNode.configObject.params) {
+                const auto key = param.key.ToString();
+                if (key.find("atomicCode") != std::string::npos || key == "atomiccode") {
+                    actionNode.atomicCode = param.value.ToString();
+                    actionNode.atomAlgName = actionNode.atomicCode;
+                    break;
+                }
+            }
         }
 
         ta.action = actionNode;

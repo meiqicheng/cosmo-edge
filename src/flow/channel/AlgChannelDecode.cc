@@ -39,6 +39,11 @@ namespace {
         std::transform(value.begin(), value.end(), value.begin(),
                        [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
         return value != "0" && value != "false" && value != "off" && value != "no";
+#elif defined(COSMO_NN_USE_AXERA_BACKEND)
+        // AX650N: the IVPS hardware path consumes the decoder's NV12 frame
+        // directly from CMM memory, so the decode stage must export native
+        // buffers instead of a host copy.
+        return true;
 #else
         return false;
 #endif
@@ -176,7 +181,9 @@ void AlgChannelDecode::PrepareDecoder(VideoPacketPtr& video_frame) {
 
     // A backend may retain a compatible hardware context across a clean
     // keyframe boundary. CPU/Sophon keep their existing Close/Open behavior.
-    if (stream_restarted && !codec_reset_sign_ &&
+    // A decoder that was never opened has no context to reuse and must be
+    // opened below, otherwise SendPacket fails silently and no frame decodes.
+    if (stream_restarted && !codec_reset_sign_ && decoder_->IsOpened() &&
         decoder_->ReuseForStreamRestart(video_frame->codec_type, decoder_width, decoder_height)) {
         frame_info_.clear();
         stream_index_ = video_frame->stream_idx;
@@ -317,7 +324,15 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
     const int64_t output_stream_index = matched_frame_info ? frame_info.streamIndex : video_frame->stream_idx;
 
     AlgFrameDistributionPlan task_plan;
+    // AXERA VDEC frames retain a native NV12 buffer even when the decoder
+    // implementation does not set the generic Deferred flag.  Use the
+    // prepared distribution path for AXERA explicitly so detector queues are
+    // selected before materialization and receive the native buffer.
+#if defined(COSMO_NN_USE_AXERA_BACKEND)
+    const bool prepared_task_distribution = true;
+#else
     const bool prepared_task_distribution = decoded_frame.IsDeferred();
+#endif
     if (prepared_task_distribution) {
         task_plan = PrepareFrameDistribution(demux_data);
     }
@@ -337,19 +352,32 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
     constexpr bool prepared_viewer_distribution = false;
 #endif
 
-    const bool host_frame_required = !decoded_frame.IsDeferred() || !task_plan.Empty() ||
+    // AXERA detection can consume the retained VDEC NV12 buffer directly via
+    // IVPS.  Do not materialize a full Host I420 frame when there are no
+    // preview/capture/CPU consumers; AiDetector only needs frame metadata in
+    // this route and receives the pixels through native_buffer.
+    // Metadata-only frames are valid only when the decoder exported a usable
+    // native buffer.  If export failed, forwarding a metadata carrier with a
+    // null host pointer makes AiDetector enqueue frames that AX IVPS cannot
+    // read, resulting in a silent 0-FPS detector in the UI.
+    const bool native_inference_only = decoded_frame.IsDeferred() &&
+                                       task_plan.SupportsNativeInference() &&
+                                       native_inference_buffer && native_inference_buffer->Valid() &&
+                                       viewer_plan.empty() && !NeedsHostFrame(output_stream_index);
+    const bool host_frame_required = !decoded_frame.IsDeferred() ||
+                                     (!task_plan.Empty() && !native_inference_only) ||
                                      !viewer_plan.empty() || NeedsHostFrame(output_stream_index);
-    if (!host_frame_required) {
-        decoded_frame.Discard();
-        duration_stat_.EndSample();
-        frame_index_ = video_frame->index;
-        decode_count_ += 1;
-        consecutive_decode_failures_ = 0;
-        action_status_               = util::ErrorEnum::Success;
-        return;
+    VideoFramePtr frame_data;
+    if (native_inference_only) {
+        // Allocate only the metadata carrier expected by downstream detector
+        // APIs. The actual pixels remain in the shared hardware NV12 buffer.
+        frame_data = media::VideoFrame::CreateMetadata(static_cast<int>(decoded_frame.GetWidth()),
+                                                       static_cast<int>(decoded_frame.GetHeight()),
+                                                       media::PixelFormat::PIXEL_I420,
+                                                       decoded_frame.GetFrameIndex(), output_timestamp);
+    } else {
+        frame_data = decoded_frame.Materialize();
     }
-
-    auto frame_data = decoded_frame.Materialize();
     duration_stat_.EndSample();
     if (!frame_data || !frame_data->Active()) {
         action_status_ = util::ErrorEnum::DecoderFrameFailed;
@@ -395,13 +423,15 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
         return;
     }
 
-    if constexpr (prepared_viewer_distribution) {
-        DistributePreparedViewer(viewer_plan, output_frame);
-    } else {
-        DistributeViewer(output_frame);
+    if (host_frame_required) {
+        if constexpr (prepared_viewer_distribution) {
+            DistributePreparedViewer(viewer_plan, output_frame);
+        } else {
+            DistributeViewer(output_frame);
+        }
+        DoCaptureImage(output_frame);
+        CaptureJpeg(output_frame);
     }
-    DoCaptureImage(output_frame);
-    CaptureJpeg(output_frame);
     const auto color_convert = [this, native_inference_buffer](AlgDataPtr frame, VideoFramePtr in_data) {
         return ColorConvert(frame, in_data, native_inference_buffer);
     };
@@ -461,6 +491,16 @@ AlgDataPtr AlgChannelDecode::ColorConvert(AlgDataPtr demux_data, VideoFramePtr i
     auto& transform = service::ServiceRegistry::Instance().Get<service::IVideoFrameTransform>();
     VideoFramePtr ai_frame;
     const auto pixel_format = in_data->GetPixelFormat();
+    // AX650N inference consumes the retained VDEC NV12 buffer through IVPS.
+    // Do not spend CPU time converting the materialized inspection frame when
+    // the native hardware buffer is present; downstream AXERA preprocessing
+    // uses chanDataDec.native_buffer instead of these host pixels.
+#if defined(COSMO_NN_USE_AXERA_BACKEND)
+    if (native_buffer && native_buffer->Valid() &&
+        native_buffer->format == media::NativeVideoBufferFormat::NV12) {
+        ai_frame = in_data;
+    } else
+#endif
     if (pixel_format == media::PixelFormat::PIXEL_BGR8) {
         ai_frame = in_data;
     } else if (pixel_format == media::PixelFormat::PIXEL_RGB8) {

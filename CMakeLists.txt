@@ -109,6 +109,9 @@ option(COSMO_NN_USE_SOPHON_BACKEND "Enable Sophon TPU backend" ON)
 option(COSMO_NN_USE_CPU_BACKEND "Enable CPU inference backend (ONNX Runtime)" OFF)
 option(COSMO_NN_USE_RKNN_BACKEND "Enable Rockchip RKNN backend" OFF)
 option(COSMO_NN_USE_AXERA_BACKEND "Enable Axera AX650 backend" OFF)
+option(COSMO_AXERA_ALLOW_CPU_FALLBACK
+       "Allow AX650 VDEC to fall back to FFmpeg CPU decoding (experimental)"
+       OFF)
 
 set(_cosmo_nn_backend_count 0)
 foreach(_nn_backend_option
@@ -145,6 +148,9 @@ elseif(COSMO_NN_USE_AXERA_BACKEND)
         COSMO_NN_USE_AXERA_BACKEND
         COSMO_NN_USE_HOST_BACKEND
         COSMO_NN_USE_RAW_MODEL_BACKEND)
+    if(COSMO_AXERA_ALLOW_CPU_FALLBACK)
+        add_compile_definitions(COSMO_AXERA_ALLOW_CPU_FALLBACK)
+    endif()
 endif()
 
 # A target package is always chip-specific even when several chips share one

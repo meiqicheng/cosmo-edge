@@ -248,6 +248,7 @@ AlgFrameDistributionPlan AlgDataQueueDistributor::PrepareFrameDistribution(AlgDa
     }
 
     std::shared_lock<std::shared_mutex> lock(task_mtx_);
+    bool has_detector_group = false;
     for (auto& task_group : tasks_) {
         const bool metadata_only_group =
             !task_group.tasks.empty() &&
@@ -266,23 +267,32 @@ AlgFrameDistributionPlan AlgDataQueueDistributor::PrepareFrameDistribution(AlgDa
             }
             continue;
         }
-        if (out_fps_ctl_.IsFilter(data_index_, task_group.max_task_fps, frame->firstTimePoint)) {
+        // FpsCtrl retains a historical real-FPS estimate. On a newly bound
+        // local source that stale estimate can be much higher than the live
+        // rate and incorrectly suppress every native detector frame. Never
+        // rate-limit when the measured input is already within the target.
+        const bool needs_rate_limit = in_fps_ > (task_group.max_task_fps + 0.1F);
+        if (needs_rate_limit &&
+            out_fps_ctl_.IsFilter(data_index_, task_group.max_task_fps, frame->firstTimePoint)) {
             continue;
         }
         if (!task_group.que) {
             continue;
         }
-        if (!task_group.que->CanAccept()) {
-            task_group.que->RecordDiscard();
-            continue;
-        }
+        // Insert() performs the authoritative running/full check under the
+        // queue lock.  A separate CanAccept() check races with the detector
+        // worker and can reject every frame while the queue is being drained.
         const bool detector_group =
             !task_group.tasks.empty() &&
             std::all_of(task_group.tasks.begin(), task_group.tasks.end(),
                         [](const AlgTaskUnit& task) { return task.actionId == AADetect_Code.data(); });
-        plan.native_inference_eligible = plan.native_inference_eligible && detector_group;
+        // Other branches (for example DEMUX/lifecycle or post-processing
+        // queues) may coexist with the detector queue.  Their presence must
+        // not disable native inference for the detector branch.
+        has_detector_group = has_detector_group || detector_group;
         plan.queues.push_back(task_group.que);
     }
+    plan.native_inference_eligible = has_detector_group;
     return plan;
 }
 

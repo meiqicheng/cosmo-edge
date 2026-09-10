@@ -28,7 +28,7 @@ namespace {
     static constexpr const char* kKeepAliveUrl     = "streamkeepalive";
     static constexpr int kDefaultHttpPort          = 8080;
     static constexpr int kDefaultRtcApiPort        = 1985;
-    static constexpr auto kRawStreamReadyTimeout   = std::chrono::milliseconds(5000);
+    static constexpr auto kRawStreamReadyTimeout   = std::chrono::milliseconds(20000);
     static constexpr auto kAlgStreamReadyTimeout   = std::chrono::milliseconds(15000);
 
     std::string BuildViewerKey(const std::string& channelId, const std::string& algCode) {

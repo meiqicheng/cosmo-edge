@@ -50,11 +50,19 @@ util::ErrorEnum ConvertImagesToBlobs(const std::vector<VideoFramePtr>& images,
         if (!image || !image->Active())
             continue;
 
+        // A valid hardware NV12 buffer (AXERA VDEC export) lets the native
+        // pipeline (IVPS) consume the frame directly. Prefer it over the CPU
+        // I420->BGR conversion below whenever it is available.
+        const bool native_available =
+            i < native_buffers.size() && native_buffers[i] && native_buffers[i]->Valid() &&
+            native_buffers[i]->width == static_cast<int>(image->GetWidth()) &&
+            native_buffers[i]->height == static_cast<int>(image->GetHeight());
+
 #ifdef COSMO_NN_USE_HOST_BACKEND
         // CPU backend: CpuResizeNode/CpuNormalizeNode expect packed BGR/RGB (NHWC)
         // input, but DecodeJpeg() on CPU produces I420 (YUV420P planar) format.
         // Convert I420 to packed BGR before wrapping in a self-allocating blob.
-        if (image->GetPixelFormat() == media::PixelFormat::PIXEL_I420) {
+if (image->GetPixelFormat() == media::PixelFormat::PIXEL_I420 && !native_available) {
             int w = static_cast<int>(image->GetWidth());
             int h = static_cast<int>(image->GetHeight());
 
@@ -110,16 +118,14 @@ util::ErrorEnum ConvertImagesToBlobs(const std::vector<VideoFramePtr>& images,
         cosmo::nn::BlobDesc desc;
         auto blob         = std::make_shared<cosmo::nn::Blob>(desc);
         desc.data_format  = GetDataFormatType();
-        desc.image_format = GetImageFormatType();
+        desc.image_format = native_available ? cosmo::nn::IMAGE_NV12 : GetImageFormatType();
         desc.data_type    = cosmo::nn::DataType::DATA_TYPE_UINT8;
         desc.dims         = {1, static_cast<int>(image->GetHeight()), static_cast<int>(image->GetWidth()),
                              static_cast<int>(cosmo::nn::ImageFormatChannels(desc.image_format))};
         desc.device_type  = GetDeviceType();
         cosmo::nn::BlobHandle handle;
         handle.base = image->GetData();
-        if (i < native_buffers.size() && native_buffers[i] && native_buffers[i]->Valid() &&
-            native_buffers[i]->width == static_cast<int>(image->GetWidth()) &&
-            native_buffers[i]->height == static_cast<int>(image->GetHeight())) {
+        if (native_available) {
             const auto& native                = *native_buffers[i];
             handle.native_image.fd            = native.fd;
             handle.native_image.bytes         = native.bytes;
@@ -144,6 +150,19 @@ util::ErrorEnum ConvertImagesToBlobs(const std::vector<VideoFramePtr>& images,
             } else if (native.format == media::NativeVideoBufferFormat::I420) {
                 handle.native_image.format = cosmo::nn::IMAGE_I420;
             }
+            handle.native_image.phy = native.phy_addr;
+            handle.native_image.vir = reinterpret_cast<void*>(native.vir_addr);
+        } else if (!native_buffers.empty()) {
+            // Native-capable backend rejected the hardware buffer; log the
+            // reason so a broken VDEC/IVPS path is diagnosable. x86/Sophon
+            // pass an empty native_buffers and must never hit this branch.
+            const auto* native = (i < native_buffers.size()) ? native_buffers[i].get() : nullptr;
+            LOG_WARN("[NativeInput] rejected native buffer: i={} n={} ptr={} valid={} nw={} nh={} nstride={} "
+                     "iw={} ih={} fmt={}",
+                     i, native_buffers.size(), native ? "set" : "null", native ? native->Valid() : false,
+                     native ? native->width : 0, native ? native->height : 0,
+                     native ? native->width_stride : 0, static_cast<int>(image->GetWidth()),
+                     static_cast<int>(image->GetHeight()), native ? static_cast<int>(native->format) : -1);
         }
         blob->SetBlobDesc(desc);
         blob->SetHandle(handle);
