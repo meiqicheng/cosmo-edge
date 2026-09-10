@@ -165,7 +165,7 @@ export class ScenarioPackage {
     const explicitTargetFps = spec.targetFps != null ? Number(spec.targetFps) : null;
     const targetFps = explicitTargetFps ?? extractTargetFpsFromTemplate(template);
     const normalizedType = normalizeTaskType(type);
-    const videoReadFps = this.videoMode === 'local' && normalizedType === 'vlm' ? targetFps : null;
+    const videoReadFps = this.videoMode === 'local' && Number.isFinite(targetFps) && targetFps > 0 ? targetFps : null;
     const taskConfig = buildTaskConfig(
       template,
       this.videoRepeatCount,

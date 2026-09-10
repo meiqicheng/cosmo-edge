@@ -49,18 +49,44 @@ if ($LASTEXITCODE -ne 0) {
     cmd /c "docker volume create $VolumeName >nul 2>nul"
     Write-Host "Created volume: $VolumeName"
 }
-Invoke-Docker run --rm `
-    -v "${dockerSrc}:/src:ro" `
-    -v "${VolumeName}:/workspace" `
-    alpine sh /src/scripts/sync-source-volume.sh
+cmd /c "docker run --rm -v ${dockerSrc}:/src:ro -v ${VolumeName}:/workspace alpine sh /src/scripts/sync-source-volume.sh 2>&1"
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Source sync failed with exit code $LASTEXITCODE."
+    exit $LASTEXITCODE
+}
 Write-Host "Source sync complete"
 
 Write-Step "Step 3/5 - Restoring Linux .so symlinks"
-Invoke-Docker run --rm `
-    -v "${VolumeName}:/workspace" `
-    alpine sh /workspace/scripts/restore-symlinks.sh
+cmd /c "docker run --rm -v ${VolumeName}:/workspace alpine sh /workspace/scripts/restore-symlinks.sh 2>&1"
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Symlink restore failed with exit code $LASTEXITCODE."
+    exit $LASTEXITCODE
+}
 
 Write-Step "Step 4/5 - Building AXERA builder image + cross-compiling $Chip"
+# 把本地构建缓存（output/axera-build-cache/，含工具链与 SDK .axp）暂存为
+# 构建上下文中的 .axera-build-cache/，Dockerfile.axera 命中时跳过外网下载；
+# 所有文件仍按 Dockerfile 中锁定的 SHA256 校验，未命中缓存则回退官方源。
+$cacheContextDir = Join-Path $projectRoot ".axera-build-cache"
+$localCacheDir   = Join-Path $projectRoot "output\axera-build-cache"
+if (Test-Path $cacheContextDir) { Remove-Item $cacheContextDir -Recurse -Force }
+New-Item -ItemType Directory -Path $cacheContextDir | Out-Null
+if (Test-Path $localCacheDir) {
+    $cached = Get-ChildItem $localCacheDir -File
+    foreach ($f in $cached) {
+        # 同卷硬链接：不占额外磁盘（E 盘空间紧张）。
+        try {
+            New-Item -ItemType HardLink -Path (Join-Path $cacheContextDir $f.Name) -Target $f.FullName -ErrorAction Stop | Out-Null
+        } catch {
+            Copy-Item $f.FullName $cacheContextDir
+        }
+        Write-Host "  cache hit: $($f.Name) ($('{0:N0}' -f $f.Length) bytes)"
+    }
+    if (-not $cached) { Write-Host "  local cache empty; will download from official sources" }
+} else {
+    Write-Host "  no local cache; will download from official sources"
+}
+
 # 生成一个 compose override：把 bind mount 换成命名卷，保留 ./build_output
 # 作为 bind mount，并保留 ext4 构建卷（CPack 暂存发生在那里，
 # 不落在 Windows 盘上）。
@@ -93,6 +119,7 @@ try {
 } finally {
     Pop-Location
     Remove-Item (Join-Path $projectRoot $OverrideFile) -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $projectRoot ".axera-build-cache") -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Step "Step 5/5 - Build output"

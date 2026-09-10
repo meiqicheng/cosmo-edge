@@ -3,7 +3,15 @@
 # Sophon build volume from a Windows-host bind mount.
 set -eu
 
-cp -a /src/. /workspace/
+# Copy top-level entries individually so broken local metadata symlinks (for
+# example .codegraph/codegraph.lock) do not abort the Linux build sync.
+for entry in /src/* /src/.[!.]* /src/..?*; do
+    [ -e "$entry" ] || [ -L "$entry" ] || continue
+    case "$entry" in
+        /src/.codegraph) continue ;;
+    esac
+    cp -a "$entry" /workspace/
+done
 
 # Normalize CRLF -> LF for shell scripts and Python files.
 # Git for Windows (core.autocrlf) can check out files that .gitattributes pins

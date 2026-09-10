@@ -124,6 +124,9 @@ if(COSMO_NN_USE_AXERA_BACKEND)
     if(TARGET ax_sys)
         target_link_libraries(cosmo_nn PRIVATE ax_sys)
     endif()
+    if(TARGET ax_ivps)
+        target_link_libraries(cosmo_nn PRIVATE ax_ivps)
+    endif()
 endif()
 
 # Ensure all ExternalProject third-party targets are built before compiling NN

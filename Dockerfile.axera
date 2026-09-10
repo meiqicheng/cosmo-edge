@@ -10,7 +10,7 @@
 #         developer.arm.com。AXERA 官方的 AX650 工具链（ax-pipeline CI）
 #         使用 ARM GNU 9.2，SDK 预编译库也面向其 glibc/libstdc++ ABI，
 #         因此 9.2 是匹配的厂商工具链。
-# SDK：   AX650 eMMC 板卡镜像（ubuntu rootfs desktop），来自 AXERA-TECH
+# SDK：   AX650 pipro_box 板卡镜像（ubuntu rootfs desktop），来自 AXERA-TECH
 #         官方 HuggingFace BoardImages 仓库，按 sha256 锁定。.axp 是 zip，
 #         其 soc_sparse.ext4 成员即 /soc 分区（lib + include + ko + 脚本）；
 #         用 debugfs 抽取 lib/ 与 include/，其余内容（启动镜像、rootfs、
@@ -31,6 +31,9 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 # 使用 Aliyun HTTP 镜像源（基础镜像缺少支持 HTTPS 镜像源的新 CA 包；
 # HTTP 可靠可用，且项目本就使用 Aliyun 镜像）。
+# 注意：android-sdk-libsparse-utils(simg2img)、e2fsprogs(debugfs)、unzip
+# 只在 axera-sdk 下载阶段需要，已从本阶段移除（见 axera-sdk 阶段），
+# 避免它们进入最终 builder 镜像。
 RUN set -eux; \
     sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list; \
     sed -i 's|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list; \
@@ -52,10 +55,7 @@ RUN set -eux; \
         python3 \
         python3-pip \
         rsync \
-        android-sdk-libsparse-utils \
-        unzip \
         xz-utils \
-        e2fsprogs \
         zlib1g-dev; \
     rm -rf /var/lib/apt/lists/*
 
@@ -68,6 +68,7 @@ RUN set -eux; \
     rm -f /tmp/nodesource_setup.sh; \
     apt-get install -y --no-install-recommends nodejs; \
     rm -rf /var/lib/apt/lists/*; \
+    npm cache clean --force 2>/dev/null || true; \
     node --version; \
     npm --version
 
@@ -84,29 +85,72 @@ RUN set -eux; \
     sh /tmp/rustup-init.sh -y --no-modify-path --profile minimal --default-toolchain stable; \
     rm -f /tmp/rustup-init.sh; \
     rustup target add aarch64-unknown-linux-gnu; \
+    rm -rf /usr/local/rustup/toolchains/*/share/doc \
+           /usr/local/rustup/toolchains/*/share/man \
+           /usr/local/rustup/toolchains/*/share/info \
+           /usr/local/cargo/registry \
+           /usr/local/cargo/git \
+           /root/.cache; \
     cargo --version; \
     rustc --version
 
 # Arm GNU Toolchain 9.2-2019.12，来自 ARM 官方下载服务器。
+# 本地缓存优先：build_axera_package.ps1 会把 output/axera-build-cache/ 暂存为
+# 构建上下文中的 .axera-build-cache/；命中缓存时跳过下载，未命中时回退官方
+# 源。无论来源如何，都以下方 SHA256 锁定值校验文件身份。
 ARG ARM_GNU_URL=https://developer.arm.com/-/media/Files/downloads/gnu-a/9.2-2019.12/binrel/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.xz
 ARG ARM_GNU_SHA256=8dfe681531f0bd04fb9c53cf3c0a3368c616aa85d48938eebe2b516376e06a66
-RUN set -eux; \
+RUN --mount=type=bind,source=.axera-build-cache,target=/tmp/axera-cache,readonly \
+    set -eux; \
     mkdir -p /opt/axera/toolchain; \
-    curl -fL --retry 3 "${ARM_GNU_URL}" -o /tmp/gcc-arm-9.2.tar.xz; \
+    if [ -f /tmp/axera-cache/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.xz ]; then \
+        cp /tmp/axera-cache/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu.tar.xz /tmp/gcc-arm-9.2.tar.xz; \
+    else \
+        curl -fL --retry 3 "${ARM_GNU_URL}" -o /tmp/gcc-arm-9.2.tar.xz; \
+    fi; \
     echo "${ARM_GNU_SHA256}  /tmp/gcc-arm-9.2.tar.xz" | sha256sum -c -; \
     tar -xJf /tmp/gcc-arm-9.2.tar.xz -C /opt/axera/toolchain; \
     rm -f /tmp/gcc-arm-9.2.tar.xz; \
     mv /opt/axera/toolchain/gcc-arm-9.2-2019.12-x86_64-aarch64-none-linux-gnu \
        /opt/axera/toolchain/gcc-arm-9.2; \
+    rm -rf /opt/axera/toolchain/gcc-arm-9.2/share/doc \
+           /opt/axera/toolchain/gcc-arm-9.2/share/man \
+           /opt/axera/toolchain/gcc-arm-9.2/share/info \
+           /opt/axera/toolchain/gcc-arm-9.2/share/gcc-*/python/lib2to3/tests \
+           /var/lib/apt/lists/*; \
     /opt/axera/toolchain/gcc-arm-9.2/bin/aarch64-none-linux-gnu-gcc --version | head -n1
 
 # ── 阶段 2：AX650 SDK 运行时暂存（与工具链工作并行）──────────────────────
-FROM axera-toolchain AS axera-sdk
+# 从独立的基础镜像构建（不继承 axera-toolchain），只安装下载/解包 SDK
+# 所需的最小工具。这样 simg2img/debugfs/unzip 等 SDK 专用工具不会进入
+# 最终 builder 镜像，显著减小镜像体积。
+FROM ${AXERA_BASE_IMAGE} AS axera-sdk
 
-ARG AX650_BOARD_IMAGE_URL=https://huggingface.co/AXERA-TECH/BoardImages/resolve/main/AX650_emmc_ubuntu_rootfs_desktop_V3.10.2_20260605121907.axp
-ARG AX650_BOARD_IMAGE_SHA256=088f5f9f453da5412f99ba55827a366bbcc9fb3325906af5b6c5e9d6cef3b700
+ARG DEBIAN_FRONTEND=noninteractive
+
 RUN set -eux; \
-    curl -fL --retry 3 "${AX650_BOARD_IMAGE_URL}" -o /tmp/ax650-board.axp; \
+    sed -i 's|http://archive.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list; \
+    sed -i 's|http://security.ubuntu.com/ubuntu|http://mirrors.aliyun.com/ubuntu|g' /etc/apt/sources.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        unzip \
+        android-sdk-libsparse-utils \
+        e2fsprogs; \
+    rm -rf /var/lib/apt/lists/*
+
+ARG AX650_BOARD_IMAGE_URL=https://huggingface.co/AXERA-TECH/BoardImages/resolve/main/AX650_pipro_box_ubuntu_rootfs_desktop_V3.10.2_20260610103629.axp
+ARG AX650_BOARD_IMAGE_SHA256=e1c69f8972ca5acc8c172be43365742ac01ae134ba9482fc3f02c72e9c3c3f70
+# 本地缓存优先策略：build_axera_package.ps1 会把 output/axera-build-cache/
+# 暂存为构建上下文中的 .axera-build-cache/；命中缓存时跳过下载。
+RUN --mount=type=bind,source=.axera-build-cache,target=/tmp/axera-cache,readonly \
+    set -eux; \
+    if [ -f /tmp/axera-cache/AX650_pipro_box_ubuntu_rootfs_desktop_V3.10.2_20260610103629.axp ]; then \
+        cp /tmp/axera-cache/AX650_pipro_box_ubuntu_rootfs_desktop_V3.10.2_20260610103629.axp /tmp/ax650-board.axp; \
+    else \
+        curl -fL --retry 3 "${AX650_BOARD_IMAGE_URL}" -o /tmp/ax650-board.axp; \
+    fi; \
     echo "${AX650_BOARD_IMAGE_SHA256}  /tmp/ax650-board.axp" | sha256sum -c -; \
     mkdir -p /tmp/axsoc /opt/axera/sdk/msp-out; \
     unzip -o -q /tmp/ax650-board.axp soc_sparse.ext4 -d /tmp/axsoc; \
@@ -118,7 +162,8 @@ RUN set -eux; \
     test -f /opt/axera/sdk/msp-out/include/ax_sys_api.h; \
     for l in ax_engine ax_sys ax_interpreter ax_ivps ax_vdec ax_venc; do \
         test -f "/opt/axera/sdk/msp-out/lib/lib${l}.so"; \
-    done
+    done; \
+    rm -rf /var/lib/apt/lists/*
 
 # ── 阶段 3：最终 builder ──────────────────────────────────────────────────
 FROM axera-toolchain AS axera-builder
@@ -134,8 +179,8 @@ ENV AXERA_ROOT=/opt/axera/sdk/msp-out \
     COSMO_AXERA_ROOT=/opt/axera/sdk/msp-out
 
 LABEL org.opencontainers.image.title="CosmoEdge AX650N build environment" \
-      org.opencontainers.image.description="Self-contained AX650N cross build environment (Arm GNU 9.2-2019.12 + AX650 board image V3.10.2_20260605121907 soc lib/include)" \
-      org.opencontainers.image.axera-sdk.version="V3.10.2_20260605121907" \
+      org.opencontainers.image.description="Self-contained AX650N cross build environment (Arm GNU 9.2-2019.12 + AX650 pipro_box board image V3.10.2_20260610103629 soc lib/include)" \
+      org.opencontainers.image.axera-sdk.version="V3.10.2_20260610103629" \
       org.opencontainers.image.arm-gnu.version="9.2-2019.12" \
       io.cosmo.axera.targets="ax650n"
 

@@ -28,8 +28,15 @@ if(COSMO_TARGET_ARCH STREQUAL "aarch64")
     get_filename_component(TOKENIZERS_TOOLCHAIN_BIN ${CMAKE_C_COMPILER} DIRECTORY)
     get_filename_component(TOKENIZERS_CC_NAME ${CMAKE_C_COMPILER} NAME)
     string(REGEX REPLACE "-gcc$" "" TOKENIZERS_TRIPLE ${TOKENIZERS_CC_NAME})
+    # CARGO_HOME lives in the (persistent) build directory so the crates.io
+    # index and crate downloads survive across build containers; cargo only
+    # needs network on the very first populate and stays offline afterwards.
+    set(TOKENIZERS_CARGO_ENV
+        "CARGO_HOME=${CMAKE_BINARY_DIR}/cargo-home"
+    )
     set(TOKENIZERS_BUILD_COMMAND
         ${CMAKE_COMMAND} -E env
+            ${TOKENIZERS_CARGO_ENV}
             "CC_aarch64-unknown-linux-gnu=${CMAKE_C_COMPILER}"
             "CC_aarch64_unknown_linux_gnu=${CMAKE_C_COMPILER}"
             "CXX_aarch64-unknown-linux-gnu=${CMAKE_CXX_COMPILER}"
@@ -39,8 +46,14 @@ if(COSMO_TARGET_ARCH STREQUAL "aarch64")
             "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=${CMAKE_C_COMPILER}"
             ${CMAKE_COMMAND} --build .
     )
+    set(TOKENIZERS_INSTALL_COMMAND
+        ${CMAKE_COMMAND} -E env
+            ${TOKENIZERS_CARGO_ENV}
+            ${CMAKE_COMMAND} --build . --target install
+    )
 else()
     set(TOKENIZERS_BUILD_COMMAND ${CMAKE_COMMAND} --build .)
+    set(TOKENIZERS_INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install)
 endif()
 
 ExternalProject_Add(
@@ -56,7 +69,7 @@ ExternalProject_Add(
         -DCMAKE_INSTALL_PREFIX=${TOKENIZERS_INSTALL_DIR}
 
     BUILD_COMMAND ${TOKENIZERS_BUILD_COMMAND}
-    INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install
+    INSTALL_COMMAND ${TOKENIZERS_INSTALL_COMMAND}
 
     UPDATE_COMMAND ""
     BUILD_ALWAYS OFF
