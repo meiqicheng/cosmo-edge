@@ -24,6 +24,9 @@ struct AxeraYolov8BranchContract {
 
 struct AxeraYolov8Layout {
     bool detected{false};
+    bool fused{false};      // single merged export {1, 4+cls, points}, already decoded
+    bool split_pair{false}; // decoded box {1,4,points} + scores {1,cls,points}
+    int box_index{0};       // split pair only: which tensor holds the boxes
     int class_count{0};
     int point_count{0};
     bool class_scores_are_probabilities{false};
@@ -37,10 +40,11 @@ struct AxeraYolov8Head {
     std::vector<int> shape;
 };
 
-/// Detect a 3-head YOLOv8 DFL output layout from the AXERA model output shapes.
-/// Supports the official ax-samples NHWC packing ({1,h,w,64+cls}) and the
-/// NCHW split packing ({1,64,h,w}+{1,cls,h,w}); heads must be ordered from
-/// fine to coarse stride (largest h*w first).
+/// Detect a YOLOv8 output layout from the AXERA model output shapes.
+/// Supports the fused single-tensor export ({1,4+cls,points}, already
+/// decoded), the official ax-samples NHWC packing ({1,h,w,64+cls}) and the
+/// NCHW split packing ({1,64,h,w}+{1,cls,h,w}); DFL heads must be ordered
+/// from fine to coarse stride (largest h*w first).
 bool DetectAxeraYolov8Layout(const std::vector<std::vector<int>>& shapes, AxeraYolov8Layout& layout,
                              std::string& error);
 

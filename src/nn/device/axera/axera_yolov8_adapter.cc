@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 
 namespace cosmo::nn {
@@ -105,8 +106,53 @@ namespace {
 bool DetectAxeraYolov8Layout(const std::vector<std::vector<int>>& shapes, AxeraYolov8Layout& layout,
                              std::string& error) {
     layout = AxeraYolov8Layout{};
+    // Square-input grid invariant shared by the merged and split layouts:
+    // point_count = (H/8)^2 + (H/16)^2 + (H/32)^2 = 21 * (H/32)^2.
+    auto grid_points = [](int points) {
+        const int side_squared = (points > 0 && points % 21 == 0) ? points / 21 : -1;
+        const int side =
+            (side_squared > 0) ? static_cast<int>(std::lround(std::sqrt(side_squared))) : -1;
+        return (side > 0 && side * side == side_squared);
+    };
+    // Fused export (ONNX/Pulsar2 default): one already-decoded tensor
+    // {1, 4 + class_count, point_count} with cxcywh boxes in input pixels and
+    // sigmoid class scores.
+    if (shapes.size() == 1 && shapes[0].size() == 3 && shapes[0][0] == 1 && shapes[0][1] > 4) {
+        const int channels    = shapes[0][1];
+        const int point_count = shapes[0][2];
+        if (grid_points(point_count)) {
+            layout.detected                       = true;
+            layout.fused                          = true;
+            layout.class_count                    = channels - 4;
+            layout.point_count                    = point_count;
+            layout.class_scores_are_probabilities = true;
+            layout.logical_shape                  = shapes[0];
+            return true;
+        }
+    }
+    // Split export: decoded box {1,4,points} + class scores {1,cls,points},
+    // both channel-major. Splitting lets the quantizer give each tensor its
+    // own range (fused outputs quantize scores to zero).
+    if (shapes.size() == 2 && shapes[0].size() == 3 && shapes[1].size() == 3 &&
+        shapes[0][0] == 1 && shapes[1][0] == 1 && shapes[0][2] == shapes[1][2] &&
+        grid_points(shapes[0][2])) {
+        const int box_index = (shapes[0][1] == 4) ? 0 : (shapes[1][1] == 4) ? 1 : -1;
+        const int class_count =
+            (box_index == 0) ? shapes[1][1] : (box_index == 1) ? shapes[0][1] : 0;
+        if (box_index >= 0 && class_count > 0) {
+            layout.detected                       = true;
+            layout.split_pair                     = true;
+            layout.box_index                      = box_index;
+            layout.class_count                    = class_count;
+            layout.point_count                    = shapes[0][2];
+            layout.class_scores_are_probabilities = true;
+            layout.logical_shape                  = {1, 4 + class_count, layout.point_count};
+            return true;
+        }
+    }
     if (shapes.size() != 3 && shapes.size() != 6) {
-        error = "AXERA YOLOv8 requires 3 packed heads or 6 NCHW split tensors";
+        error = "AXERA YOLOv8 requires a fused {1,4+cls,points} output, a box/score split pair, "
+                "3 packed heads or 6 NCHW split tensors";
         return false;
     }
 
@@ -212,6 +258,39 @@ bool ReconstructAxeraYolov8(const std::vector<AxeraYolov8Head>& heads, int input
     if (output_count < required) {
         error = "AXERA YOLOv8 logical output buffer is too small";
         return false;
+    }
+
+    // Fused export: the tensor already carries the logical layout; pass it
+    // through unchanged.
+    if (layout.fused) {
+        if (heads.size() != 1 || !heads[0].data || heads[0].element_count < required) {
+            error = "AXERA YOLOv8 fused head does not match the queried shape";
+            return false;
+        }
+        std::memcpy(output, heads[0].data, required * sizeof(float));
+        return true;
+    }
+
+    // Split export: box rows [0,4) then class rows [4,4+cls) channel-major,
+    // so the logical blob is the concatenation of both buffers.
+    if (layout.split_pair) {
+        if (heads.size() != 2 || !heads[0].data || !heads[1].data) {
+            error = "AXERA YOLOv8 split pair is missing its box or class tensor";
+            return false;
+        }
+        const auto& box_head = heads[layout.box_index];
+        const auto& cls_head = heads[1 - layout.box_index];
+        const size_t box_count = static_cast<size_t>(4) * static_cast<size_t>(layout.point_count);
+        const size_t cls_count = static_cast<size_t>(layout.class_count) *
+                                 static_cast<size_t>(layout.point_count);
+        if (!box_head.data || box_head.element_count < box_count || !cls_head.data ||
+            cls_head.element_count < cls_count) {
+            error = "AXERA YOLOv8 split pair does not match the queried shape";
+            return false;
+        }
+        std::memcpy(output, box_head.data, box_count * sizeof(float));
+        std::memcpy(output + box_count, cls_head.data, cls_count * sizeof(float));
+        return true;
     }
 
     const bool nchw_separate = layout.branches.front().nchw_separate;
