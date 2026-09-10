@@ -8,10 +8,17 @@ namespace {
 float Sigmoid(float value) { return 1.0f / (1.0f + std::exp(-value)); }
 }
 
-Status DecodeYoloPoseTensor(const float* data, const std::vector<int>& shape, int input_width, int input_height,
-                            int class_count, int keypoint_count, float confidence_threshold,
-                            std::vector<ObjectInfoV1>& outputs, std::string& error,
-                            int keypoint_values_per_point) {
+int PoseChannelCount(YoloPoseLayout layout, int class_count, int keypoint_count,
+                     int keypoint_values_per_point) {
+    if (layout == YoloPoseLayout::kChannelMajor)
+        return 4 + class_count + keypoint_count * keypoint_values_per_point;
+    return 6 + keypoint_count * keypoint_values_per_point;
+}
+
+Status DecodeYoloPoseTensor(const float* data, const std::vector<int>& shape, YoloPoseLayout layout,
+                            int input_width, int input_height, int class_count, int keypoint_count,
+                            float confidence_threshold, std::vector<ObjectInfoV1>& outputs,
+                            std::string& error, int keypoint_values_per_point) {
     outputs.clear();
     if (!data || input_width <= 0 || input_height <= 0 || class_count <= 0 || keypoint_count <= 0 ||
         !std::isfinite(confidence_threshold) || (keypoint_values_per_point != 2 && keypoint_values_per_point != 3))
@@ -19,17 +26,19 @@ Status DecodeYoloPoseTensor(const float* data, const std::vector<int>& shape, in
     if (shape.size() != 3 || shape[0] != 1)
         return Status(COSMO_NN_ERR_INVALID_INPUT, "YOLO pose tensor must have batch 1 and rank 3");
 
-    const int channel_major_channels = 4 + class_count + keypoint_count * keypoint_values_per_point;
-    const int end_to_end_channels = 6 + keypoint_count * keypoint_values_per_point;
-    const bool channel_major = shape[1] == channel_major_channels;
-    const bool row_major = shape[2] == end_to_end_channels;
-    if (!channel_major && !row_major) {
-        error = "YOLO pose tensor shape does not match configured classes/keypoints";
+    // The layout comes from the model template. A tensor that does not match it is
+    // a template/model mismatch and must fail loudly: falling back to the other
+    // layout is what previously made a 2-class plate detector decode as if it were
+    // a 4-point pose head (and vice versa).
+    const bool channel_major = layout == YoloPoseLayout::kChannelMajor;
+    const int channels = PoseChannelCount(layout, class_count, keypoint_count, keypoint_values_per_point);
+    const int points = channel_major ? shape[2] : shape[1];
+    if (points <= 0 || (channel_major ? shape[1] : shape[2]) != channels) {
+        error = "YOLO pose tensor shape does not match the declared layout/classes/keypoints";
         return Status(COSMO_NN_ERR_INVALID_INPUT, error);
     }
-    const int points = channel_major ? shape[2] : shape[1];
     const auto at = [&](int point, int channel) {
-        return channel_major ? data[channel * points + point] : data[point * end_to_end_channels + channel];
+        return channel_major ? data[channel * points + point] : data[point * channels + channel];
     };
     for (int point = 0; point < points; ++point) {
         int best_class = 0;
