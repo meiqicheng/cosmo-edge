@@ -18,7 +18,8 @@ TEST_CASE("YOLO pose decoder accepts channel-major and end-to-end layouts", "[nn
     channel_major[5] = 12.0f;
     channel_major[6] = 20.0f;
     channel_major[7] = 4.0f;
-    REQUIRE(bool(DecodeYoloPoseTensor(channel_major.data(), {1, 56, 1}, 100, 100, 1, 17, 0.5f, outputs, error)));
+    REQUIRE(bool(DecodeYoloPoseTensor(channel_major.data(), {1, 56, 1}, YoloPoseLayout::kChannelMajor, 100,
+                                      100, 1, 17, 0.5f, outputs, error)));
     REQUIRE(outputs.size() == 1);
     CHECK(outputs[0].key_points.size() == 17);
     CHECK(outputs[0].key_point_confidences[0] == Catch::Approx(0.982f).margin(0.01f));
@@ -30,9 +31,33 @@ TEST_CASE("YOLO pose decoder accepts channel-major and end-to-end layouts", "[nn
     end_to_end[3] = 20.0f;
     end_to_end[4] = 0.9f;
     end_to_end[5] = 0.0f;
-    REQUIRE(bool(DecodeYoloPoseTensor(end_to_end.data(), {1, 1, 57}, 100, 100, 1, 17, 0.5f, outputs, error)));
+    REQUIRE(bool(DecodeYoloPoseTensor(end_to_end.data(), {1, 1, 57}, YoloPoseLayout::kEndToEnd, 100, 100, 1,
+                                      17, 0.5f, outputs, error)));
     REQUIRE(outputs.size() == 1);
     CHECK(outputs[0].key_points.size() == 17);
+}
+
+TEST_CASE("Pose decoder keeps the declared layout instead of guessing one", "[nn][yolo][pose]") {
+    using namespace cosmo::nn;
+    std::string error;
+    std::vector<ObjectInfoV1> outputs;
+
+    // A channel-major tensor declared as end-to-end must be rejected, not decoded
+    // with the layout that happens to fit.
+    std::vector<float> channel_major(56, 0.0F);
+    channel_major[4] = 0.9F;
+    CHECK(!bool(DecodeYoloPoseTensor(channel_major.data(), {1, 56, 1}, YoloPoseLayout::kEndToEnd, 100, 100, 1,
+                                     17, 0.5F, outputs, error)));
+    CHECK(!error.empty());
+
+    // A plain 2-class detector head (6 channels) is not a pose output either.
+    std::vector<float> plain_detection(6, 0.0F);
+    CHECK(!bool(DecodeYoloPoseTensor(plain_detection.data(), {1, 6, 8400}, YoloPoseLayout::kChannelMajor, 100,
+                                     100, 1, 17, 0.5F, outputs, error)));
+
+    CHECK(PoseChannelCount(YoloPoseLayout::kChannelMajor, 1, 17, 3) == 56);
+    CHECK(PoseChannelCount(YoloPoseLayout::kEndToEnd, 1, 17, 3) == 57);
+    CHECK(PoseChannelCount(YoloPoseLayout::kEndToEnd, 2, 4, 2) == 14);
 }
 
 TEST_CASE("Generic keypoint set represents human COCO pose", "[ai][keypoint]") {
@@ -83,7 +108,8 @@ TEST_CASE("YOLO26 plate pose decoder preserves plate4 points without fake confid
     tensor[13] = 60.0F;
     std::vector<ObjectInfoV1> outputs;
     std::string error;
-    REQUIRE(bool(DecodeYoloPoseTensor(tensor.data(), {1, 1, 14}, 200, 100, 1, 4, 0.5F, outputs, error, 2)));
+    REQUIRE(bool(DecodeYoloPoseTensor(tensor.data(), {1, 1, 14}, YoloPoseLayout::kEndToEnd, 200, 100, 1, 4, 0.5F,
+                                      outputs, error, 2)));
     REQUIRE(outputs.size() == 1);
     REQUIRE(outputs[0].key_points.size() == 4);
     CHECK(outputs[0].key_points[0].first == Catch::Approx(10.0F));
@@ -124,7 +150,8 @@ TEST_CASE("YOLO26 plate decoder drops invalid boxes and sanitizes invalid points
     tensor[27] = 20.0F;
     std::vector<ObjectInfoV1> outputs;
     std::string error;
-    REQUIRE(bool(DecodeYoloPoseTensor(tensor.data(), {1, 2, 14}, 200, 100, 1, 4, 0.5F, outputs, error, 2)));
+    REQUIRE(bool(DecodeYoloPoseTensor(tensor.data(), {1, 2, 14}, YoloPoseLayout::kEndToEnd, 200, 100, 1, 4, 0.5F,
+                                      outputs, error, 2)));
     REQUIRE(outputs.size() == 1);
     CHECK(outputs[0].key_point_confidences[0] == Catch::Approx(-1.0F));
 }

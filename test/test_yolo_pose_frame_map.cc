@@ -89,7 +89,8 @@ TEST_CASE("Pose decoder marks joints it did not find with a negative sentinel", 
 
     std::vector<ObjectInfoV1> outputs;
     std::string error;
-    REQUIRE(bool(DecodeYoloPoseTensor(tensor.data(), {1, 56, 1}, 640, 640, 1, 17, 0.5f, outputs, error)));
+    REQUIRE(bool(DecodeYoloPoseTensor(tensor.data(), {1, 56, 1}, YoloPoseLayout::kChannelMajor, 640, 640, 1,
+                                      17, 0.5f, outputs, error)));
     REQUIRE(outputs.size() == 1);
     REQUIRE(outputs[0].key_points.size() == 17);
     CHECK(outputs[0].key_points[0].first == Catch::Approx(100.0f));
