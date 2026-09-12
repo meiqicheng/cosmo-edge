@@ -401,16 +401,20 @@ namespace media {
         if (!VideoFrameValid(src, true)) {
             return nullptr;
         }
-        if (src->GetPixelFormat() != PixelFormat::PIXEL_I420) {
-            LOG_ERRO("{}", "Resize() - only I420 supported");
+        const auto src_fmt   = src->GetPixelFormat();
+        const bool is_packed = (src_fmt == PixelFormat::PIXEL_BGR8 || src_fmt == PixelFormat::PIXEL_RGB8);
+        if (src_fmt != PixelFormat::PIXEL_I420 && !is_packed) {
+            LOG_ERRO("{}", "Resize() - only I420/BGR8/RGB8 supported");
             return nullptr;
         }
 
         auto src_w = static_cast<int>(src->GetWidth());
         auto src_h = static_cast<int>(src->GetHeight());
 
-        auto* sws_ctx = sws_getContext(src_w, src_h, AV_PIX_FMT_YUV420P, dst_width, dst_height,
-                                       AV_PIX_FMT_YUV420P, SWS_BILINEAR, nullptr, nullptr, nullptr);
+        const int src_av = is_packed ? MapToAVPixelFormat(src_fmt) : AV_PIX_FMT_YUV420P;
+        auto* sws_ctx =
+            sws_getContext(src_w, src_h, static_cast<AVPixelFormat>(src_av), dst_width, dst_height,
+                           static_cast<AVPixelFormat>(src_av), SWS_BILINEAR, nullptr, nullptr, nullptr);
         if (!sws_ctx) {
             LOG_ERRO("{}", "Resize() - sws_getContext failed");
             return nullptr;
@@ -426,14 +430,23 @@ namespace media {
         auto* src_data = src->GetData();
         auto* dst_data = result->GetData();
 
-        uint8_t* src_planes[3] = {src_data, src_data + src_w * src_h, src_data + src_w * src_h * 5 / 4};
-        int src_strides[3]     = {src_w, src_w / 2, src_w / 2};
+        if (is_packed) {
+            // Packed 3-channel (BGR8/RGB8): single plane, row stride = width * 3
+            uint8_t* src_planes[1] = {src_data};
+            int src_strides[1]     = {src_w * 3};
+            uint8_t* dst_planes[1] = {dst_data};
+            int dst_strides[1]     = {dst_width * 3};
+            sws_scale(sws_ctx, src_planes, src_strides, 0, src_h, dst_planes, dst_strides);
+        } else {
+            uint8_t* src_planes[3] = {src_data, src_data + src_w * src_h, src_data + src_w * src_h * 5 / 4};
+            int src_strides[3]     = {src_w, src_w / 2, src_w / 2};
 
-        uint8_t* dst_planes[3] = {dst_data, dst_data + dst_width * dst_height,
-                                  dst_data + dst_width * dst_height * 5 / 4};
-        int dst_strides[3]     = {dst_width, dst_width / 2, dst_width / 2};
+            uint8_t* dst_planes[3] = {dst_data, dst_data + dst_width * dst_height,
+                                      dst_data + dst_width * dst_height * 5 / 4};
+            int dst_strides[3]     = {dst_width, dst_width / 2, dst_width / 2};
 
-        sws_scale(sws_ctx, src_planes, src_strides, 0, src_h, dst_planes, dst_strides);
+            sws_scale(sws_ctx, src_planes, src_strides, 0, src_h, dst_planes, dst_strides);
+        }
         sws_freeContext(sws_ctx);
 
         return result;
