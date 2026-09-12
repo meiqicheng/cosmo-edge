@@ -285,3 +285,22 @@ npm ci
 ## Windows 本机 CPU 构建
 
 当前仓库没有确认可用的 Windows 本机 CPU 构建脚本。不要把旧脚本或旧命令写成公开支持路径。
+
+## 实时预览叠加层（OSD）不显示
+
+叠加层（检测框、车牌号码与颜色、关键点骨架等）由后端绘制并烧录进视频流，前端播放器只负责播放，不做客户端绘制。叠加层不显示时优先排查流路径，而不是播放器。
+
+显示条件（需同时满足）：
+
+1. 大屏告警页的视频卡片在下拉框中选择了算法。页面把所选 `runAlgorithmId` 传给播放组件，播放组件携带该算法 ID 请求实时流（ViewerCreate）。
+2. 后端 `StreamViewer` 创建 viewer 时算法 ID 非空且叠加编码器就绪，走"任务预览"路径：创建 `StreamViewerOverview` 绘制 OSD 并重新编码后推流。
+
+算法 ID 为空时走"通道预览"路径，原始流直接透传、无叠加，这是预期行为而不是故障。
+
+排查步骤：
+
+- 下拉框未选择算法时，原始流无叠加属预期；选择算法后等待流切换完成。
+- 已选择算法仍不显示时，查看 cosmo-engine 日志：
+  - `overlay encoder unavailable, fallback to raw H264 preview by env`：编码器不可用且设置了 `COSMO_CPU_OVERLAY_RAW_FALLBACK=1`，已回退为原始流（无叠加）。
+  - `overlay encoder unavailable and codec ... cannot fallback to raw preview`：编码器不可用且无法回退，该流不会推出。
+- 日志无上述告警且画面正常时，检查任务/算法流是否创建成功（ViewerCreate 返回）以及算法任务是否处于运行状态。
