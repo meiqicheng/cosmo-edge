@@ -33,6 +33,24 @@ TEST_CASE("plate CTC parser matches measured 9003002 recordings", "[ai][plate]")
     REQUIRE(second.color == "green");
 }
 
+TEST_CASE("plate OCR pipeline collapses repeated characters exactly once", "[ai][plate]") {
+    const std::vector<int> raw = {20, 0, 0, 0, 52, 0, 0, 57, 57, 62, 62, 0,
+                                  46, 0, 0, 46, 0, 45, 0, 45, 45};
+    std::vector<float> ocr(raw.size() * 78U, 0.0F);
+    for (size_t step = 0; step < raw.size(); ++step) {
+        if (raw[step] != 0) {
+            ocr[step * 78U + static_cast<size_t>(raw[step])] = 5.0F;
+        }
+    }
+
+    std::vector<int> indices;
+    float number_score = 0.0F;
+    std::string error;
+    REQUIRE(cosmo::AiPlateResultParser::DecodeOcr(ocr.data(), {1, 21, 78}, indices, number_score, error));
+    CHECK(indices == raw);
+    CHECK(cosmo::AiPlateResultParser::Decode(indices, 2, 0.94F).text == "粤AFL4433");
+}
+
 TEST_CASE("plate color parser rejects invalid class") {
     REQUIRE(std::string(cosmo::AiPlateResultParser::ColorName(-1)) == "unknown");
     REQUIRE(std::string(cosmo::AiPlateResultParser::ColorName(5)) == "unknown");
@@ -85,7 +103,11 @@ TEST_CASE("plate parser decodes end-to-end pose and multi-output heads", "[ai][p
     std::vector<int> indices;
     float number_score = 0.0F;
     REQUIRE(cosmo::AiPlateResultParser::DecodeOcr(ocr.data(), {1, 21, 78}, indices, number_score, error));
-    REQUIRE(indices == std::vector<int>{1, 52});
+    REQUIRE(indices.size() == 21);
+    CHECK(indices[1] == 1);
+    CHECK(indices[2] == 1);
+    CHECK(indices[3] == 52);
+    CHECK(cosmo::AiPlateResultParser::Decode(indices, 2, 0.0F).text == "京A");
 
     const float colors[] = {0.0F, 1.0F, 5.0F, 0.0F, 0.0F};
     int color_index      = -1;
@@ -105,7 +127,7 @@ TEST_CASE("plate OCR decoder computes real number confidence", "[ai][plate]") {
     float number_score = 0.0F;
     std::string error;
     REQUIRE(cosmo::AiPlateResultParser::DecodeOcr(ocr.data(), {1, 3, 78}, indices, number_score, error));
-    REQUIRE(indices == std::vector<int>{1, 52});
+    REQUIRE(indices == std::vector<int>{1, 52, 0});
     CHECK(number_score > 0.99F);
     CHECK(number_score <= 1.0F);
 

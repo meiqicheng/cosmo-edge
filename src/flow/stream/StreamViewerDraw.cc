@@ -84,6 +84,41 @@ StreamViewerOverview::OverviewInfo StreamViewerOverview::GetOverviewDataFromLoca
         }
     }
 
+    // ── Pass 3: last-resort fallback to the newest cached result for this stream. ──
+    // A CPU-backend detector can run several seconds behind the live edge when the
+    // model is slow and its input queue is backlogged, so its newest result may sit
+    // outside the freshness window above. Drawing the closest cached result keeps the
+    // overlay visible ("latest available AI result") instead of leaving the frame
+    // empty. The cache is already bounded by OldLocalData, so this cannot resurrect
+    // unbounded stale history.
+    if (info.attrLines.empty() && info.texts.empty()) {
+        const StreamOverviewEl* nearest = nullptr;
+        int64_t nearestDelta            = std::numeric_limits<int64_t>::max();
+        for (const auto& overviews : infos_.overviews) {
+            if (overviews.streamIndex != frameStreamIdx) {
+                continue;
+            }
+            auto duration = std::abs(overviews.timestamp - frame->GetTimestamp());
+            if (duration >= nearestDelta) {
+                continue;
+            }
+            nearestDelta = duration;
+            nearest      = &overviews;
+        }
+        if (nearest != nullptr) {
+            for (const auto& line : nearest->lines) {
+                uint32_t key = PackLineKey(line.attrPriority, line.color);
+                auto& group  = info.attrLines[key];
+                group.color  = line.color;
+                if (line.attrPriority == VideoOverviewAttrPriority::kBox) {
+                    group.lineWidth = 3;  // corner bracket line thickened to 3px
+                }
+                group.lines.push_back(line.line);
+            }
+            info.texts = nearest->texts;
+        }
+    }
+
     for (const auto& countOverviews : infos_.countOverviews) {
         auto duration = std::abs(countOverviews.timestamp - frame->GetTimestamp());
         auto textCopy = countOverviews.text;

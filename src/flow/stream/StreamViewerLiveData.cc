@@ -22,6 +22,42 @@ namespace cosmo {
 // model actually saw it. Matches the default pose confidence_threshold.
 static constexpr float kPoseJointMinConfidence = 0.25F;
 
+namespace {
+// A pipeline without a tracker publishes one physical target once per stage, so the
+// overlay has to correlate those copies itself. Two untracked boxes are treated as the
+// same object when their geometry nearly coincides.
+bool SameUntrackedBox(const MsgTarget& existing, const MsgTarget& incoming) {
+    if (existing.trackId >= 0 || existing.aiBox.width <= 0 || existing.aiBox.height <= 0) {
+        return false;
+    }
+    const double side = std::max(existing.aiBox.width, existing.aiBox.height);
+    const double tol  = std::max(side / 4.0, 8.0);
+    return std::abs(existing.aiBox.x - incoming.aiBox.x) < tol &&
+           std::abs(existing.aiBox.y - incoming.aiBox.y) < tol &&
+           std::abs(existing.aiBox.width - incoming.aiBox.width) < tol &&
+           std::abs(existing.aiBox.height - incoming.aiBox.height) < tol;
+}
+
+std::string PlateColorLabelZh(const std::string& label) {
+    if (label == "black") {
+        return "黑牌";
+    }
+    if (label == "blue") {
+        return "蓝牌";
+    }
+    if (label == "green") {
+        return "绿牌";
+    }
+    if (label == "white") {
+        return "白牌";
+    }
+    if (label == "yellow") {
+        return "黄牌";
+    }
+    return label;
+}
+}  // namespace
+
 void StreamViewerOverview::AddTextToLocal(int64_t streamIndex, uint64_t index, int64_t timestamp,
                                           util::Point pos, StreamOverviewTextEl& text) {
     // data is expired (VOD strictly aligns frame sequence; live preview does not discard by frame seq,
@@ -294,7 +330,6 @@ void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t inde
     const bool isPose17 = (target.keypointKind == "human_pose") ||
                           (target.keypointSchema == "coco17");
 
-    bool showPlateCaption = false;
     if (isPlateQuad && target.landmark.size() == 4) {
         // Draw a closed four-corner plate outline plus per-corner tick marks from the
         // plate4 keypoints, ordered TL -> TR -> BR -> BL -> TL (pixel coordinates).
@@ -326,7 +361,6 @@ void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t inde
             AddLineToLocal(streamIndex, index, timestamp, h);
             AddLineToLocal(streamIndex, index, timestamp, v);
         }
-        showPlateCaption = true;
     } else if (isPose17 || (!isPlateQuad && target.landmark.size() == 17)) {
         // Pose landmarks are carried in pixel coordinates by MsgTarget. Draw the
         // COCO-17 skeleton in the same overview cache as the detection box. Only
@@ -380,10 +414,30 @@ void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t inde
         }
     }
 
+    // Plate targets use one unified caption above the plate instead of the generic
+    // detection label. Keep the detection confidence separately for that caption.
+    float plateConfidence = -1.0F;
+    if (isPlateQuad) {
+        for (const auto& confidence : target.confidence) {
+            if (confidence.confidence < 0) {
+                continue;
+            }
+            if (plateConfidence < 0 || confidence.label == "car_plate") {
+                plateConfidence = confidence.confidence;
+            }
+            if (confidence.label == "car_plate") {
+                break;
+            }
+        }
+    }
+
     bool trackIdShown = false;
     for (auto& confidence : target.confidence) {
         // skip invalid confidence entries
         if (confidence.confidence < 0) {
+            continue;
+        }
+        if (isPlateQuad) {
             continue;
         }
         util::Point pos(drawX, drawY);  // label position follows smoothed box
@@ -412,10 +466,10 @@ void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t inde
         AddTextToLocal(streamIndex, index, timestamp, pos, text);
     }
 
-    // ── Level-1 plate caption: draw the recognized number and the color label below
-    //    the plate. The number is never fabricated: if ocrString is empty (recognition
-    //    had no confident text) only the box/quads and color remain visible. ───────────
-    if (showPlateCaption) {
+    // Plate caption: keep detection and recognition in one label above the plate.
+    // Full format: "<number>-<Chinese colour>(pla:<conf>|num:<conf>|col:<conf>)".
+    // Detection-only format: "车牌(pla:<conf>)".
+    if (isPlateQuad) {
         std::string colorLabel;
         float colorConfidence = 0.0F;
         for (const auto& attr : target.attrs) {
@@ -425,37 +479,33 @@ void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t inde
                 break;
             }
         }
-        std::string caption = target.ocrString;
-        if (caption.empty()) {
-            caption = colorLabel;  // no number trust → show only the color label
-        } else if (!colorLabel.empty()) {
-            caption += " [" + colorLabel + "]";
+
+        const float shownPlateConfidence = std::max(plateConfidence, 0.0F);
+        const bool fullyRecognized =
+            !target.ocrString.empty() && !colorLabel.empty() && target.ocrConfidence > 0.0F &&
+            colorConfidence > 0.0F;
+
+        std::string caption;
+        if (fullyRecognized) {
+            caption = COSMO_FORMAT("{}-{}(pla:{:.2f}|num:{:.2f}|col:{:.2f})", target.ocrString,
+                                   PlateColorLabelZh(colorLabel), shownPlateConfidence,
+                                   target.ocrConfidence, colorConfidence);
+        } else {
+            caption = COSMO_FORMAT("车牌(pla:{:.2f})", shownPlateConfidence);
         }
-        // Append the real number/color confidences from the recognizer. The number is
-        // never fabricated: when ocrString is empty only the color (and its confidence)
-        // is shown.
-        if (!target.ocrString.empty() && target.ocrConfidence > 0.0F) {
-            caption += COSMO_FORMAT(" (num:{:.2f}", target.ocrConfidence);
-            if (colorConfidence > 0.0F) {
-                caption += COSMO_FORMAT(" col:{:.2f})", colorConfidence);
-            } else {
-                caption += ")";
-            }
-        } else if (colorConfidence > 0.0F) {
-            caption += COSMO_FORMAT(" (col:{:.2f})", colorConfidence);
-        }
+
         if (!caption.empty()) {
-            util::Point plateTextPos(drawX, drawY + drawH + 12);
+            util::Point plateTextPos(drawX, drawY);
             StreamOverviewTextEl plateText;
             plateText.attrPriority = VideoOverviewAttrPriority::kConfidence;
             plateText.text         = caption;
             plateText.bgColor      = {5, 8, 22};
             plateText.hasBgColor   = true;
             plateText.hasColor     = true;
-            if (!target.ocrString.empty()) {
+            if (fullyRecognized) {
                 plateText.color = {255, 209, 102};  // gold — number trusted
             } else {
-                plateText.color = {138, 148, 184};  // slate — color only, number absent
+                plateText.color = {220, 231, 255};  // cool white-blue — detection only
             }
             AddTextToLocal(streamIndex, index, timestamp, plateTextPos, plateText);
         }
@@ -511,6 +561,32 @@ void StreamViewerOverview::LiveDataToLocal() {
                                     // Carry the semantic family along with the points. Copying
                                     // only the coordinates drops the kind/schema and forces the
                                     // renderer to guess the family from the point count.
+                                    targetIt->keypointKind   = newTarget.keypointKind;
+                                    targetIt->keypointSchema = newTarget.keypointSchema;
+                                }
+                                merged = true;
+                            }
+                        } else {
+                            // Untracked pipelines (plate detect -> plate recognition without a
+                            // tracker) publish the same physical target once per stage and cannot
+                            // be correlated by track id. Fold the later, richer stage into the
+                            // existing entry by bounding-box proximity so the overlay draws one box
+                            // and keeps the OCR text/colour instead of stacking duplicate targets.
+                            auto targetIt =
+                                std::find_if(it->second.targets.begin(), it->second.targets.end(),
+                                             [&](const MsgTarget& existTarget) {
+                                                 return SameUntrackedBox(existTarget, newTarget);
+                                             });
+                            if (targetIt != it->second.targets.end()) {
+                                if (targetIt->ocrString.empty() && !newTarget.ocrString.empty()) {
+                                    targetIt->ocrString     = newTarget.ocrString;
+                                    targetIt->ocrConfidence = newTarget.ocrConfidence;
+                                }
+                                if (targetIt->attrs.empty() && !newTarget.attrs.empty()) {
+                                    targetIt->attrs = newTarget.attrs;
+                                }
+                                if (!newTarget.landmark.empty() && targetIt->landmark.empty()) {
+                                    targetIt->landmark       = newTarget.landmark;
                                     targetIt->keypointKind   = newTarget.keypointKind;
                                     targetIt->keypointSchema = newTarget.keypointSchema;
                                 }

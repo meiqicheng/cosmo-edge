@@ -92,7 +92,6 @@ bool AiPlateResultParser::DecodeOcr(const float* logits, const std::vector<int>&
         error = "plate OCR output must be [1,21,78] or [1,T,78]";
         return false;
     }
-    int previous = 0;
     float score_sum = 0.0F;
     int score_count = 0;
     for (int step = 0; step < shape[1]; ++step) {
@@ -108,8 +107,8 @@ bool AiPlateResultParser::DecodeOcr(const float* logits, const std::vector<int>&
             if (row[cls] > row[best])
                 best = cls;
         }
-        if (best != 0 && best != previous) {
-            indices.push_back(best);
+        indices.push_back(best);
+        if (best != 0) {
             // softmax probability of the argmax class at this step (numerically stable)
             const float max_value = row[best];
             float sum = 0.0F;
@@ -119,7 +118,6 @@ bool AiPlateResultParser::DecodeOcr(const float* logits, const std::vector<int>&
             score_sum += prob;
             ++score_count;
         }
-        previous = best;
     }
     number_score = score_count > 0 ? score_sum / static_cast<float>(score_count) : 0.0F;
     return true;
