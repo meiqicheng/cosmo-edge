@@ -109,7 +109,7 @@ void ModelServiceImpl::ValidateModelOutputFormat(const nlohmann::json& doc) {
         }
     } else if (model_type == "yolov8_det" || model_type == "yolov9_det" || model_type == "yolov11_det" ||
                model_type == "yolov12_det" || model_type == "yolo26_det" || model_type == "yolov8_pose" ||
-               model_type == "yolo11_pose" || model_type == "yolo26_pose") {
+               model_type == "yolo26_pose" || model_type == "yolo26_plate_pose") {
         bool reject = (outputs.size() > 1);
         if (!reject) {
             for (const auto& out : outputs) {

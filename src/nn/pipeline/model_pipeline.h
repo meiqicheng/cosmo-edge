@@ -67,9 +67,25 @@ struct PUBLIC PipelineConfig {
     std::string template_json;
 };
 
+struct PUBLIC PlateRecognitionResult {
+    std::string text;
+    std::string color;
+    float number_score{0.0F};
+    float color_score{0.0F};
+};
+
 // ─── Output Category ─────────────────────────────────────────────
 
-enum class OutputCategory { DETECTION, CLASSIFICATION, FEATURE, KEYPOINTS, SEGMENTATION, TEXT, RAW };
+enum class OutputCategory {
+    DETECTION,
+    CLASSIFICATION,
+    FEATURE,
+    KEYPOINTS,
+    SEGMENTATION,
+    TEXT,
+    RAW,
+    PLATE_RECOGNITION
+};
 
 // ─── Pipeline Base Class ───────────────────────────────────────
 //
@@ -104,6 +120,7 @@ public:
     virtual Status ParseSegmentationOutput(std::vector<std::vector<uint8_t>>& outputs);
     virtual Status ParseTextOutput(std::vector<std::vector<std::string>>& outputs);
     virtual Status ParseOcrOutput(std::vector<std::vector<char>>& outputs);
+    virtual Status ParsePlateOutput(std::vector<PlateRecognitionResult>& outputs);
 
     // Threshold and label management
     Status SetThreshold(int id, float threshold);

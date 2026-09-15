@@ -86,6 +86,10 @@ Status DefaultComponent::ParseDinoOutput(std::vector<std::vector<ObjectInfoV1>>&
     return pipeline_->ParseDinoDetectionOutput(outputs, text_threshold, box_threshold);
 }
 
+Status DefaultComponent::ParsePlateOutput(std::vector<PlateRecognitionResult>& outputs) {
+    return pipeline_->ParsePlateOutput(outputs);
+}
+
 int DefaultComponent::GetMaxBatchSize() const {
     return pipeline_->GetMaxBatchSize();
 }

@@ -8,6 +8,7 @@
 #include "nn/core/status.h"
 #include "nn/utils/model_info_utils.h"
 #include "nn/utils/rect.h"
+#include "util/AiTypes.h"
 
 namespace cosmo::nn {
 
@@ -51,6 +52,9 @@ struct PUBLIC ObjectInfoV1 {
     std::vector<triple<float, float, float>> key_points_3d = {};
     // key_points confidence
     std::vector<float> key_point_confidences = {};
+    AiKeypointKind keypoint_kind{AiKeypointKind::Unknown};
+    AiKeypointCoordinateSpace keypoint_coordinate_space{AiKeypointCoordinateSpace::Pixel};
+    std::string keypoint_schema;
 
     float angle                     = 0;
     std::vector<ClassifyInfo> infos = {};

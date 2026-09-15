@@ -179,15 +179,7 @@ void AiTracker::HandFrame(AlgDataPtr algData) {
                                                 : media::kVideoDefaultWidth;
         int height = algData->chanDataDec.frame ? static_cast<int>(algData->chanDataDec.frame->GetHeight())
                                                 : media::kVideoDefaultHeight;
-        // Some imported one-stage Pose layouts do not persist detector labels
-        // into chanDataDetect. Keep tracking usable for the canonical human
-        // Pose class instead of failing the whole live pipeline with labels:0.
-        auto tracker_labels = algData->chanDataDetect.lables;
-        if (tracker_labels.empty()) {
-            tracker_labels.emplace_back("person");
-            LOG_WARN("{}[{} {}] Detector labels empty; using fallback label 'person'", kTag, name_, uuid);
-        }
-        if (!AiSdkInit(algData->chanDataDetect.atomicCode, tracker_labels, width, height)) {
+        if (!AiSdkInit(algData->chanDataDetect.atomicCode, algData->chanDataDetect.lables, width, height)) {
             action_status = util::ErrorEnum::AI_INST_NOTCREATED;
             return;
         }

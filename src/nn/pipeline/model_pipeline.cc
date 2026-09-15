@@ -45,6 +45,9 @@ Status ModelPipeline::ParseTextOutput(std::vector<std::vector<std::string>>& out
 Status ModelPipeline::ParseOcrOutput(std::vector<std::vector<char>>& outputs) {
     return Status(COSMO_NN_ERR_NET, "Unsupported output type for this pipeline");
 }
+Status ModelPipeline::ParsePlateOutput(std::vector<PlateRecognitionResult>& outputs) {
+    return Status(COSMO_NN_ERR_NET, "Unsupported output type for this pipeline");
+}
 
 // ─── Threshold / Label Management ──────────────────────────────────
 

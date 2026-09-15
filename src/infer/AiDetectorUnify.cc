@@ -208,14 +208,9 @@ util::ErrorEnum AiDetectorUnify::Forward(const std::vector<VideoFramePtr>& image
             el.classId                = obj.infos.at(0).class_id + 1;
             el.targetId               = util::GenerateUUID();
             if (!obj.key_points.empty()) {
-                el.landmark.keypoints.kind = obj.key_points.size() == 17
-                                                 ? AiKeypointKind::HumanPose
-                                                 : (obj.key_points.size() == 4 ? AiKeypointKind::LicensePlate
-                                                                                : AiKeypointKind::Unknown);
-                el.landmark.keypoints.coordinateSpace = AiKeypointCoordinateSpace::Pixel;
-                el.landmark.keypoints.schema = obj.key_points.size() == 17
-                                                   ? "coco17"
-                                                   : (obj.key_points.size() == 4 ? "plate4" : "custom");
+                el.landmark.keypoints.kind            = obj.keypoint_kind;
+                el.landmark.keypoints.coordinateSpace = obj.keypoint_coordinate_space;
+                el.landmark.keypoints.schema          = obj.keypoint_schema;
                 el.landmark.landmark.reserve(obj.key_points.size());
                 el.landmark.keypoints.points.reserve(obj.key_points.size());
                 for (size_t point_index = 0; point_index < obj.key_points.size(); ++point_index) {

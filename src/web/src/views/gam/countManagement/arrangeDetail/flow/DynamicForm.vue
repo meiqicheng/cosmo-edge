@@ -839,7 +839,7 @@ const getModelSelectList = (code, type) => {
 
   // AA_00004 is the two-stage landmark action. YOLO Pose is a one-stage
   // detector and must only be offered by AA_00001 (detector).
-  const detectorModelTypes = ['yolov8_pose', 'yolo11_pose', 'yolo26_pose', 'yolo26_plate_pose']
+  const detectorModelTypes = ['yolov8_pose', 'yolo26_pose', 'yolo26_plate_pose']
   const needMergeQwen35 = (params.modelType === 'qwen3vl')
   const needMergePlateRec = (params.modelType === 'ocr')
 
@@ -861,12 +861,19 @@ const getModelSelectList = (code, type) => {
   }
 
   Promise.all(promises).then((results) => {
-    let merged = results[0]
-    if (results.length > 1) {
-      merged = merged.concat(results[1])
-    }
+    const merged = []
+    const seen = new Set()
+    results.flat().forEach((item) => {
+      const identity = [
+        item.atomicCode || item.modelCode || '',
+        item.filePath || item.modelPath || '',
+        item.modelType || item.type || ''
+      ].join('|')
+      if (seen.has(identity)) return
+      seen.add(identity)
+      merged.push(item)
+    })
     atomicModelList.value = merged
-    console.log(atomicModelList.value, '-llllllll')
     const atomic = _.find(atomicModelList.value, {
       atomicCode: code
     })
@@ -1015,7 +1022,7 @@ const modelSelectChange = (val) => {
   selectedAtomic.value = atomic
 
   let labelListTemp = []
-  const isPoseModel = ['yolov8_pose', 'yolo11_pose', 'yolo26_pose'].includes(
+  const isPoseModel = ['yolov8_pose', 'yolo26_pose'].includes(
     atomic?.modelType || atomic?.type
   )
   if (modelSelectType.value === 'modelSelectCategories_classify') {

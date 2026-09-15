@@ -12,6 +12,7 @@
 namespace cosmo::nn {
 
 class ModelPipeline;
+struct PlateRecognitionResult;
 
 class PUBLIC DefaultComponent {
 public:
@@ -47,6 +48,7 @@ public:
 
     Status ParseDinoOutput(std::vector<std::vector<ObjectInfoV1>>& outputs, float text_threshold,
                            float box_threshold);
+    Status ParsePlateOutput(std::vector<PlateRecognitionResult>& outputs);
 
     int GetMaxBatchSize() const;
 

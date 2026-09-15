@@ -4,6 +4,10 @@
   "algorithm_code": "9003002",
   "version": "V1.0.0",
   "decoder": "plate_rec_color_ctc",
+  "output_roles": {
+    "ocr": "ocr_output",
+    "color": "color_output"
+  },
   "models": [{
     "name": "plate_rec_color",
     "file_name": "plate_rec_color.onnx",

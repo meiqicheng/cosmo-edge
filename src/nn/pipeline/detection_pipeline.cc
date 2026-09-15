@@ -89,14 +89,14 @@ static Status DetectionParseOutput(std::vector<std::shared_ptr<Blob>> output_blo
 }
 
 static float PoseIou(const ObjectInfoV1& lhs, const ObjectInfoV1& rhs) {
-    const float left = std::max(lhs.x1, rhs.x1);
-    const float top = std::max(lhs.y1, rhs.y1);
-    const float right = std::min(lhs.x2, rhs.x2);
-    const float bottom = std::min(lhs.y2, rhs.y2);
+    const float left         = std::max(lhs.x1, rhs.x1);
+    const float top          = std::max(lhs.y1, rhs.y1);
+    const float right        = std::min(lhs.x2, rhs.x2);
+    const float bottom       = std::min(lhs.y2, rhs.y2);
     const float intersection = std::max(0.0f, right - left) * std::max(0.0f, bottom - top);
-    const float lhs_area = std::max(0.0f, lhs.x2 - lhs.x1) * std::max(0.0f, lhs.y2 - lhs.y1);
-    const float rhs_area = std::max(0.0f, rhs.x2 - rhs.x1) * std::max(0.0f, rhs.y2 - rhs.y1);
-    const float denominator = lhs_area + rhs_area - intersection;
+    const float lhs_area     = std::max(0.0f, lhs.x2 - lhs.x1) * std::max(0.0f, lhs.y2 - lhs.y1);
+    const float rhs_area     = std::max(0.0f, rhs.x2 - rhs.x1) * std::max(0.0f, rhs.y2 - rhs.y1);
+    const float denominator  = lhs_area + rhs_area - intersection;
     return denominator > 0.0f ? intersection / denominator : 0.0f;
 }
 
@@ -109,7 +109,8 @@ static void ApplyPoseNms(std::vector<ObjectInfoV1>& objects, float threshold, in
     for (const auto& object : objects) {
         bool suppressed = false;
         for (const auto& kept : selected) {
-            if (object.infos.front().class_id == kept.infos.front().class_id && PoseIou(object, kept) >= threshold) {
+            if (object.infos.front().class_id == kept.infos.front().class_id &&
+                PoseIou(object, kept) >= threshold) {
                 suppressed = true;
                 break;
             }
@@ -133,14 +134,14 @@ static void ApplyPoseNms(std::vector<ObjectInfoV1>& objects, float threshold, in
 // template instead of by inspection.
 //
 // The pose variant (tensor layout + whether NMS is already applied) is selected
-// solely by model_type — e.g. yolov8_pose/yolo11_pose decode in channel-major
+// solely by model_type — e.g. yolov8_pose decodes in channel-major order and
 // order and rely on the CPU-side NMS pass, while yolo26_pose is an end-to-end head
 // with NMS baked in. There is intentionally no second layout/decoder field on the
 // template, so a layout can never be declared twice and contradicted.
 
 struct PoseContract {
-    int keypoint_count             = 0;  // 0 = not declared, caller keeps its default
-    int keypoint_values_per_point  = 0;
+    int keypoint_count            = 0;  // 0 = not declared, caller keeps its default
+    int keypoint_values_per_point = 0;
     std::string kind;
     std::string schema;
 };
@@ -159,14 +160,38 @@ static int DeclaredInt(const nlohmann::json& top, const nlohmann::json& params, 
 // YOLO-pose head (or a non-YOLO keypoint model) means adding a branch here — or a
 // new pipeline class — never a second layout/decoder field on the template.
 static YoloPoseLayout PoseLayoutFromModelType(const std::string& model_type, bool& nms_completed) {
-    if (model_type == "yolo26_pose") {
+    if (model_type == "yolo26_pose" || model_type == "yolo26_plate_pose") {
         nms_completed = true;  // end-to-end head: NMS already applied in-model
         return YoloPoseLayout::kEndToEnd;
     }
-    // yolov8_pose / yolo11_pose (and any future classic YOLO pose head) decode in
-    // channel-major order and rely on the CPU-side NMS pass.
+    // yolov8_pose (and any future classic YOLO pose head) decodes in channel-major
+    // order and relies on the CPU-side NMS pass.
     nms_completed = false;
     return YoloPoseLayout::kChannelMajor;
+}
+
+static Status ParseKeypointKind(const std::string& value, AiKeypointKind& kind) {
+    if (value.empty() || value == "unknown") {
+        kind = AiKeypointKind::Unknown;
+        return COSMO_NN_OK;
+    }
+    if (value == "human_pose") {
+        kind = AiKeypointKind::HumanPose;
+        return COSMO_NN_OK;
+    }
+    if (value == "license_plate") {
+        kind = AiKeypointKind::LicensePlate;
+        return COSMO_NN_OK;
+    }
+    if (value == "face") {
+        kind = AiKeypointKind::Face;
+        return COSMO_NN_OK;
+    }
+    if (value == "ocr_quad") {
+        kind = AiKeypointKind::OcrQuad;
+        return COSMO_NN_OK;
+    }
+    return Status(COSMO_NN_ERR_PARAM, "Unsupported keypoint_kind: " + value);
 }
 
 // Resolve the pose geometry declarations. The tensor layout itself is NOT read
@@ -438,8 +463,8 @@ Status YoloPosePipeline::Init(const PipelineConfig& config, const std::string& m
                               const std::string& tokenizer_path, const std::string& word_table_path,
                               bool use_skip) {
     model_info_.algorithmcode = config.algorithm_code;
-    model_info_.reduce = config.reduce;
-    model_info_.type = config.model_type;
+    model_info_.reduce        = config.reduce;
+    model_info_.type          = config.model_type;
     // The pose variant (tensor layout + NMS status) is selected solely by
     // model_type — there is no second layout field on the template to keep in sync.
     pose_layout_ = PoseLayoutFromModelType(config.model_type, nms_completed_);
@@ -449,24 +474,28 @@ Status YoloPosePipeline::Init(const PipelineConfig& config, const std::string& m
     for (const auto& mc : config.models) {
         const auto p = pipeline_utils::ParseJsonObject(mc.params_json);
         ModelInfo model;
-        model.name = mc.name;
-        model.filename = mc.file_name;
-        model.file_md5 = mc.file_md5;
+        model.name      = mc.name;
+        model.filename  = mc.file_name;
+        model.file_md5  = mc.file_md5;
         model.max_batch = mc.max_batch;
-        max_batch_ = mc.max_batch;
-    class_count_ = pipeline_utils::ReadInt(p, "class_count", 1);
+        max_batch_      = mc.max_batch;
+        class_count_    = pipeline_utils::ReadInt(p, "class_count", 1);
         PoseContract contract;
         auto contract_status = ResolvePoseContract(top, p, contract);
         if (!contract_status)
             return contract_status;
-        keypoint_count_  = contract.keypoint_count > 0 ? contract.keypoint_count : 17;
+        keypoint_count_ = contract.keypoint_count > 0 ? contract.keypoint_count : 17;
         keypoint_values_per_point_ =
             contract.keypoint_values_per_point > 0 ? contract.keypoint_values_per_point : 3;
+        auto kind_status = ParseKeypointKind(contract.kind, keypoint_kind_);
+        if (!kind_status)
+            return kind_status;
+        keypoint_schema_ = contract.schema;
         // The template declares the geometry, so the declared output shape must be
         // validated against it. A mismatch is a broken template and has to fail at
         // load time instead of producing silently wrong keypoints later.
         if (!mc.outputs.empty()) {
-            const auto& out_shape    = mc.outputs.front().shape;
+            const auto& out_shape = mc.outputs.front().shape;
             const int expected_channels =
                 PoseChannelCount(pose_layout_, class_count_, keypoint_count_, keypoint_values_per_point_);
             const int actual_channels =
@@ -475,8 +504,7 @@ Status YoloPosePipeline::Init(const PipelineConfig& config, const std::string& m
                     : -1;
             if (actual_channels != expected_channels) {
                 const std::string kind   = contract.kind.empty() ? std::string("unknown") : contract.kind;
-                const std::string schema =
-                    contract.schema.empty() ? std::string("unknown") : contract.schema;
+                const std::string schema = contract.schema.empty() ? std::string("unknown") : contract.schema;
                 return Status(COSMO_NN_ERR_PARAM, "pose model '" + mc.name + "' (" + kind + "/" + schema +
                                                       ") declares " + std::to_string(actual_channels) +
                                                       " output channels but the configured layout needs " +
@@ -484,26 +512,27 @@ Status YoloPosePipeline::Init(const PipelineConfig& config, const std::string& m
             }
         }
         confidence_threshold_ = pipeline_utils::ReadFloat(p, "confidence_threshold", 0.25f);
-        nms_threshold_ = pipeline_utils::ReadFloat(p, "nms_threshold", 0.7f);
-        top_k_ = pipeline_utils::ReadInt(p, "top_k", 300);
+        nms_threshold_        = pipeline_utils::ReadFloat(p, "nms_threshold", 0.7f);
+        top_k_                = pipeline_utils::ReadInt(p, "top_k", 300);
         const auto input_size = pipeline_utils::ReadIntArray(p, "input_size", {640, 640}, 2);
         if (input_size.size() >= 2) {
-            input_width_ = input_size[0];
+            input_width_  = input_size[0];
             input_height_ = input_size[1];
         }
-        resize_gravity_ = pipeline_utils::ReadInt(p, "gravity", pipeline_utils::ReadInt(p, "padding_gravity", 0));
+        resize_gravity_ =
+            pipeline_utils::ReadInt(p, "gravity", pipeline_utils::ReadInt(p, "padding_gravity", 0));
         for (const auto& in_def : mc.inputs) {
             InputNodeInfo input;
-            input.name = in_def.name;
-            input.shape = in_def.shape;
+            input.name      = in_def.name;
+            input.shape     = in_def.shape;
             input.data_type = in_def.data_type;
-            input.ops = MakeDetPreprocess(p);
+            input.ops       = MakeDetPreprocess(p);
             model.input_node_infos.push_back(std::move(input));
         }
         for (const auto& out_def : mc.outputs) {
             OutputNodeInfo output;
-            output.name = out_def.name;
-            output.shape = out_def.shape;
+            output.name      = out_def.name;
+            output.shape     = out_def.shape;
             output.data_type = out_def.data_type;
             model.output_node_infos.push_back(std::move(output));
         }
@@ -543,9 +572,9 @@ Status YoloPosePipeline::ParseDetectionOutput(std::vector<std::vector<ObjectInfo
     const auto blobs = GetGraphOutput();
     if (blobs.size() != 1 || blobs.front()->GetBlobDesc().dims.size() != 3)
         return Status(COSMO_NN_ERR_INVALID_INPUT, "YOLO pose requires one rank-3 output");
-    const auto dims = blobs.front()->GetBlobDesc().dims;
-    const auto* data = static_cast<const float*>(blobs.front()->GetHandle().base);
-    const int batch = dims[0];
+    const auto dims     = blobs.front()->GetBlobDesc().dims;
+    const auto* data    = static_cast<const float*>(blobs.front()->GetHandle().base);
+    const int batch     = dims[0];
     const size_t stride = static_cast<size_t>(dims[1]) * static_cast<size_t>(dims[2]);
     for (int i = 0; i < batch; ++i) {
         std::vector<ObjectInfoV1> decoded;
@@ -562,6 +591,9 @@ Status YoloPosePipeline::ParseDetectionOutput(std::vector<std::vector<ObjectInfo
         // tracker drops anything whose label it does not know) and so the overlay
         // shows a meaningful name.
         for (auto& object : decoded) {
+            object.keypoint_kind             = keypoint_kind_;
+            object.keypoint_coordinate_space = AiKeypointCoordinateSpace::Pixel;
+            object.keypoint_schema           = keypoint_schema_;
             if (object.infos.empty())
                 continue;
             const int cls = object.infos.front().class_id;
@@ -689,8 +721,8 @@ REGISTER_MODEL_PIPELINE("yolov11_det", YoloV8DetPipeline);
 REGISTER_MODEL_PIPELINE("yolov12_det", YoloV8DetPipeline);
 REGISTER_MODEL_PIPELINE("yolo26_det", Yolo26DetPipeline);
 REGISTER_MODEL_PIPELINE("yolov8_pose", YoloPosePipeline);
-REGISTER_MODEL_PIPELINE("yolo11_pose", YoloPosePipeline);
 REGISTER_MODEL_PIPELINE("yolo26_pose", YoloPosePipeline);
+REGISTER_MODEL_PIPELINE("yolo26_plate_pose", YoloPosePipeline);
 REGISTER_MODEL_PIPELINE("detector", GenericDetectorPipeline);
 
 }  // namespace cosmo::nn

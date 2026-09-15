@@ -83,9 +83,15 @@ public:
                 int device_id, IProfiler* profiler, const std::string& tokenizer_path,
                 const std::string& word_table_path, bool use_skip) override;
     Status Forward(std::initializer_list<std::vector<std::shared_ptr<Blob>>> inputs) override;
-    int GetMaxBatchSize() const override { return max_batch_; }
-    std::string GetModelType() const override { return "yolov8_pose"; }
-    OutputCategory GetOutputCategory() const override { return OutputCategory::DETECTION; }
+    int GetMaxBatchSize() const override {
+        return max_batch_;
+    }
+    std::string GetModelType() const override {
+        return "yolov8_pose";
+    }
+    OutputCategory GetOutputCategory() const override {
+        return OutputCategory::DETECTION;
+    }
     Status ParseDetectionOutput(std::vector<std::vector<ObjectInfoV1>>& outputs) override;
 
 private:
@@ -95,6 +101,8 @@ private:
     int class_count_{1};
     int keypoint_count_{17};
     int keypoint_values_per_point_{3};
+    AiKeypointKind keypoint_kind_{AiKeypointKind::Unknown};
+    std::string keypoint_schema_;
     float confidence_threshold_{0.25f};
     float nms_threshold_{0.7f};
     int top_k_{300};

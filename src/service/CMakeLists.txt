@@ -29,9 +29,6 @@ if(COSMO_NN_USE_CPU_BACKEND)
         COSMO_NN_USE_CPU_BACKEND
         COSMO_NN_USE_HOST_BACKEND
         COSMO_NN_USE_ONNX_BACKEND)
-    # TaskBase pulls in flow/plate/AiPlateRecognition.h -> infer/AiPlateRecognizerUnify.h,
-    # which includes the ONNX Runtime C++ API headers.
-    target_link_libraries(cosmo_service PRIVATE onnxruntime)
 endif()
 
 if(COSMO_NN_USE_RKNN_BACKEND)

@@ -1,7 +1,7 @@
 {
   "algorithm_code": "9003001",
   "chip_type": "X86",
-  "model_type": "yolo26_pose",
+  "model_type": "yolo26_plate_pose",
   "version": "V1.0.0",
   "keypoint_kind": "license_plate",
   "keypoint_schema": "plate4",
