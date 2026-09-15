@@ -5,8 +5,10 @@
 
 namespace cosmo::nn {
 namespace {
-float Sigmoid(float value) { return 1.0f / (1.0f + std::exp(-value)); }
-}
+    float Sigmoid(float value) {
+        return 1.0f / (1.0f + std::exp(-value));
+    }
+}  // namespace
 
 int PoseChannelCount(YoloPoseLayout layout, int class_count, int keypoint_count,
                      int keypoint_values_per_point) {
@@ -21,7 +23,8 @@ Status DecodeYoloPoseTensor(const float* data, const std::vector<int>& shape, Yo
                             std::string& error, int keypoint_values_per_point) {
     outputs.clear();
     if (!data || input_width <= 0 || input_height <= 0 || class_count <= 0 || keypoint_count <= 0 ||
-        !std::isfinite(confidence_threshold) || (keypoint_values_per_point != 2 && keypoint_values_per_point != 3))
+        !std::isfinite(confidence_threshold) ||
+        (keypoint_values_per_point != 2 && keypoint_values_per_point != 3))
         return Status(COSMO_NN_ERR_INVALID_INPUT, "invalid YOLO pose decode arguments");
     if (shape.size() != 3 || shape[0] != 1)
         return Status(COSMO_NN_ERR_INVALID_INPUT, "YOLO pose tensor must have batch 1 and rank 3");
@@ -32,7 +35,7 @@ Status DecodeYoloPoseTensor(const float* data, const std::vector<int>& shape, Yo
     // a 4-point pose head (and vice versa).
     const bool channel_major = layout == YoloPoseLayout::kChannelMajor;
     const int channels = PoseChannelCount(layout, class_count, keypoint_count, keypoint_values_per_point);
-    const int points = channel_major ? shape[2] : shape[1];
+    const int points   = channel_major ? shape[2] : shape[1];
     if (points <= 0 || (channel_major ? shape[1] : shape[2]) != channels) {
         error = "YOLO pose tensor shape does not match the declared layout/classes/keypoints";
         return Status(COSMO_NN_ERR_INVALID_INPUT, error);
@@ -41,7 +44,7 @@ Status DecodeYoloPoseTensor(const float* data, const std::vector<int>& shape, Yo
         return channel_major ? data[channel * points + point] : data[point * channels + channel];
     };
     for (int point = 0; point < points; ++point) {
-        int best_class = 0;
+        int best_class   = 0;
         float confidence = 0.0f;
         float x1 = 0.0f, y1 = 0.0f, x2 = 0.0f, y2 = 0.0f;
         int keypoint_offset = 0;
@@ -54,23 +57,23 @@ Status DecodeYoloPoseTensor(const float* data, const std::vector<int>& shape, Yo
                     best_class = cls;
                 }
             }
-            confidence = best_score > 1.0f ? Sigmoid(best_score) : best_score;
-            const float cx = at(point, 0);
-            const float cy = at(point, 1);
-            const float width = at(point, 2);
+            confidence         = best_score > 1.0f ? Sigmoid(best_score) : best_score;
+            const float cx     = at(point, 0);
+            const float cy     = at(point, 1);
+            const float width  = at(point, 2);
             const float height = at(point, 3);
-            x1 = cx - width * 0.5f;
-            y1 = cy - height * 0.5f;
-            x2 = cx + width * 0.5f;
-            y2 = cy + height * 0.5f;
-            keypoint_offset = 4 + class_count;
+            x1                 = cx - width * 0.5f;
+            y1                 = cy - height * 0.5f;
+            x2                 = cx + width * 0.5f;
+            y2                 = cy + height * 0.5f;
+            keypoint_offset    = 4 + class_count;
         } else {
-            confidence = at(point, 4);
-            best_class = static_cast<int>(at(point, 5));
-            x1 = at(point, 0);
-            y1 = at(point, 1);
-            x2 = at(point, 2);
-            y2 = at(point, 3);
+            confidence      = at(point, 4);
+            best_class      = static_cast<int>(at(point, 5));
+            x1              = at(point, 0);
+            y1              = at(point, 1);
+            x2              = at(point, 2);
+            y2              = at(point, 3);
             keypoint_offset = 6;
         }
         if (confidence < confidence_threshold)
@@ -87,7 +90,7 @@ Status DecodeYoloPoseTensor(const float* data, const std::vector<int>& shape, Yo
         object.key_points.reserve(static_cast<size_t>(keypoint_count));
         object.key_point_confidences.reserve(static_cast<size_t>(keypoint_count));
         for (int keypoint = 0; keypoint < keypoint_count; ++keypoint) {
-            const int offset = keypoint_offset + keypoint * keypoint_values_per_point;
+            const int offset       = keypoint_offset + keypoint * keypoint_values_per_point;
             const float keypoint_x = at(point, offset);
             const float keypoint_y = at(point, offset + 1);
             // A joint the model did not find must be reported as a negative
@@ -102,9 +105,8 @@ Status DecodeYoloPoseTensor(const float* data, const std::vector<int>& shape, Yo
             object.key_points.emplace_back(
                 std::clamp(keypoint_x, 0.0F, static_cast<float>(input_width - 1)),
                 std::clamp(keypoint_y, 0.0F, static_cast<float>(input_height - 1)));
-            object.key_point_confidences.push_back(keypoint_values_per_point == 3
-                                                       ? Sigmoid(at(point, offset + 2))
-                                                       : -1.0f);
+            object.key_point_confidences.push_back(
+                keypoint_values_per_point == 3 ? Sigmoid(at(point, offset + 2)) : -1.0f);
         }
         object.infos.push_back({confidence, best_class, std::string("class_") + std::to_string(best_class)});
         outputs.push_back(std::move(object));
@@ -127,8 +129,9 @@ void MapYoloPoseToFrame(std::vector<ObjectInfoV1>& objects, Size net_size, Size 
         scale_y = static_cast<float>(frame_size.height) / static_cast<float>(net_size.height);
     } else {
         // Letterbox resize: uniform scale, plus padding that must be subtracted.
-        const float scale = std::min(static_cast<float>(net_size.width) / static_cast<float>(frame_size.width),
-                                     static_cast<float>(net_size.height) / static_cast<float>(frame_size.height));
+        const float scale =
+            std::min(static_cast<float>(net_size.width) / static_cast<float>(frame_size.width),
+                     static_cast<float>(net_size.height) / static_cast<float>(frame_size.height));
         if (!(scale > 0.0f))
             return;
         scale_x = 1.0f / scale;

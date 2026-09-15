@@ -1,9 +1,8 @@
-#include "catch_amalgamated.hpp"
-
 #include <limits>
 
-#include "util/AiTypes.h"
+#include "catch_amalgamated.hpp"
 #include "nn/utils/yolo_pose_decode.h"
+#include "util/AiTypes.h"
 
 TEST_CASE("YOLO pose decoder accepts channel-major and end-to-end layouts", "[nn][yolo][pose]") {
     using namespace cosmo::nn;
@@ -62,11 +61,12 @@ TEST_CASE("Pose decoder keeps the declared layout instead of guessing one", "[nn
 
 TEST_CASE("Generic keypoint set represents human COCO pose", "[ai][keypoint]") {
     cosmo::AiKeypointSet set;
-    set.kind = cosmo::AiKeypointKind::HumanPose;
+    set.kind   = cosmo::AiKeypointKind::HumanPose;
     set.schema = "coco17";
     set.points.resize(17);
     for (int i = 0; i < 17; ++i) {
-        set.points[static_cast<size_t>(i)] = {static_cast<float>(i), static_cast<float>(i + 1), 0.8f, -1.0f, i};
+        set.points[static_cast<size_t>(i)] = {static_cast<float>(i), static_cast<float>(i + 1), 0.8f, -1.0f,
+                                              i};
     }
     REQUIRE(set.points.size() == 17);
     CHECK(set.points[0].index == 0);
@@ -75,8 +75,8 @@ TEST_CASE("Generic keypoint set represents human COCO pose", "[ai][keypoint]") {
 
 TEST_CASE("Generic keypoint set represents ordered license plate corners", "[ai][keypoint]") {
     cosmo::AiLandmarkData landmark;
-    landmark.landmark = {{10, 20}, {110, 20}, {110, 60}, {10, 60}};
-    landmark.keypoints.kind = cosmo::AiKeypointKind::LicensePlate;
+    landmark.landmark         = {{10, 20}, {110, 20}, {110, 60}, {10, 60}};
+    landmark.keypoints.kind   = cosmo::AiKeypointKind::LicensePlate;
     landmark.keypoints.schema = "plate4";
     for (size_t i = 0; i < landmark.landmark.size(); ++i) {
         const auto& point = landmark.landmark[i];
@@ -92,24 +92,24 @@ TEST_CASE("Generic keypoint set represents ordered license plate corners", "[ai]
 TEST_CASE("YOLO26 plate pose decoder preserves plate4 points without fake confidence", "[nn][yolo][plate]") {
     using namespace cosmo::nn;
     std::vector<float> tensor(14, 0.0F);
-    tensor[0] = 10.0F;
-    tensor[1] = 20.0F;
-    tensor[2] = 110.0F;
-    tensor[3] = 60.0F;
-    tensor[4] = 0.9F;
-    tensor[5] = 0.0F;
-    tensor[6] = 10.0F;
-    tensor[7] = 20.0F;
-    tensor[8] = 110.0F;
-    tensor[9] = 20.0F;
+    tensor[0]  = 10.0F;
+    tensor[1]  = 20.0F;
+    tensor[2]  = 110.0F;
+    tensor[3]  = 60.0F;
+    tensor[4]  = 0.9F;
+    tensor[5]  = 0.0F;
+    tensor[6]  = 10.0F;
+    tensor[7]  = 20.0F;
+    tensor[8]  = 110.0F;
+    tensor[9]  = 20.0F;
     tensor[10] = 110.0F;
     tensor[11] = 60.0F;
     tensor[12] = 10.0F;
     tensor[13] = 60.0F;
     std::vector<ObjectInfoV1> outputs;
     std::string error;
-    REQUIRE(bool(DecodeYoloPoseTensor(tensor.data(), {1, 1, 14}, YoloPoseLayout::kEndToEnd, 200, 100, 1, 4, 0.5F,
-                                      outputs, error, 2)));
+    REQUIRE(bool(DecodeYoloPoseTensor(tensor.data(), {1, 1, 14}, YoloPoseLayout::kEndToEnd, 200, 100, 1, 4,
+                                      0.5F, outputs, error, 2)));
     REQUIRE(outputs.size() == 1);
     REQUIRE(outputs[0].key_points.size() == 4);
     CHECK(outputs[0].key_points[0].first == Catch::Approx(10.0F));
@@ -120,16 +120,16 @@ TEST_CASE("YOLO26 plate pose decoder preserves plate4 points without fake confid
 TEST_CASE("YOLO26 plate decoder drops invalid boxes and sanitizes invalid points", "[nn][yolo][plate]") {
     using namespace cosmo::nn;
     std::vector<float> tensor(28, 0.0F);
-    tensor[0] = 10.0F;
-    tensor[1] = 20.0F;
-    tensor[2] = 110.0F;
-    tensor[3] = 60.0F;
-    tensor[4] = 0.9F;
-    tensor[5] = 0.0F;
-    tensor[6] = std::numeric_limits<float>::quiet_NaN();
-    tensor[7] = 20.0F;
-    tensor[8] = 110.0F;
-    tensor[9] = 20.0F;
+    tensor[0]  = 10.0F;
+    tensor[1]  = 20.0F;
+    tensor[2]  = 110.0F;
+    tensor[3]  = 60.0F;
+    tensor[4]  = 0.9F;
+    tensor[5]  = 0.0F;
+    tensor[6]  = std::numeric_limits<float>::quiet_NaN();
+    tensor[7]  = 20.0F;
+    tensor[8]  = 110.0F;
+    tensor[9]  = 20.0F;
     tensor[10] = 110.0F;
     tensor[11] = 60.0F;
     tensor[12] = 10.0F;
@@ -150,8 +150,8 @@ TEST_CASE("YOLO26 plate decoder drops invalid boxes and sanitizes invalid points
     tensor[27] = 20.0F;
     std::vector<ObjectInfoV1> outputs;
     std::string error;
-    REQUIRE(bool(DecodeYoloPoseTensor(tensor.data(), {1, 2, 14}, YoloPoseLayout::kEndToEnd, 200, 100, 1, 4, 0.5F,
-                                      outputs, error, 2)));
+    REQUIRE(bool(DecodeYoloPoseTensor(tensor.data(), {1, 2, 14}, YoloPoseLayout::kEndToEnd, 200, 100, 1, 4,
+                                      0.5F, outputs, error, 2)));
     REQUIRE(outputs.size() == 1);
     CHECK(outputs[0].key_point_confidences[0] == Catch::Approx(-1.0F));
 }

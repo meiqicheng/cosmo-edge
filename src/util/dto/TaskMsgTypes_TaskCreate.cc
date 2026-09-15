@@ -76,8 +76,8 @@ void from_json(const nlohmann::json& j, MsgAiAttribute& v) {
 }
 
 void to_json(nlohmann::json& j, const MsgAiAttribute& v) {
-    j["category"] = v.category;
-    j["label"]    = v.label;
+    j["category"]   = v.category;
+    j["label"]      = v.label;
     j["confidence"] = v.confidence;
 }
 

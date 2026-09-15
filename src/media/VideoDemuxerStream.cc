@@ -82,9 +82,9 @@ namespace media {
             extradata_.clear();
         }
 
-        AVRational avgFpsRat   = stream->avg_frame_rate;
-        AVRational codecFpsRat      = av_guess_frame_rate(fmt_ctx_, stream, nullptr);
-        AVRational streamFpsRat     = stream->r_frame_rate;
+        AVRational avgFpsRat    = stream->avg_frame_rate;
+        AVRational codecFpsRat  = av_guess_frame_rate(fmt_ctx_, stream, nullptr);
+        AVRational streamFpsRat = stream->r_frame_rate;
 
         width_.store(codecpar->width, std::memory_order_relaxed);
         height_.store(codecpar->height, std::memory_order_relaxed);

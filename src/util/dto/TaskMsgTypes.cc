@@ -150,9 +150,9 @@ void to_json(nlohmann::json& j, const MsgTarget& t) {
         j["ocrString"] = t.ocrString;
     if (t.ocrConfidence > 0.0F)
         j["ocrConfidence"] = t.ocrConfidence;
-    j["attrs"]             = t.attrs;
-    j["areas"]             = t.areas;
-    j["shiledAreas"]       = t.shiledAreas;
+    j["attrs"]       = t.attrs;
+    j["areas"]       = t.areas;
+    j["shiledAreas"] = t.shiledAreas;
     if (t.bHaveMatchInfo)
         j["matchInfo"] = t.matchInfo;
     if (!t.groupEls.empty())

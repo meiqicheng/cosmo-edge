@@ -224,9 +224,9 @@ MsgAiDetFrame OverviewRecordAiRst::SrcData2MsgData(const DataDetTrackClassifyPtr
                 rec_target.ocrConfidence = ocr.confidence;
             }
         }
-        rec_target.hwRatio           = target.hwRatio;
-        rec_target.hwRatioVariation  = target.hwRatioVariation;
-        rec_target.bHaveMatchInfo    = false;
+        rec_target.hwRatio          = target.hwRatio;
+        rec_target.hwRatioVariation = target.hwRatioVariation;
+        rec_target.bHaveMatchInfo   = false;
         if (target.matchInfo.setPicCount >= 0) {
             rec_target.bHaveMatchInfo        = true;
             rec_target.matchInfo.setPicCount = target.matchInfo.setPicCount;

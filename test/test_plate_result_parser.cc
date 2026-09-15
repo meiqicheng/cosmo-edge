@@ -34,8 +34,7 @@ TEST_CASE("plate CTC parser matches measured 9003002 recordings", "[ai][plate]")
 }
 
 TEST_CASE("plate OCR pipeline collapses repeated characters exactly once", "[ai][plate]") {
-    const std::vector<int> raw = {20, 0, 0, 0, 52, 0, 0, 57, 57, 62, 62, 0,
-                                  46, 0, 0, 46, 0, 45, 0, 45, 45};
+    const std::vector<int> raw = {20, 0, 0, 0, 52, 0, 0, 57, 57, 62, 62, 0, 46, 0, 0, 46, 0, 45, 0, 45, 45};
     std::vector<float> ocr(raw.size() * 78U, 0.0F);
     for (size_t step = 0; step < raw.size(); ++step) {
         if (raw[step] != 0) {

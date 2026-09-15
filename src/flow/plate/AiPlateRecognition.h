@@ -17,8 +17,7 @@ public:
     // detector action records the detection stage, so without this the preview shows
     // the box/quads but never the recognized number or colour.
     MsgOverviewMem GetOverviewInfo(const std::string& channelId, const std::string& taskId,
-                                   int64_t streamIndex = -1, int64_t from = -1,
-                                   int64_t to = -1) override;
+                                   int64_t streamIndex = -1, int64_t from = -1, int64_t to = -1) override;
 
 protected:
     void HandFrame(AlgDataPtr alg_data) override;

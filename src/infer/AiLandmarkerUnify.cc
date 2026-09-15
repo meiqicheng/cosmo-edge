@@ -136,12 +136,12 @@ void AiLandmarkerUnify::DispatchLandmarkResults(
             if (out >= static_cast<int>(indexes.size())) {
                 break;
             }
-            int imgIndex = indexes[static_cast<size_t>(out)].first;
-            int boxIndex = indexes[static_cast<size_t>(out)].second;
-            auto& target = ioRst[static_cast<size_t>(imgIndex)][static_cast<size_t>(boxIndex)];
+            int imgIndex        = indexes[static_cast<size_t>(out)].first;
+            int boxIndex        = indexes[static_cast<size_t>(out)].second;
+            auto& target        = ioRst[static_cast<size_t>(imgIndex)][static_cast<size_t>(boxIndex)];
             auto& landmark_data = target.relatedEl.bActive ? target.relatedEl.landmark : target.landmark;
-            auto& lm = landmark_data.landmark;
-            auto& keypoints = landmark_data.keypoints;
+            auto& lm            = landmark_data.landmark;
+            auto& keypoints     = landmark_data.keypoints;
             // The landmark model metadata does not currently identify a semantic family.
             // Keep it unknown rather than mislabeling face or OCR points as human pose.
             keypoints.kind = AiKeypointKind::Unknown;
@@ -155,11 +155,10 @@ void AiLandmarkerUnify::DispatchLandmarkResults(
                            });
             const size_t base_index = keypoints.points.size();
             for (size_t point_index = 0; point_index < outputEl.key_points.size(); ++point_index) {
-                const auto& point = outputEl.key_points[point_index];
-                const float confidence =
-                    point_index < outputEl.key_point_confidences.size()
-                        ? outputEl.key_point_confidences[point_index]
-                        : -1.0f;
+                const auto& point      = outputEl.key_points[point_index];
+                const float confidence = point_index < outputEl.key_point_confidences.size()
+                                             ? outputEl.key_point_confidences[point_index]
+                                             : -1.0f;
                 keypoints.points.push_back({point.first, point.second, confidence, -1.0f,
                                             static_cast<int>(base_index + point_index)});
             }

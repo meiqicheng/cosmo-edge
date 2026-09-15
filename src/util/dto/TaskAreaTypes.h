@@ -74,8 +74,8 @@ struct MsgAiConfidence {
 };
 
 struct MsgAiAttribute {
-    std::string category;  // Category
-    std::string label;     // Label
+    std::string category;    // Category
+    std::string label;       // Label
     float confidence{0.0F};  // Attribute confidence (e.g. plate color score)
     friend void to_json(nlohmann::json& j, const MsgAiAttribute& v);
     friend void from_json(const nlohmann::json& j, MsgAiAttribute& v);
@@ -107,7 +107,7 @@ struct MsgTarget {
     float hwRatio{0.0};
     float hwRatioVariation{0.0};
     std::vector<MsgAiConfidence> confidence;
-    std::vector<MsgPoint> landmark;   // Optional keypoints in pixel coordinates.
+    std::vector<MsgPoint> landmark;  // Optional keypoints in pixel coordinates.
     std::vector<MsgAiAttribute> attrs;
     // Semantic keypoint family carried alongside landmark so the overlay can decide
     // how to composite a target by kind/schema instead of guessing from count alone.

@@ -33,8 +33,8 @@ inline constexpr std::string_view AAFightClassify_Name  = "打架分类";
 inline constexpr std::string_view AAVideoDiagnosis_Code = "AA_00010";
 inline constexpr std::string_view AAVideoDiagnosis_Name = "视频诊断";
 
-inline constexpr std::string_view AAOcr_Code = "AA_00011";
-inline constexpr std::string_view AAOcr_Name = "文字识别";
+inline constexpr std::string_view AAOcr_Code            = "AA_00011";
+inline constexpr std::string_view AAOcr_Name            = "文字识别";
 inline constexpr std::string_view AAPlateRecognize_Code = "AA_00013";
 inline constexpr std::string_view AAPlateRecognize_Name = "车牌号码颜色识别";
 

@@ -23,39 +23,39 @@ namespace cosmo {
 static constexpr float kPoseJointMinConfidence = 0.25F;
 
 namespace {
-// A pipeline without a tracker publishes one physical target once per stage, so the
-// overlay has to correlate those copies itself. Two untracked boxes are treated as the
-// same object when their geometry nearly coincides.
-bool SameUntrackedBox(const MsgTarget& existing, const MsgTarget& incoming) {
-    if (existing.trackId >= 0 || existing.aiBox.width <= 0 || existing.aiBox.height <= 0) {
-        return false;
+    // A pipeline without a tracker publishes one physical target once per stage, so the
+    // overlay has to correlate those copies itself. Two untracked boxes are treated as the
+    // same object when their geometry nearly coincides.
+    bool SameUntrackedBox(const MsgTarget& existing, const MsgTarget& incoming) {
+        if (existing.trackId >= 0 || existing.aiBox.width <= 0 || existing.aiBox.height <= 0) {
+            return false;
+        }
+        const double side = std::max(existing.aiBox.width, existing.aiBox.height);
+        const double tol  = std::max(side / 4.0, 8.0);
+        return std::abs(existing.aiBox.x - incoming.aiBox.x) < tol &&
+               std::abs(existing.aiBox.y - incoming.aiBox.y) < tol &&
+               std::abs(existing.aiBox.width - incoming.aiBox.width) < tol &&
+               std::abs(existing.aiBox.height - incoming.aiBox.height) < tol;
     }
-    const double side = std::max(existing.aiBox.width, existing.aiBox.height);
-    const double tol  = std::max(side / 4.0, 8.0);
-    return std::abs(existing.aiBox.x - incoming.aiBox.x) < tol &&
-           std::abs(existing.aiBox.y - incoming.aiBox.y) < tol &&
-           std::abs(existing.aiBox.width - incoming.aiBox.width) < tol &&
-           std::abs(existing.aiBox.height - incoming.aiBox.height) < tol;
-}
 
-std::string PlateColorLabelZh(const std::string& label) {
-    if (label == "black") {
-        return "黑牌";
+    std::string PlateColorLabelZh(const std::string& label) {
+        if (label == "black") {
+            return "黑牌";
+        }
+        if (label == "blue") {
+            return "蓝牌";
+        }
+        if (label == "green") {
+            return "绿牌";
+        }
+        if (label == "white") {
+            return "白牌";
+        }
+        if (label == "yellow") {
+            return "黄牌";
+        }
+        return label;
     }
-    if (label == "blue") {
-        return "蓝牌";
-    }
-    if (label == "green") {
-        return "绿牌";
-    }
-    if (label == "white") {
-        return "白牌";
-    }
-    if (label == "yellow") {
-        return "黄牌";
-    }
-    return label;
-}
 }  // namespace
 
 void StreamViewerOverview::AddTextToLocal(int64_t streamIndex, uint64_t index, int64_t timestamp,
@@ -176,8 +176,8 @@ void StreamViewerOverview::AddLineToLocal(int64_t streamIndex, uint64_t index, i
 void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t index, int64_t timestamp,
                                               MsgTarget& target) {
     LOG_DEBUG("[OSD_TARGET] task:{} stream:{} frame:{} track:{} box=({},{} {}x{}) confs:{} landmarks:{}",
-             task_id_, streamIndex, index, target.trackId, target.aiBox.x, target.aiBox.y,
-             target.aiBox.width, target.aiBox.height, target.confidence.size(), target.landmark.size());
+              task_id_, streamIndex, index, target.trackId, target.aiBox.x, target.aiBox.y,
+              target.aiBox.width, target.aiBox.height, target.confidence.size(), target.landmark.size());
     // skip invalid targets in tracker LOSS state (confidence = -1 is tracker internal sentinel)
     bool hasValidConfidence = std::any_of(target.confidence.begin(), target.confidence.end(),
                                           [](const auto& conf) { return conf.confidence >= 0; });
@@ -229,8 +229,7 @@ void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t inde
     std::vector<MsgPoint> drawLandmarks = target.landmark;
     if (target.trackId >= 0 && !target.landmark.empty()) {
         auto kit = smoothed_keypoints_.find(target.trackId);
-        if (kit != smoothed_keypoints_.end() &&
-            kit->second.points.size() == target.landmark.size() &&
+        if (kit != smoothed_keypoints_.end() && kit->second.points.size() == target.landmark.size() &&
             timestamp - kit->second.lastSeenTimestamp <= kSmoothExpireMs) {
             auto& sk = kit->second;
             for (size_t i = 0; i < target.landmark.size(); ++i) {
@@ -254,7 +253,7 @@ void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t inde
             for (const auto& raw : target.landmark) {
                 seed.points.push_back({raw.x, raw.y});
             }
-            seed.lastSeenTimestamp = timestamp;
+            seed.lastSeenTimestamp              = timestamp;
             smoothed_keypoints_[target.trackId] = std::move(seed);
         }
     }
@@ -325,10 +324,8 @@ void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t inde
     // ("coco17"/"human_pose") renders the skeleton. A count==17 fallback is kept for
     // legacy targets that were recorded before the kind/schema fields existed, and it
     // can never mis-trigger for a 4-point plate quad.
-    const bool isPlateQuad = (target.keypointKind == "license_plate") ||
-                             (target.keypointSchema == "plate4");
-    const bool isPose17 = (target.keypointKind == "human_pose") ||
-                          (target.keypointSchema == "coco17");
+    const bool isPlateQuad = (target.keypointKind == "license_plate") || (target.keypointSchema == "plate4");
+    const bool isPose17    = (target.keypointKind == "human_pose") || (target.keypointSchema == "coco17");
 
     if (isPlateQuad && target.landmark.size() == 4) {
         // Draw a closed four-corner plate outline plus per-corner tick marks from the
@@ -354,10 +351,10 @@ void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t inde
             }
             util::Point centre(static_cast<int>(pt.x), static_cast<int>(pt.y));
             const int tick = std::clamp(minSide / 6, 4, 14);
-            StreamOverviewLine h{VideoOverviewAttrPriority::kBox,
-                                 {centre, {centre.x + tick, centre.y}}, quadColor};
-            StreamOverviewLine v{VideoOverviewAttrPriority::kBox,
-                                 {centre, {centre.x, centre.y + tick}}, quadColor};
+            StreamOverviewLine h{
+                VideoOverviewAttrPriority::kBox, {centre, {centre.x + tick, centre.y}}, quadColor};
+            StreamOverviewLine v{
+                VideoOverviewAttrPriority::kBox, {centre, {centre.x, centre.y + tick}}, quadColor};
             AddLineToLocal(streamIndex, index, timestamp, h);
             AddLineToLocal(streamIndex, index, timestamp, v);
         }
@@ -390,14 +387,14 @@ void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t inde
             const util::Point center(static_cast<int>(drawLandmarks[joint].x),
                                      static_cast<int>(drawLandmarks[joint].y));
             constexpr int kJointRadius = 3;
-            StreamOverviewLine hLine{VideoOverviewAttrPriority::kBox,
-                                     {{center.x - kJointRadius, center.y},
-                                      {center.x + kJointRadius, center.y}},
-                                     poseColor};
-            StreamOverviewLine vLine{VideoOverviewAttrPriority::kBox,
-                                     {{center.x, center.y - kJointRadius},
-                                      {center.x, center.y + kJointRadius}},
-                                     poseColor};
+            StreamOverviewLine hLine{
+                VideoOverviewAttrPriority::kBox,
+                {{center.x - kJointRadius, center.y}, {center.x + kJointRadius, center.y}},
+                poseColor};
+            StreamOverviewLine vLine{
+                VideoOverviewAttrPriority::kBox,
+                {{center.x, center.y - kJointRadius}, {center.x, center.y + kJointRadius}},
+                poseColor};
             AddLineToLocal(streamIndex, index, timestamp, hLine);
             AddLineToLocal(streamIndex, index, timestamp, vLine);
         }
@@ -481,15 +478,14 @@ void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t inde
         }
 
         const float shownPlateConfidence = std::max(plateConfidence, 0.0F);
-        const bool fullyRecognized =
-            !target.ocrString.empty() && !colorLabel.empty() && target.ocrConfidence > 0.0F &&
-            colorConfidence > 0.0F;
+        const bool fullyRecognized       = !target.ocrString.empty() && !colorLabel.empty() &&
+                                     target.ocrConfidence > 0.0F && colorConfidence > 0.0F;
 
         std::string caption;
         if (fullyRecognized) {
             caption = COSMO_FORMAT("{}-{}(pla:{:.2f}|num:{:.2f}|col:{:.2f})", target.ocrString,
-                                   PlateColorLabelZh(colorLabel), shownPlateConfidence,
-                                   target.ocrConfidence, colorConfidence);
+                                   PlateColorLabelZh(colorLabel), shownPlateConfidence, target.ocrConfidence,
+                                   colorConfidence);
         } else {
             caption = COSMO_FORMAT("车牌(pla:{:.2f})", shownPlateConfidence);
         }
@@ -514,8 +510,8 @@ void StreamViewerOverview::LiveDataHandTarget(int64_t streamIndex, uint64_t inde
 
 void StreamViewerOverview::LiveDataAiFrameToLocal(std::vector<MsgAiDetFrame>& aiDatas) {
     for (auto& aiData : aiDatas) {
-        LOG_DEBUG("[OSD_FRAME] task:{} stream:{} frame:{} targets:{} ts:{}",
-                 task_id_, aiData.streamIndex, aiData.index, aiData.targets.size(), aiData.timestamp);
+        LOG_DEBUG("[OSD_FRAME] task:{} stream:{} frame:{} targets:{} ts:{}", task_id_, aiData.streamIndex,
+                  aiData.index, aiData.targets.size(), aiData.timestamp);
         for (auto& target : aiData.targets) {
             LiveDataHandTarget(aiData.streamIndex, aiData.index, aiData.timestamp, target);
         }
@@ -572,11 +568,10 @@ void StreamViewerOverview::LiveDataToLocal() {
                             // be correlated by track id. Fold the later, richer stage into the
                             // existing entry by bounding-box proximity so the overlay draws one box
                             // and keeps the OCR text/colour instead of stacking duplicate targets.
-                            auto targetIt =
-                                std::find_if(it->second.targets.begin(), it->second.targets.end(),
-                                             [&](const MsgTarget& existTarget) {
-                                                 return SameUntrackedBox(existTarget, newTarget);
-                                             });
+                            auto targetIt = std::find_if(it->second.targets.begin(), it->second.targets.end(),
+                                                         [&](const MsgTarget& existTarget) {
+                                                             return SameUntrackedBox(existTarget, newTarget);
+                                                         });
                             if (targetIt != it->second.targets.end()) {
                                 if (targetIt->ocrString.empty() && !newTarget.ocrString.empty()) {
                                     targetIt->ocrString     = newTarget.ocrString;

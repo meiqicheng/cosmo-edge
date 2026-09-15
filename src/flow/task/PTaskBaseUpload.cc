@@ -271,10 +271,10 @@ void PTaskBase::DetTargetHandFullPicture(AlgDataPtr algData, const std::vector<M
             if (target.landmark.landmark.empty()) {
                 continue;
             }
-            const auto& points = target.landmark.landmark;
-            const auto& keypoints = target.landmark.keypoints;
+            const auto& points      = target.landmark.landmark;
+            const auto& keypoints   = target.landmark.keypoints;
             const bool is_coco_pose = keypoints.kind == AiKeypointKind::HumanPose && points.size() == 17;
-            auto is_visible = [&](size_t index) {
+            auto is_visible         = [&](size_t index) {
                 return index < points.size() &&
                        (index >= keypoints.points.size() || keypoints.points[index].confidence >= 0.25F);
             };
@@ -282,7 +282,7 @@ void PTaskBase::DetTargetHandFullPicture(AlgDataPtr algData, const std::vector<M
             if (is_coco_pose) {
                 std::vector<std::pair<util::Point, util::Point>> skeleton_lines;
                 for (const auto& edge : kCocoPoseEdges) {
-                    const size_t first = static_cast<size_t>(edge[0]);
+                    const size_t first  = static_cast<size_t>(edge[0]);
                     const size_t second = static_cast<size_t>(edge[1]);
                     if (!is_visible(first) || !is_visible(second)) {
                         continue;

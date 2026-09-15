@@ -53,9 +53,9 @@ void DetData2RecData(DataDetTrackClassifyPtr frame, MsgAiDetFrame& recData) {
         for (const auto& point : target.landmark.landmark) {
             recTarget.landmark.push_back({point.x, point.y});
         }
-        recTarget.hwRatio           = target.hwRatio;
-        recTarget.hwRatioVariation  = target.hwRatioVariation;
-        recTarget.bHaveMatchInfo    = false;
+        recTarget.hwRatio          = target.hwRatio;
+        recTarget.hwRatioVariation = target.hwRatioVariation;
+        recTarget.bHaveMatchInfo   = false;
         MsgAiConfidence confidencedet;
         confidencedet.label      = target.confidence.label;
         confidencedet.confidence = target.confidence.confidence;

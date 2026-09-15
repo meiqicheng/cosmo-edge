@@ -129,24 +129,24 @@ private:
     std::unordered_map<std::string_view, ActionHandler> action_handlers_;
     std::vector<IMngStatusProvider*> mng_providers_;  // QueueStatus/ActionInfo unified traversal
 
-    AlgChannelMng channel_mng_;                // Channel/Camera management instance
-    AiDetectMng detect_mng_;                   // Detection management instance
-    DinoDetectMng dino_detect_mng_;            // Dino detection visual large model management instance
-    Qwen3VLMng qwen3_vl_mng_;                  // Qwen3VL language visual large model management instance
-    Sam2SegmentMng sam2_segment_mng_;          // Sam2 segmentation large model management instance
-    AiTrackMng track_mng_;                     // Tracking management instance
-    AiClassifyMng classify_mng_;               // Classification management instance
-    AiClassifyGroupMng classify_group_mng_;    // Group classification management instance
-    AiClassifyAreaMng classify_area_mng_;      // Area classification management instance
-    AiClassifyAttrMng classify_attr_mng_;      // Attribute management instance
-    AiLandmarkMng landmark_mng_;               // Landmark management instance
-    AiOcrMng ocr_mng_;                         // Landmark-driven license plate OCR management instance
+    AlgChannelMng channel_mng_;              // Channel/Camera management instance
+    AiDetectMng detect_mng_;                 // Detection management instance
+    DinoDetectMng dino_detect_mng_;          // Dino detection visual large model management instance
+    Qwen3VLMng qwen3_vl_mng_;                // Qwen3VL language visual large model management instance
+    Sam2SegmentMng sam2_segment_mng_;        // Sam2 segmentation large model management instance
+    AiTrackMng track_mng_;                   // Tracking management instance
+    AiClassifyMng classify_mng_;             // Classification management instance
+    AiClassifyGroupMng classify_group_mng_;  // Group classification management instance
+    AiClassifyAreaMng classify_area_mng_;    // Area classification management instance
+    AiClassifyAttrMng classify_attr_mng_;    // Attribute management instance
+    AiLandmarkMng landmark_mng_;             // Landmark management instance
+    AiOcrMng ocr_mng_;                       // Landmark-driven license plate OCR management instance
     AiPlateRecognitionMng plate_recognition_mng_;
-    AiRecognizerMng recognizer_mng_;           // Recognition management instance
-    AiVideoQualityMng ai_video_quality_mng_;   // Video diagnosis management instance
-    TargetFilterMng filter_mng_;               // Filtering management instance
-    LogicalJudgmentMng logical_judgment_mng_;  // Logical judgment management instance
-    SensitivityMng sensitivity_mng_;           // Sensitivity calculation management instance
+    AiRecognizerMng recognizer_mng_;                  // Recognition management instance
+    AiVideoQualityMng ai_video_quality_mng_;          // Video diagnosis management instance
+    TargetFilterMng filter_mng_;                      // Filtering management instance
+    LogicalJudgmentMng logical_judgment_mng_;         // Logical judgment management instance
+    SensitivityMng sensitivity_mng_;                  // Sensitivity calculation management instance
     PosSaveSensitivityMng pos_save_sensitivity_mng_;  // Sensitivity calculation management instance
     TaskAlarmMng task_alarm_mng_;                     // Alarm management instance
     AreaAlarmMng area_alarm_mng_;                     // Area alarm judgment management instance
