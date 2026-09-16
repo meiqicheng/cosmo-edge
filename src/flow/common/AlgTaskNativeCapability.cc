@@ -10,7 +10,11 @@ namespace {
 
     constexpr AlgTaskNativeCapability kFailClosed{};
 
-    AlgTaskNativeCapability ResolveDetectAtomic() {
+    // Actions that consume detection geometry and frame identity only. They
+    // never dereference decoded pixels, so they run unchanged on the
+    // native-only (DMA-BUF) path where the host frame is intentionally absent;
+    // frame identity comes from AlgFrameMeta via ResolveAlgFrameInfo.
+    AlgTaskNativeCapability ResolveBoxOnlyAtomic() {
         AlgTaskNativeCapability capability;
         capability.supports_native_input           = true;
         capability.requires_host_frame             = false;
@@ -22,8 +26,8 @@ namespace {
 }  // namespace
 
 AlgTaskNativeCapability ResolveAlgTaskNativeCapability(std::string_view actionId) {
-    if (actionId == AADetect_Code) {
-        return ResolveDetectAtomic();
+    if (actionId == AADetect_Code || actionId == AATrack_Code || actionId == BAFilter_Code) {
+        return ResolveBoxOnlyAtomic();
     }
     return kFailClosed;
 }

@@ -119,6 +119,7 @@ TEST_CASE("Only regular detector queue plans advertise native inference", "[Dist
     input->firstTimePoint    = std::chrono::steady_clock::now();
     const auto detector_plan = detector_dist.PrepareFrameDistribution(input);
     CHECK(detector_plan.SupportsNativeInference());
+    CHECK(detector_plan.RequestsNativeDescriptor());
 
     AlgDataQueueDistributor mixed_dist("native_mixed_dist");
     auto non_detector = makeTask("ch1", "classifier", std::string(AAClassify_Code), -1.0f);
@@ -127,15 +128,69 @@ TEST_CASE("Only regular detector queue plans advertise native inference", "[Dist
     input->firstTimePoint = std::chrono::steady_clock::now();
     const auto mixed_plan = mixed_dist.PrepareFrameDistribution(input);
     CHECK_FALSE(mixed_plan.SupportsNativeInference());
+    CHECK(mixed_plan.RequestsNativeDescriptor());
+
+    AlgDataQueueDistributor classify_dist("native_classify_dist");
+    REQUIRE(classify_dist.RegistProcQueue(non_detector));
+    input->firstTimePoint = std::chrono::steady_clock::now();
+    const auto classify_plan = classify_dist.PrepareFrameDistribution(input);
+    CHECK_FALSE(classify_plan.SupportsNativeInference());
+    CHECK_FALSE(classify_plan.RequestsNativeDescriptor());
 }
 
-TEST_CASE("Native inference plan is fail-closed for non-detect task codes", "[Distributor]") {
+TEST_CASE("Host-frame downstream keeps native descriptor export enabled", "[Distributor]") {
+    AlgDataQueueDistributor dist("native_descriptor_dist");
+    auto detector                = makeTask("ch1", "detector", std::string(AADetect_Code), -1.0f);
+    detector.requires_host_frame = true;
+    REQUIRE(dist.RegistProcQueue(detector));
+
+    auto input            = std::make_shared<AlgData>();
+    input->firstTimePoint = std::chrono::steady_clock::now();
+    const auto plan       = dist.PrepareFrameDistribution(input);
+
+    REQUIRE_FALSE(plan.Empty());
+    CHECK_FALSE(plan.SupportsNativeInference());
+    CHECK(plan.RequestsNativeDescriptor());
+}
+
+TEST_CASE("Task refresh updates host-frame planning state", "[Distributor]") {
+    AlgDataQueueDistributor dist("native_refresh_dist");
+    auto detector                = makeTask("ch1", "detector", std::string(AADetect_Code), -1.0f);
+    detector.requires_host_frame = false;
+    REQUIRE(dist.RegistProcQueue(detector));
+
+    detector.requires_host_frame = true;
+    REQUIRE(dist.RegistProcQueue(detector));
+
+    auto input            = std::make_shared<AlgData>();
+    input->firstTimePoint = std::chrono::steady_clock::now();
+    const auto plan       = dist.PrepareFrameDistribution(input);
+    CHECK_FALSE(plan.SupportsNativeInference());
+    CHECK(plan.RequestsNativeDescriptor());
+}
+
+TEST_CASE("Native inference plan admits box-only task codes and is fail-closed otherwise", "[Distributor]") {
     struct Case {
         const char* name;
         std::string action;
     };
+    // Box-only actions run on the native-only path; composite/pixel-consuming
+    // actions and unknown codes stay fail-closed.
     for (const auto& item : {Case{"track", std::string(AATrack_Code)},
-                             Case{"combo", std::string(GADetectTrack_Code)},
+                             Case{"filter", std::string(BAFilter_Code)}}) {
+        DYNAMIC_SECTION("native-capable action " << item.name) {
+            AlgDataQueueDistributor dist("native_boxonly_dist");
+            auto task = makeTask("ch1", std::string("task-") + item.name, item.action, -1.0f);
+            REQUIRE(dist.RegistProcQueue(task));
+
+            auto input            = std::make_shared<AlgData>();
+            input->firstTimePoint = std::chrono::steady_clock::now();
+            const auto plan       = dist.PrepareFrameDistribution(input);
+            REQUIRE_FALSE(plan.Empty());
+            CHECK(plan.SupportsNativeInference());
+        }
+    }
+    for (const auto& item : {Case{"combo", std::string(GADetectTrack_Code)},
                              Case{"vlm", std::string(DAQwen3VL_Code)},
                              Case{"unknown", std::string("ZZ_99999")}}) {
         DYNAMIC_SECTION("action " << item.name) {
