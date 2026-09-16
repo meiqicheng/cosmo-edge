@@ -189,6 +189,11 @@ TEST_CASE("MsgDynamicElement: channel ownership compatibility rules",
         repeat.senior = 2;
         REQUIRE(repeat.IsChannelEditable());
 
+        cosmo::MsgDynamicElement read_fps;
+        read_fps.key    = "param.videoReadFps";
+        read_fps.senior = 2;
+        REQUIRE(read_fps.IsChannelEditable());
+
         cosmo::MsgDynamicElement retro;
         retro.key    = "param.retroDirect";
         retro.type   = "retroDirect";
@@ -352,16 +357,19 @@ TEST_CASE("MsgDynamicElement: normalizes legacy channel ownership across metadat
     }
 
     SECTION("legacy special controls remain channel editable") {
-        auto repeat   = makeElement("param.videoRepeatCount");
-        repeat.senior = 2;
-        auto retro    = makeElement("retro", "retroDirect");
-        retro.senior  = 1;
+        auto repeat    = makeElement("param.videoRepeatCount");
+        repeat.senior  = 2;
+        auto readFps   = makeElement("param.videoReadFps");
+        readFps.senior = 2;
+        auto retro     = makeElement("retro", "retroDirect");
+        retro.senior   = 1;
 
-        std::vector<cosmo::MsgDynamicElement> elements{repeat, retro};
+        std::vector<cosmo::MsgDynamicElement> elements{repeat, readFps, retro};
         cosmo::MsgDynamicElement::NormalizeLegacyChannelOwnership(elements);
 
         CHECK(elements[0].IsChannelEditable());
         CHECK(elements[1].IsChannelEditable());
+        CHECK(elements[2].IsChannelEditable());
     }
 
     SECTION("legacy snapshot classification preserves old visibility defaults") {
