@@ -78,11 +78,18 @@ node src/cli.js checkpoint \
   --expected-preview-streams 4 \
   --expected-decoder-backend rockchip-mpp-rga \
   --expected-encoder-backend rockchip-mpp-rga \
+  --allow-rga-crop-host-staging \
   --min-rga-bound-native-int8-frames 1 \
   --min-rknn-mpp-dmabuf-frames 1 \
   --min-rknn-rga-crop-dmabuf-frames 1 \
   --max-rga-bound-requantize-avg-ms 2
 ```
+
+`--allow-rga-crop-host-staging` 用于 RK3588 这类分类输入仍经过 DMA32 staging
+再交给 RGA 的路径。它只豁免 RGA host-staging 计数；审计仍要求
+`rknnRgaCropResizeFailures`、`rknnCpuCropResizeFallbackCalls` 等真实失败计数为 0，
+并要求全部 crop 调用由 DMA-BUF 或 host staging 完整记账。预览关闭时，
+`native.previewFrameFlow` 记为 `N/A`，不再错误要求 OSD/编码/发布帧。
 
 输出结论只有三种：`IN_PROGRESS` 表示时长尚未达到且其余门禁正常（命令退出码 3），`FAIL` 表示连续性、负载、资源或原生媒体链路存在失败（退出码 1），`PASS` 仅在时长达到且全部必需检查通过时产生（命令退出码 0）。`gate-hours` 从首次观测到目标路数、活动路数和唯一通道数均达到配置负载时开始累计；登录、建连和部分路数爬坡只计入 `runAgeSec`，不计入验收使用的 `fullLoadCoverageSec`。审计覆盖采样间断/新鲜度、固定路数、逐通道 FPS 与丢帧、CPU/内存/磁盘、内存池增长、MPP/RGA/RKNN 失败及计数器回退、延迟 Copy-out 记账、OSD/编码/发布帧流和 SRS 发布流；针对原生 RKNN 路径还可要求 MPP DMA-BUF 输入、分类裁剪 DMA-BUF、全部 forward 的 INT8 直绑覆盖和必要符号位变换的平均耗时。输入和候选身份文件的 SHA-256 会写入结果。
 

@@ -37,7 +37,15 @@ function parseArgs(argv) {
       args.command = 'help';
     } else if (a.startsWith('--')) {
       const key = a.slice(2);
-      if (['verbose', 'no-reuse', 'cleanup', 'skip-import', 'password-stdin'].includes(key)) {
+      if ([
+        'verbose',
+        'no-reuse',
+        'cleanup',
+        'skip-import',
+        'password-stdin',
+        'allow-rga-crop-host-staging',
+        'allow-mpp-rga-materialization',
+      ].includes(key)) {
         args[key] = true;
       } else {
         args[key] = argv[++i];
@@ -132,6 +140,8 @@ checkpoint options:
   --min-rga-bound-native-int8-frames <n> Required native INT8 bound frames with full RKNN accounting
   --min-rknn-mpp-dmabuf-frames <n> Required RKNN frames sourced from MPP DMA-BUF
   --min-rknn-rga-crop-dmabuf-frames <n> Required classifier crops sourced from DMA-BUF
+  --allow-rga-crop-host-staging Allow RGA crop host staging when DMA-BUF input is unavailable
+  --allow-mpp-rga-materialization Allow the RK3588 RGA-I420 materialization path without requiring MPP DMA-BUF
   --max-rga-bound-requantize-avg-ms <n> Maximum average native U8-to-INT8 transform latency
 `);
 }
@@ -856,6 +866,8 @@ async function runCheckpoint(args) {
     minRgaBoundNativeInt8Frames: optionalNumber(args, 'min-rga-bound-native-int8-frames'),
     minRknnMppDmaBufFrames: optionalNumber(args, 'min-rknn-mpp-dmabuf-frames'),
     minRknnRgaCropDmaBufFrames: optionalNumber(args, 'min-rknn-rga-crop-dmabuf-frames'),
+    allowRgaCropHostStaging: args['allow-rga-crop-host-staging'] === true,
+    allowMppRgaMaterialization: args['allow-mpp-rga-materialization'] === true,
     maxRgaBoundRequantizeAvgMs: optionalNumber(args, 'max-rga-bound-requantize-avg-ms'),
     expectedPreviewStreams: optionalNumber(args, 'expected-preview-streams'),
     expectedDecoderBackend: args['expected-decoder-backend'],
