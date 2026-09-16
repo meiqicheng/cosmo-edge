@@ -1,0 +1,43 @@
+name: rk3588-detect-classify
+displayName: RK3588 检测+分类管线回归验证 (算法 7463, 1通道)
+sampleIntervalSec: 3
+
+channels:
+  mode: local
+  repeatCount: 0
+  sources:
+    - name: no-helmet-01
+      file: LX0000000007.mp4
+
+tasks:
+  - id: detect-classify
+    displayName: 未戴安全帽检测(检测+分类)
+    type: cv
+    algorithmId: "7463"
+    scheduleId: "e89c6c6385e5454b35cde0d1653vg"
+    template: algorithm-template.json
+    targetFps: 5
+    taskConfig:
+      params:
+        - key: param.targetAlarmInterval
+          value: "36000"
+        - key: param.targetAlarmCount
+          value: "1"
+        - key: param.restrainSwitch
+          value: "1"
+        - key: param.sensitivity
+          value: "1"
+        - key: param.detectionDuration
+          value: "3600"
+
+loadProfile:
+  - channels: 1
+    holdSec: 90
+
+thresholds:
+  pass:
+    maxCriticalPathLatencyMs: 500
+    maxDetectorLatencyMs: 400
+    avgDiscardRate: 0.10
+    maxPacketDiscardRate: 0.01
+    maxDiskUsedPercent: 90
