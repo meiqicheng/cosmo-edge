@@ -26,7 +26,7 @@
 #
 # Frozen inputs (do not bump casually; update config/rockchip-build/builder-lock.json
 # in lockstep and record identities in /opt/cosmo/builder-versions.json):
-#   - Base image: debian:bullseye pinned by digest.
+#   - Base image: debian:11-slim.
 #   - FFmpeg 4.4.6 official release tarball (ffmpeg.org) pinned by SHA-256,
 #     cross-compiled with --disable-gpl into a self-contained COSMO_FFMPEG_ROOT
 #     (/opt/ffmpeg-debian11) with its non-glibc dependency closure, so cross
@@ -61,7 +61,7 @@
 #   builder      (final) media + RKLLM + builder lock + version record
 
 
-ARG ROCKCHIP_LEGACY_BASE=debian:bullseye@sha256:99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704ebc3ead2015675
+ARG ROCKCHIP_LEGACY_BASE=debian:11-slim
 
 FROM ${ROCKCHIP_LEGACY_BASE} AS rockchip-toolchain
 
@@ -87,12 +87,16 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # amd64 host + arm64 cross targets (multiarch for the arm64 build deps used
 # when cross-compiling FFmpeg 4.4.6 from source below).
-# Use a China mirror (mirrors.tuna.tsinghua.edu.cn) for reliable downloads; the upstream
-# deb.debian.org frequently returns 502 on this network. HTTP (not HTTPS) is
-# used here because the base image has no ca-certificates yet; they are
-# installed in Step 1. Retries + longer timeout cope with flaky mirror links.
-# Slimming: merge every apt step into ONE layer and purge apt list/archive
-# caches inside the same RUN, so they are never baked into the image.
+# Bootstrap ca-certificates from the China mirror first, then pin bullseye
+# main/updates to that mirror and bullseye-security to a consistent HTTPS
+# Debian snapshot. The mirror keeps release/update packages complete but its
+# stale security index points at package files no longer present; the snapshot
+# keeps the security pool internally consistent after Debian 11 moved out of
+# normal support. Check-Valid-Until stays disabled for stale release stamps
+# after Debian 11 EOL. Retries + longer timeout cope with flaky mirror links.
+# Slimming: keep the certificate bootstrap small and merge the main/cross
+# package steps into the next layer, purging apt list/archive caches inside
+# each RUN so they are never baked into the image.
 # Step 1: host build tools (amd64). Step 2: aarch64 cross toolchain.
 # Step 3: arm64 dev libraries for the FFmpeg source build. Debian 11 arm64
 # FFmpeg binary packages are NOT used: the official Debian build enables GPL
@@ -101,8 +105,14 @@ ENV DEBIAN_FRONTEND=noninteractive
 # provide the optional non-GPL libraries (zlib/bz2/lzma/openssl) that the
 # self-built LGPL FFmpeg links against; the device gets the matching runtime
 # libraries through the dependency closure collected in Step 5.
-RUN sed -i 's|http://deb.debian.org/debian-security|http://mirrors.tuna.tsinghua.edu.cn/debian-security|g; s|http://deb.debian.org/debian|http://mirrors.tuna.tsinghua.edu.cn/debian|g' /etc/apt/sources.list \
-    && printf 'Acquire::Retries "10";\nAcquire::http::Timeout "120";\nAcquire::http::ConnectionTimeout "60";\nAcquire::ftp::Timeout "120";\n' > /etc/apt/apt.conf.d/99-retries \
+RUN printf 'deb http://mirrors.tuna.tsinghua.edu.cn/debian bullseye main\ndeb http://mirrors.tuna.tsinghua.edu.cn/debian bullseye-updates main\n' > /etc/apt/sources.list \
+    && printf 'Acquire::Retries "10";\nAcquire::http::Timeout "120";\nAcquire::http::ConnectionTimeout "60";\nAcquire::ftp::Timeout "120";\nAcquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99-retries \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+
+RUN printf 'deb http://mirrors.tuna.tsinghua.edu.cn/debian bullseye main\ndeb http://mirrors.tuna.tsinghua.edu.cn/debian bullseye-updates main\ndeb https://snapshot.debian.org/archive/debian-security/20260803T000000Z bullseye-security main\n' > /etc/apt/sources.list \
+    && printf 'Acquire::Retries "10";\nAcquire::http::Timeout "120";\nAcquire::http::ConnectionTimeout "60";\nAcquire::ftp::Timeout "120";\nAcquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99-retries \
     && printf 'path-exclude /usr/share/doc/*\npath-include /usr/share/doc/*/copyright\npath-exclude /usr/share/man/*\npath-exclude /usr/share/locale/*\npath-exclude /usr/share/info/*\n' > /etc/dpkg/dpkg.cfg.d/01-nodoc \
     && dpkg --add-architecture arm64 \
     && apt-get update \
@@ -171,6 +181,12 @@ RUN set -eux; \
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
+# Debian's login shell resets PATH from /etc/profile, which drops the
+# toolchain paths supplied by the image ENV. Keep `bash -lc` builds working
+# for Rust and Node without requiring every caller to re-export PATH.
+RUN printf 'export PATH=/usr/local/cargo/bin:/usr/local/node/bin:$PATH\n' \
+        > /etc/profile.d/cosmo-toolchain-path.sh \
+    && chmod 0644 /etc/profile.d/cosmo-toolchain-path.sh
 RUN rustc --version && cargo --version
 
 # Rust is required at package-build time, but rustup downloads and registry
@@ -452,7 +468,7 @@ ffmpeg_ident = out(
     f"{ffmpeg_root}/lib/libavcodec.so.58 | head -1"
 )
 record = {
-    "base_image": "debian:bullseye@sha256:99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704ebc3ead2015675",
+    "base_image": "debian:11-slim",
     "build_mode": "from-scratch",
     "media_runtime_profile": "mpp-1.1.0-rga-1.10.6-bullseye-v1",
     "rknn_runtime_sha256": "d31fc19c85b85f6091b2bd0f6af9d962d5264a4e410bfb536402ec92bac738e8",
