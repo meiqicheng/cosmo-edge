@@ -55,7 +55,7 @@ namespace {
     }
 
     bool IsKeyOnlyChannelCompatibilityException(std::string_view key) {
-        return key == cosmo::key::CHANNEL_SOURCE_REPEAT;
+        return key == cosmo::key::CHANNEL_SOURCE_REPEAT || key == cosmo::key::CHANNEL_SOURCE_FPS;
     }
 
 }  // namespace
@@ -213,8 +213,8 @@ void CameraTaskUnit::LoadConfig() {
     }
 
     // Unknown historical keys cannot keep overriding the scene merely because an old full snapshot
-    // happened to contain them.  videoRepeatCount is the sole key-level compatibility exception;
-    // retroDirect remains compatible only while a descriptor of that type still exists above.
+    // happened to contain them. The channel source controls remain key-level compatibility
+    // exceptions; retroDirect remains compatible only while a descriptor of that type still exists.
     if (persistedLoaded) {
         for (const auto& localParam : persisted.params) {
             const bool described =
@@ -687,11 +687,13 @@ size_t CameraTaskUnit::MergeChannelParamsLocked(std::vector<MsgDynamicKeyValue> 
             canonicalOverrideKeys.push_back(metaParam.key.ToString());
         }
     }
-    if (ContainsKey(conf_param_.channelOverrideKeys, cosmo::key::CHANNEL_SOURCE_REPEAT) &&
-        std::none_of(metadata_params_.begin(), metadata_params_.end(), [](const auto& metaParam) {
-            return std::string_view(metaParam.key.ToRefString()) == cosmo::key::CHANNEL_SOURCE_REPEAT;
-        })) {
-        canonicalOverrideKeys.emplace_back(std::string(cosmo::key::CHANNEL_SOURCE_REPEAT));
+    for (const auto sourceKey : {cosmo::key::CHANNEL_SOURCE_REPEAT, cosmo::key::CHANNEL_SOURCE_FPS}) {
+        if (ContainsKey(conf_param_.channelOverrideKeys, sourceKey) &&
+            std::none_of(metadata_params_.begin(), metadata_params_.end(), [&](const auto& metaParam) {
+                return std::string_view(metaParam.key.ToRefString()) == sourceKey;
+            })) {
+            canonicalOverrideKeys.emplace_back(sourceKey);
+        }
     }
     if (!SameStringSnapshot(conf_param_.channelOverrideKeys, canonicalOverrideKeys)) {
         conf_param_.channelOverrideKeys = std::move(canonicalOverrideKeys);
