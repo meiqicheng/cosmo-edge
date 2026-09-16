@@ -337,6 +337,33 @@ def verify_model_bundle(
             raise PackageAuditError(f"packaged model hash mismatch: {model_name}")
     if expected_models != set(package_rknn_models):
         raise PackageAuditError("packaged RKNN model inventory differs from its bundle")
+
+
+def verify_algorithm_resources(contents: dict[str, bytes]) -> None:
+    """Reject exported templates masquerading as loadable runtime algorithms."""
+    for relative, data in contents.items():
+        path = pathlib.PurePosixPath(relative)
+        if path.parent.as_posix() != "resource/algorithm" or path.suffix != ".json":
+            continue
+        try:
+            payload = json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise PackageAuditError(
+                f"algorithm resource is not valid UTF-8 JSON: {relative}"
+            ) from error
+        if not isinstance(payload, dict):
+            raise PackageAuditError(
+                f"algorithm resource root must be an object: {relative}"
+            )
+        for field in ("algorithmMetadata", "algorithmProcessdata", "atomicList"):
+            if field not in payload:
+                continue
+            if not isinstance(payload[field], str):
+                raise PackageAuditError(
+                    f"algorithm resource {field} must be a JSON string: {relative}"
+                )
+
+
 def assert_no_private_key_material(relative: str, data: bytes) -> None:
     # Only complete PEM blocks count: libraries such as GLib embed the marker
     # strings as isolated constants for certificate-format detection, while an
@@ -464,6 +491,7 @@ def verify_package(
     verify_runtime_license_bundle(contents, effective_chip)
 
     verify_model_bundle(entries, contents, effective_chip)
+    verify_algorithm_resources(contents)
 
     if target_chip is not None:
         if target_chip in ("rk3576", "rk3588", "rv1126b"):

@@ -1,6 +1,6 @@
-# Rockchip MPP and RGA are supplied by a candidate-bound external sysroot.
-# The validated shared libraries are packaged beside CosmoEdge so qualification
-# never depends on a silently different target image library.
+# Rockchip MPP and RGA are supplied by a candidate-bound external sysroot for
+# compilation. Runtime images use the board-matched system libraries; packaging
+# foreign media .so files can be ABI-incompatible with the board kernel driver.
 set(COSMO_ROCKCHIP_MEDIA_ROOT "" CACHE PATH
     "Rockchip media root containing include/rockchip, include/rga, and lib/")
 if(NOT COSMO_ROCKCHIP_MEDIA_ROOT AND DEFINED ENV{ROCKCHIP_MEDIA_ROOT})
@@ -42,10 +42,12 @@ set_target_properties(rockchip_rga PROPERTIES
     IMPORTED_LOCATION "${ROCKCHIP_RGA_LIBRARY}"
     INTERFACE_INCLUDE_DIRECTORIES "${COSMO_ROCKCHIP_MEDIA_ROOT}/include")
 
+# MPP must remain paired with the board kernel driver. RGA is packaged because
+# the project uses the newer im2d API and has qualified this userspace library
+# against the target RK3588 driver.
 install(DIRECTORY "${COSMO_ROCKCHIP_MEDIA_ROOT}/lib/"
     DESTINATION lib
     FILES_MATCHING
-        PATTERN "librockchip_mpp.so*"
         PATTERN "librga.so*")
 
 set(ROCKCHIP_MEDIA_LICENSES

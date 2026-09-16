@@ -67,6 +67,28 @@ if [ "${PROFILE_CHIP}" != "${TARGET_CHIP}" ]; then
     exit 1
 fi
 
+# The staged resource manifest must stay hash-closed against the repository,
+# so staging needs a repository profile path. The image-local override
+# (COSMO_PLATFORM_PROFILE_DIR) exists for chips whose checked-in profile still
+# references the Ubuntu legacy media profile; when the checked-in profile
+# already matches the selected profile, prefer the repository copy.
+REPO_PLATFORM_PROFILE="${PROJECT_ROOT_PATH}/config/rknn/platforms/${TARGET_CHIP}.json"
+if [ -f "${REPO_PLATFORM_PROFILE}" ] && [ "${PLATFORM_PROFILE}" != "${REPO_PLATFORM_PROFILE}" ]; then
+    if python3 - "${REPO_PLATFORM_PROFILE}" "${PLATFORM_PROFILE}" <<'PY'
+import json
+import sys
+
+def runtime_profile(path):
+    profile = json.loads(open(path, encoding="utf-8").read())
+    return profile.get("media", {}).get("runtime_profile")
+
+sys.exit(0 if runtime_profile(sys.argv[1]) == runtime_profile(sys.argv[2]) else 1)
+PY
+    then
+        PLATFORM_PROFILE="${REPO_PLATFORM_PROFILE}"
+    fi
+fi
+
 MEDIA_CPU_BACKEND=ON
 MEDIA_ROCKCHIP_BACKEND=OFF
 if [ -n "${ROCKCHIP_MEDIA_ROOT_PATH}" ] && [ "${COSMO_FORCE_CPU_MEDIA:-OFF}" != "ON" ]; then

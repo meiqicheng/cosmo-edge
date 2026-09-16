@@ -96,6 +96,7 @@ class PackageProfileTests(unittest.TestCase):
         include_model_guard: bool = False,
         rknn_terms: bytes | None = None,
         model_guard_runtime: bytes | None = None,
+        algorithm_resources: dict[str, bytes] | None = None,
     ) -> pathlib.Path:
         root = "cosmo-V1.5.0"
         directory = pathlib.Path(tempfile.mkdtemp())
@@ -179,6 +180,16 @@ class PackageProfileTests(unittest.TestCase):
                 info.size = len(data)
                 info.mode = 0o755 if name in executable_files or name.endswith("provision") else 0o644
                 archive.addfile(info, io.BytesIO(data))
+            for relative, data in (algorithm_resources or {}).items():
+                if (
+                    not relative.startswith("resource/algorithm/")
+                    or not relative.endswith(".json")
+                ):
+                    raise ValueError(f"invalid algorithm resource fixture: {relative}")
+                info = tarfile.TarInfo(f"{root}/{relative}")
+                info.size = len(data)
+                info.mode = 0o640
+                archive.addfile(info, io.BytesIO(data))
             model_path = f"{root}/resource/models/preset/model.nn"
             info = tarfile.TarInfo(model_path)
             info.size = len(model)
@@ -261,6 +272,39 @@ class PackageProfileTests(unittest.TestCase):
 
     def test_open_accepts_plain_model(self) -> None:
         verifier.verify_package(self.make_package("public-runtime"), "public-runtime")
+
+    def test_algorithm_resources_require_runtime_wire_types(self) -> None:
+        valid = json.dumps(
+            {
+                "algorithmId": "7463",
+                "algorithmMetadata": "{}",
+                "algorithmProcessdata": "[]",
+                "atomicList": "[]",
+            }
+        ).encode()
+        package = self.make_package(
+            "public-runtime",
+            algorithm_resources={"resource/algorithm/valid.json": valid},
+        )
+        verifier.verify_package(package, "public-runtime")
+
+        invalid = json.dumps(
+            {
+                "algorithmId": "7463",
+                "algorithmMetadata": {},
+                "algorithmProcessdata": [],
+                "atomicList": [],
+            }
+        ).encode()
+        package = self.make_package(
+            "public-runtime",
+            algorithm_resources={"resource/algorithm/invalid.json": invalid},
+        )
+        with self.assertRaisesRegex(
+            verifier.PackageAuditError,
+            "algorithmMetadata must be a JSON string",
+        ):
+            verifier.verify_package(package, "public-runtime")
 
     def test_distribution_license_bundle_is_mandatory(self) -> None:
         for required in (
@@ -969,10 +1013,14 @@ class PackageProfileTests(unittest.TestCase):
                 encoding="utf-8"
             )
         )
+        expected_core_counts = {"rk3576": 2, "rv1126b": 1}
         for profile, chip in ((rk3576, "rk3576"), (rv1126b, "rv1126b")):
             self.assertEqual(profile["backend"], "rknn")
             self.assertEqual(profile["chip"], chip)
             self.assertEqual(profile["conversion"]["target_platform"], chip)
+            self.assertEqual(
+                profile["runtime"]["npu_core_count"], expected_core_counts[chip]
+            )
             self.assertTrue(profile["media"]["cpu_fallback"])
             self.assertEqual(profile["media"]["default_backend"], "rockchip")
             self.assertEqual(
@@ -1037,7 +1085,7 @@ class PackageProfileTests(unittest.TestCase):
         self.assertEqual(mpp_so["elf"]["soname"], "librockchip_mpp.so.1")
         self.assertEqual(
             mpp_so["sha256"],
-            "b3f15d57a7516bab1e6167b8244afaff8f27b0b7d34813328db8420a7019820b",
+            "c7ec7d42796e69618c05a9a6ee782d5581ba53cf3cb41f9a38f3428d6a1777db",
         )
 
     def test_rk3588_preview_binds_rockchip_media_to_frozen_bullseye_builder(self) -> None:
@@ -1065,6 +1113,7 @@ class PackageProfileTests(unittest.TestCase):
         self.assertEqual(profile["backend"], "rknn")
         self.assertEqual(profile["chip"], "rk3588")
         self.assertEqual(profile["conversion"]["target_platform"], "rk3588")
+        self.assertEqual(profile["runtime"]["npu_core_count"], 3)
         self.assertEqual(profile["media"]["default_backend"], "rockchip")
         self.assertEqual(
             profile["media"]["runtime_profile"],
@@ -1086,21 +1135,17 @@ class PackageProfileTests(unittest.TestCase):
         self.assertNotIn("glibc_max", builder_lock["common"])
         self.assertNotIn("ffmpeg_root", builder_lock["common"])
         self.assertIn("lib/libavcodec.so.58", target["required_package_paths"])
-        self.assertIn("lib/librockchip_mpp.so.1", target["required_package_paths"])
         self.assertIn("lib/librga.so", target["required_package_paths"])
         self.assertIn("lib/librkllmrt.so", target["required_package_paths"])
         self.assertIn("share/licenses/rkllm/LICENSE", target["required_package_paths"])
         self.assertEqual(target["forbidden_package_paths"], [])
         self.assertNotIn("optional_overlays", builder_lock)
 
-        # Builder image freezes the bullseye base by digest, verifies the
-        # RKNN runtime sha256, assembles the FFmpeg root, and bakes in the
+        # Builder image uses the requested Debian 11 slim base ARG, verifies
+        # the RKNN runtime sha256, assembles the FFmpeg root, and bakes in the
         # shared builder lock behind the package-script env override.
-        self.assertIn(
-            "debian:bullseye@sha256:"
-            "99cdf7792e25416bd801861ccd8e2fb27fb527b25e8d9a8704ebc3ead2015675",
-            dockerfile,
-        )
+        self.assertIn("ARG ROCKCHIP_LEGACY_BASE=debian:11-slim", dockerfile)
+        self.assertIn("FROM ${ROCKCHIP_LEGACY_BASE} AS rockchip-toolchain", dockerfile)
         # The bullseye builder image is assembled entirely FROM SCRATCH:
         # it no longer COPYs from the legacy rk3576 toolchain image.
         self.assertNotIn(
@@ -1119,6 +1164,11 @@ class PackageProfileTests(unittest.TestCase):
             dockerfile,
         )
         self.assertIn("builder-versions.json", dockerfile)
+        self.assertIn("/etc/profile.d/cosmo-toolchain-path.sh", dockerfile)
+        self.assertIn(
+            "export PATH=/usr/local/cargo/bin:/usr/local/node/bin:$PATH",
+            dockerfile,
+        )
 
         # Single image: RKLLM is baked in at /opt/rkllm; no core/rkllm split.
         self.assertIn(" AS rockchip-toolchain", dockerfile)
