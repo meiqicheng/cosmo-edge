@@ -3,7 +3,8 @@
 //
 // Covers:
 //   1. TaskPipelineRequiresHostFrame: action-level full-graph evaluation
-//      (detect-only eligible; any classify/track/alarm downstream ineligible).
+//      (detect plus box-only track/filter eligible; any classify/alarm
+//      downstream ineligible).
 //   2. TaskPipelineRequiresHostFrame: configuration-level evaluation — Phase 1
 //      rejects ordinary areas, shielded areas, and line rules even when the
 //      action graph is a pure detector.
@@ -89,11 +90,12 @@ TEST_CASE("Native-only eligibility evaluates the full task graph, not only the r
         CHECK(TaskPipelineRequiresHostFrame(graph.task));
     }
 
-    SECTION("track downstream disables native-only") {
+    SECTION("box-only track and filter downstream stay native-only eligible") {
         TestTaskGraph graph;
         graph.AddAction(std::string(cosmo::AADetect_Code), "det-flow", "root-flow");
         graph.AddAction(std::string(cosmo::AATrack_Code), "trk-flow", "det-flow");
-        CHECK(TaskPipelineRequiresHostFrame(graph.task));
+        graph.AddAction(std::string(cosmo::BAFilter_Code), "flt-flow", "trk-flow");
+        CHECK_FALSE(TaskPipelineRequiresHostFrame(graph.task));
     }
 
     SECTION("unknown action codes fail closed") {

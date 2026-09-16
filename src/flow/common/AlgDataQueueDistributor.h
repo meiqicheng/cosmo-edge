@@ -34,7 +34,14 @@ struct AlgDataTask {
 
 struct AlgFrameDistributionPlan {
     std::vector<std::shared_ptr<AlgDataQueue<AlgDataPtr>>> queues;
+    // True only when every selected task group can consume the native input
+    // without a materialized host frame. This controls the native-only fast
+    // path, not whether a native descriptor should be exported.
     bool native_inference_eligible{true};
+    // True when at least one selected task group can consume a native input
+    // descriptor. A host-frame-consuming downstream action disables the
+    // native-only fast path, but the root detector can still use the descriptor.
+    bool native_descriptor_requested{false};
 
     [[nodiscard]] bool Empty() const {
         return queues.empty();
@@ -42,6 +49,10 @@ struct AlgFrameDistributionPlan {
 
     [[nodiscard]] bool SupportsNativeInference() const {
         return !queues.empty() && native_inference_eligible;
+    }
+
+    [[nodiscard]] bool RequestsNativeDescriptor() const {
+        return !queues.empty() && native_descriptor_requested;
     }
 };
 

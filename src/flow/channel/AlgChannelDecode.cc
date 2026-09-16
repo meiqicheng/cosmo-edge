@@ -348,7 +348,10 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
     }
 
     media::NativeVideoBufferPtr native_inference_buffer;
-    if (task_plan.SupportsNativeInference() && NativeInferenceBufferEnabled()) {
+    // Host materialization and native descriptor export are separate decisions.
+    // A classify or alarm action can require a host frame while the root
+    // detector still uses the MPP DMA-BUF for RKNN/RGA zero-copy input.
+    if (task_plan.RequestsNativeDescriptor() && NativeInferenceBufferEnabled()) {
         native_inference_buffer = decoded_frame.ExportNativeBuffer();
     }
 

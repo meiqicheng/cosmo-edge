@@ -44,6 +44,41 @@ struct AlgChannelDataDec {
     int64_t reportTimeStamp{0};
 };
 
+/// Frame identity resolved from whichever pixel source the decode stage attached.
+///
+/// The host-frame path exposes geometry and identity through `frame`; the
+/// native-only (DMA-BUF) path materializes no host frame and carries the same
+/// values in `meta`. Downstream box-only actions must not observe a difference,
+/// so they resolve here instead of dereferencing `frame` directly (which is
+/// null on the native-only path).
+struct AlgResolvedFrameInfo {
+    int width{media::kVideoDefaultWidth};
+    int height{media::kVideoDefaultHeight};
+    int64_t streamIndex{0};
+    int64_t frameIndex{0};
+    int64_t timestamp{0};
+};
+
+inline AlgResolvedFrameInfo ResolveAlgFrameInfo(const AlgChannelDataDec& dec) {
+    AlgResolvedFrameInfo info;
+    if (dec.frame && dec.frame->Active()) {
+        info.width       = static_cast<int>(dec.frame->GetWidth());
+        info.height      = static_cast<int>(dec.frame->GetHeight());
+        info.streamIndex = dec.frame->GetStreamIndex();
+        info.frameIndex  = static_cast<int64_t>(dec.frame->GetFrameIndex());
+        info.timestamp   = dec.frame->GetTimestamp();
+        return info;
+    }
+    if (dec.meta.valid) {
+        info.width       = dec.meta.width;
+        info.height      = dec.meta.height;
+        info.streamIndex = dec.meta.streamIndex;
+        info.frameIndex  = dec.meta.frameIndex;
+        info.timestamp   = dec.meta.timestamp;
+    }
+    return info;
+}
+
 struct DataDetTrackClassify {
     bool bHaveArea{false};
     bool bHaveShieldedArea{false};

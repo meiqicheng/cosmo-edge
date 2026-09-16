@@ -19,6 +19,8 @@
 #include "flow/common/AlgTaskNativeCapability.h"
 #include "flow/task/TaskBase.h"
 #include "infer/AiComponment.h"
+#include "mem/AllocatorCpu.h"
+#include "mem/MemoryPoolMng.h"
 #include "media/NativeVideoBuffer.h"
 #include "media/VideoFrame.h"
 #include "mock/MockServiceRegistry.h"
@@ -71,14 +73,17 @@ TEST_CASE("AlgFrameDistributionPlan::SupportsNativeInference", "[flow][native-in
 
     AlgFrameDistributionPlan empty;
     CHECK_FALSE(empty.SupportsNativeInference());
+    CHECK_FALSE(empty.RequestsNativeDescriptor());
     CHECK(empty.Empty());  // no queues → Empty() true
 
     SECTION("non-empty queues with native_inference_eligible=true") {
         auto q = std::make_shared<cosmo::AlgDataQueue<cosmo::AlgDataPtr>>("q1");
         AlgFrameDistributionPlan plan;
         plan.queues.push_back(q);
-        plan.native_inference_eligible = true;
+        plan.native_inference_eligible    = true;
+        plan.native_descriptor_requested = true;
         CHECK(plan.SupportsNativeInference());
+        CHECK(plan.RequestsNativeDescriptor());
         CHECK_FALSE(plan.Empty());
     }
 
@@ -88,6 +93,7 @@ TEST_CASE("AlgFrameDistributionPlan::SupportsNativeInference", "[flow][native-in
         plan.queues.push_back(q);
         plan.native_inference_eligible = false;
         CHECK_FALSE(plan.SupportsNativeInference());
+        CHECK_FALSE(plan.RequestsNativeDescriptor());
     }
 }
 
@@ -442,6 +448,17 @@ TEST_CASE("ResolveAlgTaskNativeCapability is fail-closed for unknown codes",
     CHECK(detect.supports_native_input);
     CHECK(detect.NativeOnlyEligible());
 
+    // Box-only downstream actions run on the native-only path: they consume
+    // detection geometry plus AlgFrameMeta identity and never read pixels.
+    for (const auto& code : {cosmo::AATrack_Code, cosmo::BAFilter_Code}) {
+        const auto capability = ResolveAlgTaskNativeCapability(code);
+        INFO("actionId=" << code);
+        CHECK(capability.supports_native_input);
+        CHECK_FALSE(capability.requires_host_frame);
+        CHECK(capability.NativeOnlyEligible());
+    }
+
+    // Pixel- or media-consuming actions stay fail-closed.
     const auto unknown = ResolveAlgTaskNativeCapability("ZZ_99999");
     CHECK_FALSE(unknown.supports_native_input);
     CHECK(unknown.requires_host_frame);
@@ -450,7 +467,8 @@ TEST_CASE("ResolveAlgTaskNativeCapability is fail-closed for unknown codes",
     CHECK_FALSE(unknown.NativeOnlyEligible());
 
     for (const auto& code :
-         {cosmo::AATrack_Code, cosmo::AAClassify_Code, cosmo::GADetectTrack_Code, cosmo::DAQwen3VL_Code}) {
+         {cosmo::AAClassify_Code, cosmo::BASensitivity_Code, cosmo::BATaskAlarm_Code,
+          cosmo::GADetectTrack_Code, cosmo::DAQwen3VL_Code}) {
         const auto capability = ResolveAlgTaskNativeCapability(code);
         INFO("actionId=" << code);
         CHECK_FALSE(capability.NativeOnlyEligible());
@@ -515,6 +533,64 @@ TEST_CASE("DistributorNativeOnlyFrame preserves frame metadata on queued copies"
         CHECK(meta.pixelFormat == cosmo::media::PixelFormat::PIXEL_NV12);
         CHECK(queued->chanDataDec.reportTimeStamp == 555777);
         CHECK(queued->chanDataDec.native_buffer == native);
+    }
+}
+
+TEST_CASE("ResolveAlgFrameInfo reads host frame first and native metadata otherwise",
+          "[flow][native-inference][meta]") {
+    using cosmo::AlgChannelDataDec;
+    using cosmo::ResolveAlgFrameInfo;
+
+    AlgChannelDataDec dec;
+    dec.meta.valid       = true;
+    dec.meta.streamIndex = 3;
+    dec.meta.frameIndex  = 42;
+    dec.meta.timestamp   = 91011;
+    dec.meta.width       = 640;
+    dec.meta.height      = 360;
+
+    SECTION("native-only path carries identity without a host frame") {
+        const auto info = ResolveAlgFrameInfo(dec);
+        CHECK(info.streamIndex == 3);
+        CHECK(info.frameIndex == 42);
+        CHECK(info.timestamp == 91011);
+        CHECK(info.width == 640);
+        CHECK(info.height == 360);
+    }
+
+    SECTION("host frame identity wins when both sources are present") {
+        cosmo::mem::MemoryPoolMng memory_pool(std::make_unique<cosmo::mem::AllocatorCpu>(),
+                                              {640 * 360 * 3 / 2});
+        cosmo::mem::SetMemoryPoolContext(&memory_pool);
+        struct PoolReset {
+            ~PoolReset() {
+                cosmo::mem::SetMemoryPoolContext(nullptr);
+            }
+        } pool_reset;
+
+        // Keep the frame (and therefore its pool-backed storage) scoped inside
+        // the pool's lifetime so teardown never returns memory to a null pool.
+        AlgChannelDataDec local = dec;
+        auto frame = std::make_shared<cosmo::media::VideoFrame>(640, 360,
+                                                                cosmo::media::PixelFormat::PIXEL_I420);
+        REQUIRE(frame->Active());
+        frame->SetFrameIndex(999);
+        frame->SetStreamIndex(7);
+        frame->SetTimestamp(123);
+        local.frame = frame;
+
+        const auto info = ResolveAlgFrameInfo(local);
+        CHECK(info.streamIndex == 7);
+        CHECK(info.frameIndex == 999);
+        CHECK(info.timestamp == 123);
+    }
+
+    SECTION("missing identity never fabricates a valid frame") {
+        AlgChannelDataDec empty;
+        const auto info = ResolveAlgFrameInfo(empty);
+        CHECK(info.frameIndex == 0);
+        CHECK(info.streamIndex == 0);
+        CHECK(info.timestamp == 0);
     }
 }
 
