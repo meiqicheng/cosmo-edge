@@ -1,6 +1,6 @@
-name: rk3588-longrun-mixed-2ch-24h
-displayName: RK3588 混合任务 2 路 24 小时长稳
-sampleIntervalSec: 60
+name: rk3588-capacity-no-safety-helmet-15fps
+displayName: RK3588 单任务容量矩阵 未戴安全帽分析 15FPS
+sampleIntervalSec: 3
 
 channels:
   mode: local
@@ -10,13 +10,13 @@ channels:
       file: ../LX0000000007.mp4
 
 tasks:
-  - id: person-detector
-    displayName: 人员检测
+  - id: no-safety-helmet
+    displayName: 未戴安全帽分析
     type: cv
-    algorithmId: "7463"
+    algorithmId: "7463002"
     scheduleId: "e89c6c6385e5454b35cde0d1653vg"
-    template: ../algorithm-template-7463.json
-    targetFps: 24
+    template: ../algorithm-template-7463002.json
+    targetFps: 15
     taskConfig:
       params:
         - key: param.targetAlarmInterval
@@ -29,19 +29,9 @@ tasks:
           value: "1"
         - key: param.detectionDuration
           value: "3600"
-  - id: no-safety-helmet
-    displayName: 未戴安全帽分析
-    type: cv
-    algorithmId: "7463002"
-    scheduleId: "e89c6c6385e5454b35cde0d1653vg"
-    template: ../algorithm-template-7463002.json
-    targetFps: 24
-    taskConfig:
-      params: []
-
 loadProfile:
-  - channels: 2
-    holdSec: 86400
+  - channels: 32
+    holdSec: 30
 
 thresholds:
   pass:
@@ -54,4 +44,3 @@ thresholds:
     cv:
       minFpsRatio: 0.8
       maxMissingRate: 0
-
