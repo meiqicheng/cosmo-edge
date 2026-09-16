@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "bundle_id": "cosmo-community-example-rk3588-v1",
+  "chip": "rk3588",
+  "usage_scope": "community-example",
+  "commercial_delivery": false,
+  "license": {
+    "spdx": "AGPL-3.0-only",
+    "path": "data/resource/aiboxresource_rknn/model-artifacts/LICENSES/AGPL-3.0.txt",
+    "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0",
+    "upstream": "https://github.com/ultralytics/ultralytics/blob/main/LICENSE"
+  },
+  "qualification": {
+    "status": "candidate-validated",
+    "public_record": "docs/benchmarks/scenario-bench/v1.1/models/rk3588.json"
+  },
+  "models": [
+    {
+      "model": "helmet",
+      "package_directory": "prod_RK3588_7982161_helmet_V1.0.0",
+      "spec": {
+        "path": "config/rknn/models/helmet.json",
+        "sha256": "8e8453ae79c2d1566b1bfd3bc746adec38bf28f3d303772f69d9f2f3a589d903"
+      },
+      "source": {
+        "path": "data/resource/aiboxresource_x86/models/prod_X86_7982161_helmet_V1.0.0/model.onnx",
+        "sha256": "a0ea37d99416371c6ef073d5ac87b486b77bb822b1f8aa29f2f30a8a06c97cdd",
+        "size_bytes": 5779190
+      },
+      "artifact": {
+        "path": "data/resource/aiboxresource_rk3588/models/prod_RK3588_7982161_helmet_V1.0.0/model.rknn",
+        "sha256": "e1ec3e335a4f2bd81059587e21d5ac731ae621a160f7b0ee2d869f8ee1378a1b",
+        "size_bytes": 2012605
+      }
+    },
+    {
+      "model": "yolov8",
+      "package_directory": "prod_RK3588_9275710_YOLOV8_V1.0.0",
+      "spec": {
+        "path": "config/rknn/models/yolov8.json",
+        "sha256": "e437f7202ce79a253a60cc742aa41efaebacea04166dd65c840dc15b1bb060d9"
+      },
+      "source": {
+        "path": "data/resource/aiboxresource_x86/models/prod_X86_9275710_YOLOV8_V1.0.0/model.onnx",
+        "sha256": "5f8e91cb4507596b66cd5e3b7193bb16f7bd4779ed3b78e3613fcc51b83db8e1",
+        "size_bytes": 12851046
+      },
+      "artifact": {
+        "path": "data/resource/aiboxresource_rk3588/models/prod_RK3588_9275710_YOLOV8_V1.0.0/model.rknn",
+        "sha256": "bce9f86626678b0b8989b9218ee9e3bf583001810715973b414f48b15c6ca834",
+        "size_bytes": 4279251
+      }
+    }
+  ]
+}
