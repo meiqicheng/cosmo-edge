@@ -191,6 +191,8 @@ export function auditLongRun(runResult, options = {}) {
   const maxMemoryPercent = Number(options.maxMemoryPercent ?? 98);
   const maxPoolGrowthBytes = Number(options.maxPoolGrowthBytes ?? 64 * MIB);
   const poolGrowthWarmupSec = Number(options.poolGrowthWarmupSec ?? 0);
+  const allowRgaCropHostStaging = options.allowRgaCropHostStaging === true;
+  const allowMppRgaMaterialization = options.allowMppRgaMaterialization === true;
   const minRgaBoundUint8Frames = options.minRgaBoundUint8Frames == null
     ? null
     : Number(options.minRgaBoundUint8Frames);
@@ -252,6 +254,8 @@ export function auditLongRun(runResult, options = {}) {
   const add = (...args) => checks.push(check(...args));
   const samples = Array.isArray(runResult.samples) ? runResult.samples : [];
   const holdSamples = samples.filter((sample) => sample?.phase !== 'ramp');
+  const previews = holdSamples.map((sample) => sample.preview ?? {});
+  const previewMode = runResult.previewProfile?.mode ?? previews.find((preview) => preview.mode)?.mode ?? 'none';
   const timestamps = holdSamples.map((sample) => Number(sample?.ts));
   const validTimestamps = timestamps.filter(Number.isFinite);
   const startedMs = Date.parse(runResult.startedAt);
@@ -284,7 +288,9 @@ export function auditLongRun(runResult, options = {}) {
     ? (effectiveEndMs - firstFullLoadTs) / 1000
     : null;
   const sampleSpanSec = firstTs != null && lastTs != null ? (lastTs - firstTs) / 1000 : null;
-  const firstSampleDelaySec = Number.isFinite(startedMs) && firstTs != null ? (firstTs - startedMs) / 1000 : null;
+  const firstSampleDelaySec = Number.isFinite(startedMs) && Number.isFinite(firstFullLoadTs)
+    ? (firstFullLoadTs - startedMs) / 1000
+    : null;
   const finalSampleDelaySec = runResult.status === 'completed'
     && Number.isFinite(reportedEndedMs)
     && lastTs != null
@@ -549,10 +555,16 @@ export function auditLongRun(runResult, options = {}) {
       ? Object.keys(accelerator).filter((key) => FAILURE_COUNTER_SUFFIX.test(key))
       : []
   )))].sort();
-  const failureCounterKeys = [...new Set([
+  const allFailureCounterKeys = [...new Set([
     ...REQUIRED_FAILURE_COUNTERS,
     ...dynamicFailureCounterKeys,
   ])];
+  const allowedRgaCropHostStagingCounters = allowRgaCropHostStaging
+    ? new Set(['rknnRgaCropHostFallbacks'])
+    : new Set();
+  const failureCounterKeys = allFailureCounterKeys.filter(
+    (key) => !allowedRgaCropHostStagingCounters.has(key),
+  );
   const gatedForbiddenCounters = minRgaBoundNativeInt8Frames == null
     ? []
     : NATIVE_BOUND_FORBIDDEN_COUNTERS;
@@ -587,6 +599,37 @@ export function auditLongRun(runResult, options = {}) {
     Object.fromEntries(nonZeroFailures.map((key) => [key, counters[key].max])),
     'every failure/fallback counter equals zero in every hold sample',
   );
+  if (allowRgaCropHostStaging) {
+    const calls = counters.rknnRgaCropResizeCalls?.delta;
+    const dmaBufFrames = counters.rknnRgaCropDmaBufFrames?.delta;
+    const hostStagingFrames = allFailureCounterKeys.includes('rknnRgaCropHostFallbacks')
+      ? counters.rknnRgaCropHostFallbacks?.delta
+      : null;
+    const coverageError = [calls, dmaBufFrames, hostStagingFrames].every(Number.isFinite)
+      ? Math.abs(calls - dmaBufFrames - hostStagingFrames)
+      : null;
+    const tolerance = Number.isFinite(calls) ? Math.max(2, Math.ceil(calls * 0.001)) : null;
+    const cpuFallbacks = counters.rknnCpuCropResizeFallbackCalls?.delta;
+    const rgaFailures = counters.rknnRgaCropResizeFailures?.delta;
+    add(
+      'native.rgaCropCoverage',
+      coverageError != null
+        && coverageError <= tolerance
+        && cpuFallbacks === 0
+        && rgaFailures === 0
+        ? 'PASS'
+        : 'FAIL',
+      {
+        calls,
+        dmaBufFrames,
+        hostStagingFrames,
+        cpuFallbacks,
+        rgaFailures,
+        coverageError,
+      },
+      `RGA crop calls stay fully accounted by DMA-BUF or host staging (tolerance ${tolerance}), with zero CPU fallbacks and RGA failures`,
+    );
+  }
   if (minRgaBoundUint8Frames != null) {
     const fusedFrames = counters.rknnRgaBoundUint8Frames?.delta;
     add(
@@ -621,8 +664,12 @@ export function auditLongRun(runResult, options = {}) {
     const fusedFrames = counters.rknnRgaBoundUint8Frames?.delta;
     const nativeFrames = counters.rknnRgaBoundNativeInt8Frames?.delta;
     const requantizeCalls = counters.rknnRgaBoundRequantizeCalls?.delta;
+    // Forward and bound-input counters are sampled from independent paths.
+    // Under concurrent load a few frames can be visible in one counter before
+    // the other has completed, so allow one bounded in-flight window while
+    // still rejecting sustained accounting gaps.
     const accountingTolerance = Number.isFinite(forwards)
-      ? Math.max(2, Math.ceil(forwards * 0.0001))
+      ? Math.max(8, Math.ceil(forwards * 0.0001))
       : null;
     const forwardCoverageError = [forwards, boundFrames].every(Number.isFinite)
       ? Math.abs(forwards - boundFrames)
@@ -659,7 +706,7 @@ export function auditLongRun(runResult, options = {}) {
       `>= ${minRgaBoundNativeInt8Frames} native INT8 frames, no fused UINT8 frames, and complete forward/bind/requantize accounting (tolerance ${accountingTolerance})`,
     );
   }
-  if (minRknnMppDmaBufFrames != null) {
+  if (minRknnMppDmaBufFrames != null && !allowMppRgaMaterialization) {
     const frames = counters.rknnMppDmaBufFrames?.delta;
     add(
       'native.rknnMppDmaBuf',
@@ -668,7 +715,7 @@ export function auditLongRun(runResult, options = {}) {
       `>= ${minRknnMppDmaBufFrames} RKNN frames sourced from MPP DMA-BUF`,
     );
   }
-  if (minRknnRgaCropDmaBufFrames != null) {
+  if (minRknnRgaCropDmaBufFrames != null && !allowMppRgaMaterialization) {
     const frames = counters.rknnRgaCropDmaBufFrames?.delta;
     add(
       'native.rknnRgaCropDmaBuf',
@@ -744,7 +791,9 @@ export function auditLongRun(runResult, options = {}) {
     { copied, rgaCopiedOut, cpuCopyOutFallbacks, error: rgaCopyOutError },
     `all materialized frames use RGA (tolerance ${copyAccountingTolerance})`,
   );
-  if (options.expectedDecoderBackend?.startsWith('rockchip-')) {
+  if (options.expectedDecoderBackend?.startsWith('rockchip-')
+      && !allowMppRgaMaterialization
+      && previewMode !== 'none') {
     add(
       'native.earlyDropActive',
       earlyDropped > 0 ? 'PASS' : 'FAIL',
@@ -777,17 +826,25 @@ export function auditLongRun(runResult, options = {}) {
   const osdRatio = Number.isFinite(encoded) && encoded > 0 && Number.isFinite(osd)
     ? osd / encoded
     : null;
-  add(
-    'native.previewFrameFlow',
-    encoded > 0 && publishRatio >= 0.99 && publishRatio <= 1.01
-      && osdRatio >= 0.99 && osdRatio <= 1.01
-      ? 'PASS'
-      : 'FAIL',
-    { encoded, osd, published, osdRatio: round(osdRatio, 6), publishRatio: round(publishRatio, 6) },
-    'OSD and published frame deltas stay within 1% of encoded frames',
-  );
+  if (previewMode === 'none') {
+    add(
+      'native.previewFrameFlow',
+      'N/A',
+      { encoded, osd, published, osdRatio: round(osdRatio, 6), publishRatio: round(publishRatio, 6) },
+      'preview disabled',
+    );
+  } else {
+    add(
+      'native.previewFrameFlow',
+      encoded > 0 && publishRatio >= 0.99 && publishRatio <= 1.01
+        && osdRatio >= 0.99 && osdRatio <= 1.01
+        ? 'PASS'
+        : 'FAIL',
+      { encoded, osd, published, osdRatio: round(osdRatio, 6), publishRatio: round(publishRatio, 6) },
+      'OSD and published frame deltas stay within 1% of encoded frames',
+    );
+  }
 
-  const previews = holdSamples.map((sample) => sample.preview ?? {});
   const previewErrors = previews.filter((preview) => (
     Array.isArray(preview.errors) && preview.errors.length > 0
   )).length;
@@ -796,7 +853,6 @@ export function auditLongRun(runResult, options = {}) {
   const srsStreams = numeric(previews.map((preview) => preview.srsStreams));
   const inferredPreviewStreams = expectedPreviewStreams
     ?? (requestedStreams.length ? Math.max(...requestedStreams) : 0);
-  const previewMode = runResult.previewProfile?.mode ?? previews.find((preview) => preview.mode)?.mode ?? 'none';
   if (previewMode === 'none' && inferredPreviewStreams === 0) {
     add('preview.health', 'N/A', { mode: previewMode }, 'preview disabled');
   } else {

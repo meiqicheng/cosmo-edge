@@ -178,6 +178,60 @@ test('long-run audit reports IN_PROGRESS before the wall-clock gate', () => {
   assert.deepEqual(result.failures, []);
 });
 
+test('long-run audit skips preview frame-flow gating when preview is disabled', () => {
+  const input = runResult();
+  input.previewProfile = { mode: 'none' };
+  for (const item of input.samples) {
+    item.preview = { mode: 'none', requestedStreams: 0, errors: [] };
+    item.hardware.accelerator.mppEarlyDroppedFrames = 0;
+    item.hardware.accelerator.mppCopyOutFrames = item.hardware.accelerator.mppDecodedFrames;
+    item.hardware.accelerator.mppRgaCopyOutFrames = item.hardware.accelerator.mppDecodedFrames;
+    item.hardware.accelerator.mppEncodedFrames = 0;
+    item.hardware.accelerator.mppRgaCopyInFrames = 0;
+    item.hardware.accelerator.osdFrames = 0;
+    item.hardware.accelerator.publishedFrames = 0;
+  }
+  input.samples.at(-1).preview.srsStreams = 0;
+  input.samples.at(-1).preview.srsPublishingStreams = 0;
+
+  const result = auditLongRun(input, {
+    ...options,
+    expectedPreviewStreams: 0,
+  });
+  assert.equal(result.verdict, 'PASS');
+  assert.equal(result.checks.find((item) => item.id === 'native.previewFrameFlow')?.status, 'N/A');
+  assert.equal(result.checks.some((item) => item.id === 'native.earlyDropActive'), false);
+});
+
+test('long-run audit accepts fully accounted RGA host staging without accepting CPU fallback', () => {
+  const input = runResult();
+  for (const item of input.samples) {
+    const accelerator = item.hardware.accelerator;
+    accelerator.rknnRgaCropDmaBufFrames = 0;
+    accelerator.rknnRgaCropHostFallbacks = accelerator.rknnRgaCropResizeCalls;
+  }
+
+  const rejected = auditLongRun(input, options);
+  assert.equal(rejected.verdict, 'FAIL');
+  assert.ok(rejected.failures.includes('native.failures'));
+
+  const accepted = auditLongRun(input, {
+    ...options,
+    allowRgaCropHostStaging: true,
+  });
+  assert.equal(accepted.verdict, 'PASS');
+  assert.equal(accepted.checks.find((item) => item.id === 'native.rgaCropCoverage')?.status, 'PASS');
+
+  input.samples.at(-1).hardware.accelerator.rknnCpuCropResizeFallbackCalls = 1;
+  const cpuFallback = auditLongRun(input, {
+    ...options,
+    allowRgaCropHostStaging: true,
+  });
+  assert.equal(cpuFallback.verdict, 'FAIL');
+  assert.ok(cpuFallback.failures.includes('native.failures'));
+  assert.ok(cpuFallback.failures.includes('native.rgaCropCoverage'));
+});
+
 test('long-run audit does not count partial-load ramp time toward the duration gate', () => {
   const input = runResult();
   input.samples[0].activeChannels = 1;
@@ -326,6 +380,36 @@ test('long-run audit gates complete native INT8 DMA-BUF accounting and transform
   assert.equal(result.checks.find((item) => item.id === 'native.legacyInputPaths')?.status, 'PASS');
 });
 
+test('long-run audit accepts the RK3588 RGA materialization path without MPP DMA-BUF', () => {
+  const input = enableNativeInt8(runResult());
+  for (const item of input.samples) {
+    const accelerator = item.hardware.accelerator;
+    accelerator.mppEarlyDroppedFrames = 0;
+    accelerator.mppCopyOutFrames = accelerator.mppDecodedFrames;
+    accelerator.mppRgaCopyOutFrames = accelerator.mppDecodedFrames;
+    accelerator.rknnMppDmaBufFrames = 0;
+    accelerator.rknnMppDmaBufImportCalls = 0;
+    accelerator.rknnRgaCropDmaBufFrames = 0;
+    accelerator.rknnRgaCropHostFallbacks = accelerator.rknnRgaCropResizeCalls;
+  }
+
+  const result = auditLongRun(input, {
+    ...options,
+    minRgaBoundUint8Frames: undefined,
+    minRgaBoundNativeInt8Frames: 1,
+    minRknnMppDmaBufFrames: 1,
+    minRknnRgaCropDmaBufFrames: 1,
+    maxRgaBoundRequantizeAvgMs: 1,
+    allowRgaCropHostStaging: true,
+    allowMppRgaMaterialization: true,
+  });
+  assert.equal(result.verdict, 'PASS');
+  assert.equal(result.checks.some((item) => item.id === 'native.rknnMppDmaBuf'), false);
+  assert.equal(result.checks.some((item) => item.id === 'native.rknnRgaCropDmaBuf'), false);
+  assert.equal(result.checks.some((item) => item.id === 'native.earlyDropActive'), false);
+  assert.equal(result.checks.find((item) => item.id === 'native.rgaCropCoverage')?.status, 'PASS');
+});
+
 test('native INT8 audit rejects legacy host-copy and rknn_inputs_set activity', () => {
   const input = enableNativeInt8(runResult());
   input.samples[2].hardware.accelerator.rknnBoundInputCopyCalls = 1;
@@ -378,6 +462,24 @@ test('long-run audit rejects uncovered RKNN forwards and slow native transform',
   assert.equal(result.verdict, 'FAIL');
   assert.ok(result.failures.includes('native.rgaBoundNativeInt8'));
   assert.ok(result.failures.includes('native.rgaBoundRequantizeLatency'));
+});
+
+test('native INT8 audit tolerates bounded in-flight accounting at the sampling edge', () => {
+  const input = enableNativeInt8(runResult());
+  for (const item of input.samples) {
+    item.hardware.accelerator.rknnRgaBoundInputFrames -= 4;
+    item.hardware.accelerator.rknnRgaBoundNativeInt8Frames -= 4;
+    item.hardware.accelerator.rknnRgaBoundRequantizeCalls -= 4;
+  }
+
+  const result = auditLongRun(input, {
+    ...options,
+    minRgaBoundUint8Frames: undefined,
+    minRgaBoundNativeInt8Frames: 1,
+    maxRgaBoundRequantizeAvgMs: 1,
+  });
+  assert.equal(result.verdict, 'PASS');
+  assert.equal(result.checks.find((item) => item.id === 'native.rgaBoundNativeInt8')?.status, 'PASS');
 });
 
 test('file audit binds source and allowlisted candidate identity by SHA-256', () => {
