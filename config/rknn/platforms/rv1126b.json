@@ -9,7 +9,8 @@
   },
   "runtime": {
     "architecture": "aarch64",
-    "default_core_mode": "auto"
+    "default_core_mode": "auto",
+    "npu_core_count": 1
   },
   "media": {
     "default_backend": "rockchip",
