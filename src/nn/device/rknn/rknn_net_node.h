@@ -43,12 +43,18 @@ enum class RknnCoreMode : uint8_t {
     Auto = 0,
     Core0,
     Core1,
+    Core2,
     Core01,
+    Core012,
     Split,
 };
 
 RknnCoreMode ParseRknnCoreMode(const std::string& value, bool* valid = nullptr);
+RknnCoreMode ConfiguredRknnCoreMode();
+uint32_t RknnTargetCoreCount();
+uint64_t NextRknnContextSequence();
 rknn_core_mask ResolveRknnCoreMask(RknnCoreMode mode, uint64_t context_sequence);
+bool IsRknnCoreModeSupported(RknnCoreMode mode);
 bool ShouldConfigureRknnCoreMask(RknnCoreMode mode);
 const char* RknnCoreModeName(RknnCoreMode mode);
 

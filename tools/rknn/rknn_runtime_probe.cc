@@ -63,9 +63,13 @@ std::optional<rknn_core_mask> ParseCoreMask(const std::string& value) {
         return RKNN_NPU_CORE_0;
     if (value == "1")
         return RKNN_NPU_CORE_1;
+    if (value == "2")
+        return RKNN_NPU_CORE_2;
     if (value == "01")
         return RKNN_NPU_CORE_0_1;
-    throw std::runtime_error("core mask must be one of: auto, 0, 1, 01");
+    if (value == "012" || value == "0_1_2")
+        return RKNN_NPU_CORE_0_1_2;
+    throw std::runtime_error("core mask must be one of: auto, 0, 1, 2, 01, 012");
 }
 
 std::string Shape(const rknn_tensor_attr& attr) {

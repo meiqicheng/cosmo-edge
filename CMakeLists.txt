@@ -169,11 +169,32 @@ if(COSMO_NN_USE_RKNN_BACKEND)
     if(NOT EXISTS "${COSMO_PLATFORM_PROFILE}")
         message(FATAL_ERROR "RKNN platform profile not found: ${COSMO_PLATFORM_PROFILE}")
     endif()
+    file(READ "${COSMO_PLATFORM_PROFILE}" COSMO_RKNN_PLATFORM_PROFILE_JSON)
+    string(REGEX MATCH
+        "\"default_core_mode\"[ \t\r\n]*:[ \t\r\n]*\"([A-Za-z0-9_]+)\""
+        _ "${COSMO_RKNN_PLATFORM_PROFILE_JSON}")
+    if(NOT CMAKE_MATCH_1)
+        message(FATAL_ERROR
+            "RKNN platform profile must define runtime.default_core_mode: ${COSMO_PLATFORM_PROFILE}")
+    endif()
+    set(COSMO_RKNN_DEFAULT_CORE_MODE "${CMAKE_MATCH_1}")
+    string(REGEX MATCH
+        "\"npu_core_count\"[ \t\r\n]*:[ \t\r\n]*([1-9][0-9]*)"
+        _ "${COSMO_RKNN_PLATFORM_PROFILE_JSON}")
+    if(NOT CMAKE_MATCH_1)
+        message(FATAL_ERROR
+            "RKNN platform profile must define runtime.npu_core_count: ${COSMO_PLATFORM_PROFILE}")
+    endif()
+    set(COSMO_RKNN_TARGET_CORE_COUNT "${CMAKE_MATCH_1}")
     add_compile_definitions(
         COSMO_RKNN_TARGET_CHIP="${COSMO_TARGET_CHIP_NORMALIZED}"
-        COSMO_RKNN_TARGET_CHIP_LABEL="${COSMO_TARGET_CHIP_LABEL}")
+        COSMO_RKNN_TARGET_CHIP_LABEL="${COSMO_TARGET_CHIP_LABEL}"
+        COSMO_RKNN_DEFAULT_CORE_MODE="${COSMO_RKNN_DEFAULT_CORE_MODE}"
+        COSMO_RKNN_TARGET_CORE_COUNT=${COSMO_RKNN_TARGET_CORE_COUNT})
     message(STATUS
-        "RKNN platform profile: ${COSMO_TARGET_CHIP_NORMALIZED} (${COSMO_PLATFORM_PROFILE})")
+        "RKNN platform profile: ${COSMO_TARGET_CHIP_NORMALIZED} "
+        "default_core_mode=${COSMO_RKNN_DEFAULT_CORE_MODE} "
+        "npu_core_count=${COSMO_RKNN_TARGET_CORE_COUNT} (${COSMO_PLATFORM_PROFILE})")
 endif()
 
 # Media acceleration is selected independently from inference. Defaults keep
