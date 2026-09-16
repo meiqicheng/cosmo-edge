@@ -318,7 +318,11 @@ TEST_CASE("RKNN core scheduling maps explicit and split modes deterministically"
     CHECK(valid);
     CHECK(ParseRknnCoreMode("core_1", &valid) == RknnCoreMode::Core1);
     CHECK(valid);
+    CHECK(ParseRknnCoreMode("CORE2", &valid) == RknnCoreMode::Core2);
+    CHECK(valid);
     CHECK(ParseRknnCoreMode("dual", &valid) == RknnCoreMode::Core01);
+    CHECK(valid);
+    CHECK(ParseRknnCoreMode("triple", &valid) == RknnCoreMode::Core012);
     CHECK(valid);
     CHECK(ParseRknnCoreMode("split", &valid) == RknnCoreMode::Split);
     CHECK(valid);
@@ -328,16 +332,35 @@ TEST_CASE("RKNN core scheduling maps explicit and split modes deterministically"
     CHECK(ResolveRknnCoreMask(RknnCoreMode::Auto, 7) == RKNN_NPU_CORE_AUTO);
     CHECK(ResolveRknnCoreMask(RknnCoreMode::Core0, 7) == RKNN_NPU_CORE_0);
     CHECK(ResolveRknnCoreMask(RknnCoreMode::Core1, 7) == RKNN_NPU_CORE_1);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Core2, 7) == RKNN_NPU_CORE_2);
     CHECK(ResolveRknnCoreMask(RknnCoreMode::Core01, 7) == RKNN_NPU_CORE_0_1);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Core012, 7) == RKNN_NPU_CORE_0_1_2);
     CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 0) == RKNN_NPU_CORE_0);
     CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 1) == RKNN_NPU_CORE_1);
-    CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 2) == RKNN_NPU_CORE_0);
+    if (RknnTargetCoreCount() >= 3) {
+        CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 2) == RKNN_NPU_CORE_2);
+        CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 3) == RKNN_NPU_CORE_0);
+    } else {
+        CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 2) == RKNN_NPU_CORE_0);
+        CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 3) == RKNN_NPU_CORE_1);
+    }
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Auto));
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core0));
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core1) == (RknnTargetCoreCount() >= 2));
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core2) == (RknnTargetCoreCount() >= 3));
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core01) == (RknnTargetCoreCount() >= 2));
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core012) == (RknnTargetCoreCount() >= 3));
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Split) == (RknnTargetCoreCount() >= 2));
     CHECK_FALSE(ShouldConfigureRknnCoreMask(RknnCoreMode::Auto));
     CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core0));
     CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core1));
+    CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core2));
     CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core01));
+    CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core012));
     CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Split));
     CHECK(std::string(RknnCoreModeName(RknnCoreMode::Core01)) == "core0_1");
+    CHECK(std::string(RknnCoreModeName(RknnCoreMode::Core2)) == "core2");
+    CHECK(std::string(RknnCoreModeName(RknnCoreMode::Core012)) == "core0_1_2");
 }
 
 TEST_CASE("RKNN MPP DMA-BUF switch defaults on and supports explicit rollback", "[nn][rknn][mpp-dmabuf]") {

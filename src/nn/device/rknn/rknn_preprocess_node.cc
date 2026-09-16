@@ -265,12 +265,16 @@ namespace {
             current_height = next_height;
         }
 
-        std::vector<std::vector<uint8_t>> stage_storage;
+        // RGA's MMU cannot map buffers backed by upper-RAM (>4 GiB) physical
+        // pages; the multicore driver fails such jobs with "no core match"
+        // instead of falling back to swiotlb (see Rockchip librga FAQ Q1.9/
+        // Q4.5). Stage intermediate RGB frames in the physically-low dma32
+        // heap so every RGA input/output stays addressable by all cores.
+        media::Dma32Buffer stage_dma[16];
         std::vector<media::ScopedRgaBufferHandle> stage_handles;
         std::vector<rga_buffer_t> stage_buffers;
         if (destinations.size() > 1) {
             const auto intermediate_count = destinations.size() - 1;
-            stage_storage.reserve(intermediate_count);
             stage_handles.reserve(intermediate_count);
             stage_buffers.reserve(intermediate_count);
         }
@@ -288,9 +292,11 @@ namespace {
                 const int width    = destinations[index].first;
                 const int height   = destinations[index].second;
                 const size_t bytes = PackedByteCount(width, height);
-                stage_storage.emplace_back(bytes);
+                const size_t stage = stage_handles.size();
                 stage_handles.emplace_back();
-                if (bytes == 0 || !stage_handles.back().ImportVirtual(stage_storage.back().data(), bytes)) {
+                if (bytes == 0 || stage >= sizeof(stage_dma) / sizeof(stage_dma[0]) ||
+                    !stage_dma[stage].Allocate(bytes) ||
+                    !stage_handles.back().ImportFd(stage_dma[stage].Fd(), bytes)) {
                     last_status = IM_STATUS_OUT_OF_MEMORY;
                     return false;
                 }
@@ -528,23 +534,53 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
         GetInferencePipelineMetrics().RecordRknnRgaFailure();
         return false;
     }
-    bool bound_target =
-        allow_bound_target && RknnRgaBoundInputEnabled() && shared_resource->rknn_bound_input_preprocess_compatible;
-    void* target_va          = top_handle.base;
-    int target_width_stride  = out_width_;
+    // Acquire (and, on first use, publish) the graph-local RGA-bound input
+    // target. The acquire call is what makes the provider bind and publish the
+    // target; without it the detector graph never publishes one and the resize
+    // would read an unpublished null virtual address. Any rejection falls
+    // through to the host staging path below.
+    bool bound_target   = false;
+    uint32_t bound_handle = 0;
+    if (allow_bound_target) {
+        bound_target = AcquireRgaBoundTarget(bound_handle);
+    }
+    void* target_va         = top_handle.base;
+    int target_width_stride = out_width_;
     if (bound_target) {
-        auto& bound_input = shared_resource->rknn_bound_input_target;
+        auto& bound_input   = shared_resource->rknn_bound_input_target;
         target_width_stride = bound_input.width_stride;
-        target_va = bound_input.virtual_address;
+        target_va           = bound_input.virtual_address;
     }
     rga_buffer_t target{};
     target.vir_addr = target_va;
-    target.width = out_width_;
-    target.height = out_height_;
-    target.wstride = target_width_stride;
-    target.hstride = out_height_;
-    target.format = RK_FORMAT_RGB_888;
+    target.width    = out_width_;
+    target.height   = out_height_;
+    target.wstride  = target_width_stride;
+    target.hstride  = out_height_;
+    target.format   = RK_FORMAT_RGB_888;
+    rga_buffer_t target_fd{};
+    if (bound_target) {
+        target_fd = wrapbuffer_handle_t(bound_handle, out_width_, out_height_, target_width_stride,
+                                        out_height_, RK_FORMAT_RGB_888);
+    }
+    const auto& native = bottom_handle.native_image;
+    media::NativeVideoPlaneLayout native_layout;
+    bool native_layout_valid = false;
+    if (native.format == IMAGE_NV12 || native.format == IMAGE_I420) {
+        native_layout_valid = media::DeriveNativeVideoPlaneLayout(
+                                  ToNativeVideoBufferFormat(native.format), native.width, native.height,
+                                  native.width_stride, native.height_stride, native_layout) &&
+                              native.bytes >= native_layout.required_bytes;
+        if (!native_layout_valid && RknnMppDmaBufEnabled() && native.Valid())
+            LogMppDmaBufLayoutRejectedOnce(native);
+    }
+    const bool native_compatible = RknnMppDmaBufEnabled() && native.Valid() && native_layout_valid &&
+                                   native.width == source_width && native.height == source_height;
     if (!target.vir_addr) {
+        static std::atomic<bool> va_warned{false};
+        if (!va_warned.exchange(true))
+            LOG_WARN("RKNN detector RGA target has no virtual address (bound_target={}); using CPU fallback",
+                     bound_target);
         GetInferencePipelineMetrics().RecordRknnRgaFailure();
         return false;
     }
@@ -555,11 +591,11 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
                                      IM_COLOR_SPACE_MODE yuv_color_space, bool apply_color_space) {
         rga_buffer_t source{};
         source.vir_addr = const_cast<void*>(source_va);
-        source.width = visible_width;
-        source.height = visible_height;
-        source.wstride = width_stride;
-        source.hstride = height_stride;
-        source.format = source_format;
+        source.width    = visible_width;
+        source.height   = visible_height;
+        source.wstride  = width_stride;
+        source.hstride  = height_stride;
+        source.format   = source_format;
         if (yuv_color_space != IM_COLOR_SPACE_DEFAULT && apply_color_space) {
             // Modern librga interprets color_space_mode as the color range of
             // each buffer. Writing the legacy conversion selector (0x1)
@@ -618,34 +654,66 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
                                source_format, yuv_color_space, false);
     };
 
-    const auto& native = bottom_handle.native_image;
-    media::NativeVideoPlaneLayout native_layout;
-    bool native_layout_valid = false;
-    if (native.format == IMAGE_NV12 || native.format == IMAGE_I420) {
-        native_layout_valid = media::DeriveNativeVideoPlaneLayout(
-                                  ToNativeVideoBufferFormat(native.format), native.width, native.height,
-                                  native.width_stride, native.height_stride, native_layout) &&
-                              native.bytes >= native_layout.required_bytes;
-        if (!native_layout_valid && RknnMppDmaBufEnabled() && native.Valid())
-            LogMppDmaBufLayoutRejectedOnce(native);
-    }
-    const bool native_compatible = !native_rga_unavailable_ && RknnMppDmaBufEnabled() && native.Valid() &&
-                                   native_layout_valid && native.width == source_width &&
-                                   native.height == source_height;
+    // Native MPP frames and the RKNN input target are both DMA-BUFs. Keep
+    // them as fd-backed RGA handles instead of importing the mapped virtual
+    // address: on RK3588 the virtual-address import path is the one that
+    // fails for these buffers, while both fd imports are already known-good.
+    const auto run_native_resize_once = [&](rga_buffer_t source, bool apply_color_space) {
+        if (apply_color_space) {
+            media::SetRgaYuvToRgbColorSpace(source, target_fd, ResolveRgaYuvColorSpace(native));
+        }
+
+        const auto fill_started = MetricsClock::now();
+        std::memset(target_va, padding_color_[0], target_size);
+        GetInferencePipelineMetrics().RecordRknnRgaFill(ElapsedNanoseconds(fill_started));
+
+        const float scale        = std::min(static_cast<float>(out_width_) / native.width,
+                                            static_cast<float>(out_height_) / native.height);
+        const int resized_width  = static_cast<int>(native.width * scale);
+        const int resized_height = static_cast<int>(native.height * scale);
+        const int offset_x       = (out_width_ - resized_width) / 2;
+        const int offset_y       = (out_height_ - resized_height) / 2;
+        const im_rect source_rect{0, 0, native.width, native.height};
+        const im_rect target_rect{offset_x, offset_y, resized_width, resized_height};
+        const im_rect empty_rect{};
+        const rga_buffer_t empty_buffer{};
+        const auto resize_started = MetricsClock::now();
+        last_status = improcess(source, target_fd, empty_buffer, source_rect, target_rect, empty_rect, IM_SYNC);
+        GetInferencePipelineMetrics().RecordRknnRgaResizeColor(ElapsedNanoseconds(resize_started));
+        return media::RockchipRgaSucceeded(last_status);
+    };
+    const auto run_native_resize = [&](rga_buffer_t source, IM_COLOR_SPACE_MODE yuv_color_space) {
+        std::lock_guard<std::mutex> rga_lock(media::RgaGlobalLock());
+        if (yuv_colorspace_unsupported.load(std::memory_order_relaxed))
+            return run_native_resize_once(source, false);
+        if (run_native_resize_once(source, true))
+            return true;
+        if (yuv_color_space == IM_COLOR_SPACE_DEFAULT)
+            return false;
+        yuv_colorspace_unsupported.store(true, std::memory_order_relaxed);
+        LOG_WARN(
+            "RKNN native RGA rejected YUV color-space descriptors; retrying without them "
+            "(legacy RGA driver detected)");
+        return run_native_resize_once(source, false);
+    };
+
     if (native_compatible) {
         bool native_success = false;
-        if (!RknnForceMppDmaBufFailure() && !(native.format == IMAGE_I420 && native.width % 16 != 0)) {
-            void* native_va = mmap(NULL, native.bytes, PROT_READ, MAP_PRIVATE, native.fd, 0);
+        if (!RknnForceMppDmaBufFailure() && bound_target &&
+            !(native.format == IMAGE_I420 && native.width % 16 != 0)) {
+            media::ScopedRgaBufferHandle native_source_handle;
             const auto import_started = MetricsClock::now();
-            if (native_va != MAP_FAILED) {
+            const bool imported       = native_source_handle.ImportFd(native.fd, native.bytes);
+            if (imported) {
                 const int native_format =
                     native.format == IMAGE_NV12 ? RK_FORMAT_YCbCr_420_SP : RK_FORMAT_YCbCr_420_P;
-                native_success = run_resize(native_va, native.width, native.height, native.width_stride,
-                                            native.height_stride, native_format, ResolveRgaYuvColorSpace(native));
-                munmap(native_va, native.bytes);
+                const auto source = wrapbuffer_handle_t(
+                    native_source_handle.Get(), native.width, native.height, native.width_stride,
+                    native.height_stride, native_format);
+                native_success = run_native_resize(source, ResolveRgaYuvColorSpace(native));
             }
             GetInferencePipelineMetrics().RecordRknnMppDmaBufImport(ElapsedNanoseconds(import_started),
-                                                                    native_success);
+                                                                    imported && native_success);
         }
         if (native_success) {
             GetInferencePipelineMetrics().RecordRknnMppDmaBufFrame(native.bytes);
@@ -691,8 +759,8 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
         auto* host_dst_va = static_cast<uint8_t*>(const_cast<void*>(rga_host_dst_buf_.Map()));
         if (host_src_va && host_dst_va) {
             std::memcpy(host_src_va, bottom_handle.base, source_size);
-            const float scale = std::min(static_cast<float>(out_width_) / source_width,
-                                         static_cast<float>(out_height_) / source_height);
+            const float scale        = std::min(static_cast<float>(out_width_) / source_width,
+                                                static_cast<float>(out_height_) / source_height);
             const int resized_width  = static_cast<int>(source_width * scale);
             const int resized_height = static_cast<int>(source_height * scale);
             const int offset_x       = (out_width_ - resized_width) / 2;
@@ -702,9 +770,11 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
             // buffer stay outside it to limit contention between RGA lanes.
             {
                 std::lock_guard<std::mutex> rga_lock(media::RgaGlobalLock());
+                const auto fill_started = MetricsClock::now();
                 std::memset(host_dst_va, padding_color_[0], target_size);
-                const rga_buffer_t src =
-                    media::RgaFdBuffer(rga_host_src_buf_.Fd(), source_width, source_height, host_source_format);
+                GetInferencePipelineMetrics().RecordRknnRgaFill(ElapsedNanoseconds(fill_started));
+                const rga_buffer_t src = media::RgaFdBuffer(rga_host_src_buf_.Fd(), source_width,
+                                                            source_height, host_source_format);
                 rga_buffer_t dst =
                     media::RgaFdBuffer(rga_host_dst_buf_.Fd(), out_width_, out_height_, RK_FORMAT_RGB_888);
                 const im_rect source_rect{0, 0, source_width, source_height};
@@ -712,15 +782,17 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
                 const im_rect empty_rect{};
                 const rga_buffer_t empty_buffer{};
                 const auto resize_started = MetricsClock::now();
-                last_status = improcess(src, dst, empty_buffer, source_rect, target_rect, empty_rect, IM_SYNC);
+                last_status =
+                    improcess(src, dst, empty_buffer, source_rect, target_rect, empty_rect, IM_SYNC);
                 GetInferencePipelineMetrics().RecordRknnRgaResizeColor(ElapsedNanoseconds(resize_started));
                 host_success = media::RockchipRgaSucceeded(last_status);
             }
             if (host_success) {
-                const int row_bytes = out_width_ * 3;
+                const int row_bytes    = out_width_ * 3;
                 const uint8_t* src_row = host_dst_va;
-                uint8_t* dst_row = static_cast<uint8_t*>(target_va);
-                for (int y = 0; y < out_height_; ++y, src_row += row_bytes, dst_row += target_width_stride * 3) {
+                uint8_t* dst_row       = static_cast<uint8_t*>(target_va);
+                for (int y = 0; y < out_height_;
+                     ++y, src_row += row_bytes, dst_row += target_width_stride * 3) {
                     std::memcpy(dst_row, src_row, row_bytes);
                 }
             }
@@ -1122,12 +1194,57 @@ bool RknnCropResizeNode::ForwardWithRga(std::vector<std::shared_ptr<Blob>>& imag
 
         const int rect_count = rect_blobs[image_index]->GetBlobDesc().dims[0];
         for (int rect_index = 0; rect_index < rect_count; ++rect_index) {
-            const int crop_x      = calculated_rects[4 * rect_index];
-            const int crop_y      = calculated_rects[4 * rect_index + 1];
-            const int crop_width  = calculated_rects[4 * rect_index + 2];
-            const int crop_height = calculated_rects[4 * rect_index + 3];
+            int crop_x      = calculated_rects[4 * rect_index];
+            int crop_y      = calculated_rects[4 * rect_index + 1];
+            int crop_width  = calculated_rects[4 * rect_index + 2];
+            int crop_height = calculated_rects[4 * rect_index + 3];
             if (crop_width <= 0 || crop_height <= 0)
                 return false;
+
+            // RGA3, the only core that can map buffers above 4 GiB, rejects
+            // input widths below 68 px, and RGA2 is 4 GiB-only; a small
+            // detector box from a host (virtual) source would otherwise fail
+            // with "no core match" (Rockchip librga FAQ Q1.9/Q4.5). Extend
+            // the crop to the RGA3 minimum input size, clamped to the frame.
+            // Frames too small to reach the minimum keep the original crop;
+            // an RGA failure there falls back to CPU as before.
+            const int rga_min_crop_width  = 68;
+            const int rga_min_crop_height = 2;
+            if (source_width >= rga_min_crop_width && source_height >= rga_min_crop_height) {
+                if (crop_width < rga_min_crop_width) {
+                    const int need  = rga_min_crop_width - crop_width;
+                    const int right = std::min(need, source_width - (crop_x + crop_width));
+                    crop_x -= std::min(need - right, crop_x);
+                    crop_width = std::min(rga_min_crop_width, source_width);
+                }
+                if (crop_height < rga_min_crop_height) {
+                    const int need   = rga_min_crop_height - crop_height;
+                    const int bottom = std::min(need, source_height - (crop_y + crop_height));
+                    crop_y -= std::min(need - bottom, crop_y);
+                    crop_height = std::min(rga_min_crop_height, source_height);
+                }
+                if (crop_width != calculated_rects[4 * rect_index + 2] ||
+                    crop_height != calculated_rects[4 * rect_index + 3]) {
+                    static std::atomic<bool> crop_clamped_logged{false};
+                    if (!crop_clamped_logged.exchange(true))
+                        LOG_INFO("RKNN RGA crop clamped to RGA3 minimum input size {}x{} (original {}x{})",
+                                 crop_width, crop_height, calculated_rects[4 * rect_index + 2],
+                                 calculated_rects[4 * rect_index + 3]);
+                }
+            }
+
+            // A crop below the RGA3 minimum input width can only run on the
+            // 4 GiB-only RGA2 core, so a host (virtual) source or target that
+            // lands above 4 GiB would fail with "no core match". Stage both
+            // sides in the physically-low dma32 heap and copy the result back
+            // (Rockchip librga FAQ Q1.9/Q4.5). Real frames always clamp to
+            // >= 68 px, so this path is a no-op in production.
+            const bool small_crop = crop_width < rga_min_crop_width || crop_height < rga_min_crop_height;
+            media::Dma32Buffer small_source_dma;
+            media::ScopedRgaBufferHandle small_source_handle;
+            media::Dma32Buffer small_target_dma;
+            media::ScopedRgaBufferHandle small_target_handle;
+            uint8_t* small_target_copy_back = nullptr;
 
             media::ScopedRgaBufferHandle host_target_handle;
             uint32_t target_handle = bound_target ? bound_handle : 0;
@@ -1135,9 +1252,21 @@ bool RknnCropResizeNode::ForwardWithRga(std::vector<std::shared_ptr<Blob>>& imag
             if (bound_target) {
                 target_stride = shared_resource->rknn_bound_input_target.width_stride;
             } else {
-                host_target_handle.ImportVirtual(top_data + static_cast<size_t>(processed) * slice_size,
-                                                 slice_size);
-                target_handle = host_target_handle.Get();
+                bool target_staged = false;
+                if (small_crop && slice_size > 0 && small_target_dma.Allocate(slice_size)) {
+                    auto* staged_target_va = static_cast<uint8_t*>(const_cast<void*>(small_target_dma.Map()));
+                    if (staged_target_va != nullptr &&
+                        small_target_handle.ImportFd(small_target_dma.Fd(), slice_size)) {
+                        small_target_copy_back = top_data + static_cast<size_t>(processed) * slice_size;
+                        target_handle          = small_target_handle.Get();
+                        target_staged          = true;
+                    }
+                }
+                if (!target_staged) {
+                    host_target_handle.ImportVirtual(top_data + static_cast<size_t>(processed) * slice_size,
+                                                     slice_size);
+                    target_handle = host_target_handle.Get();
+                }
             }
             if (target_handle == 0) {
                 rga_unavailable_ = true;
@@ -1210,21 +1339,44 @@ bool RknnCropResizeNode::ForwardWithRga(std::vector<std::shared_ptr<Blob>>& imag
             }
 
             if (!success) {
-                if (!host_source_handle) {
-                    host_source_handle.ImportVirtual(image_handle.base,
-                                                     PackedByteCount(source_width, source_height));
+                bool staged_source_used = false;
+                if (small_crop) {
+                    const size_t source_bytes = PackedByteCount(source_width, source_height);
+                    if (source_bytes > 0 && small_source_dma.Allocate(source_bytes)) {
+                        auto* staged_source_va =
+                            static_cast<uint8_t*>(const_cast<void*>(small_source_dma.Map()));
+                        if (staged_source_va != nullptr) {
+                            std::memcpy(staged_source_va, image_handle.base, source_bytes);
+                            if (small_source_handle.ImportFd(small_source_dma.Fd(), source_bytes)) {
+                                auto staged_source = wrapbuffer_handle_t(
+                                    small_source_handle.Get(), source_width, source_height, source_width,
+                                    source_height, host_source_format);
+                                const im_rect source_rect{crop_x, crop_y, crop_width, crop_height};
+                                success = run_crop(staged_source, source_rect, IM_COLOR_SPACE_DEFAULT);
+                                if (success)
+                                    GetInferencePipelineMetrics().RecordRknnRgaCropSource(false);
+                                staged_source_used = true;
+                            }
+                        }
+                    }
                 }
-                if (host_source_handle) {
-                    auto host_source =
-                        wrapbuffer_handle_t(host_source_handle.Get(), source_width, source_height,
-                                            source_width, source_height, host_source_format);
-                    const im_rect source_rect{crop_x, crop_y, crop_width, crop_height};
-                    success = run_crop(host_source, source_rect, IM_COLOR_SPACE_DEFAULT);
-                    if (success)
-                        GetInferencePipelineMetrics().RecordRknnRgaCropSource(false);
-                } else {
-                    last_status = IM_STATUS_OUT_OF_MEMORY;
-                    GetInferencePipelineMetrics().RecordRknnRgaCropResize(0, false);
+                if (!staged_source_used) {
+                    if (!host_source_handle) {
+                        host_source_handle.ImportVirtual(image_handle.base,
+                                                         PackedByteCount(source_width, source_height));
+                    }
+                    if (host_source_handle) {
+                        auto host_source =
+                            wrapbuffer_handle_t(host_source_handle.Get(), source_width, source_height,
+                                                source_width, source_height, host_source_format);
+                        const im_rect source_rect{crop_x, crop_y, crop_width, crop_height};
+                        success = run_crop(host_source, source_rect, IM_COLOR_SPACE_DEFAULT);
+                        if (success)
+                            GetInferencePipelineMetrics().RecordRknnRgaCropSource(false);
+                    } else {
+                        last_status = IM_STATUS_OUT_OF_MEMORY;
+                        GetInferencePipelineMetrics().RecordRknnRgaCropResize(0, false);
+                    }
                 }
             }
             if (!success) {
@@ -1233,6 +1385,11 @@ bool RknnCropResizeNode::ForwardWithRga(std::vector<std::shared_ptr<Blob>>& imag
                 InvalidateRgaBoundFrame();
                 LogRgaCropResizeFallbackOnce(last_status);
                 return false;
+            }
+            if (small_target_copy_back != nullptr) {
+                const void* staged_target = small_target_dma.Map();
+                if (staged_target != nullptr)
+                    std::memcpy(small_target_copy_back, staged_target, slice_size);
             }
             GetInferencePipelineMetrics().RecordRknnPreprocessFastHit();
             ++processed;
