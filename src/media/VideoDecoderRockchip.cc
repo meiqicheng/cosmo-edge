@@ -18,6 +18,7 @@
 #include <rockchip/rk_vdec_cfg.h>
 
 #include "media/PreviewPipelineMetrics.h"
+#include "media/RockchipMppCompat.h"
 #include "media/RockchipRgaBuffer.h"
 #include "media/VideoDecoderCpu.h"
 #include "util/Log.h"
@@ -59,9 +60,7 @@ namespace {
     }
 
     bool IsCompact420Format(MppFrameFormat format) {
-        const auto properties = static_cast<RK_U32>(format) & MPP_FRAME_FMT_PROP_MASK;
-        if ((properties & (MPP_FRAME_FBC_MASK | MPP_FRAME_TILE_FLAG)) != 0 ||
-            MPP_FRAME_FMT_IS_YUV_10BIT(format)) {
+        if (MppFrameIsUnsupportedLayout(format)) {
             return false;
         }
         const auto base = static_cast<RK_U32>(format) & MPP_FRAME_FMT_MASK;
@@ -158,7 +157,7 @@ namespace {
             LOG_WARN("{} could not retain MPP DMA-BUF for inference", decoder_name);
             return nullptr;
         }
-        if (mpp_buffer_sync_ro_begin(buffer) != MPP_OK) {
+        if (MppBufferReadBegin(buffer) != MPP_OK) {
             LOG_WARN("{} could not sync MPP DMA-BUF for RGA read; rolling back", decoder_name);
             mpp_buffer_put(buffer);
             return nullptr;
@@ -176,7 +175,7 @@ namespace {
         result->color_range   = ToNativeColorRange(mpp_frame_get_color_range(frame));
         result->owner         = std::shared_ptr<void>(buffer, [](void* value) {
             if (value) {
-                mpp_buffer_sync_ro_end(static_cast<MppBuffer>(value));
+                MppBufferReadEnd(static_cast<MppBuffer>(value));
                 mpp_buffer_put(static_cast<MppBuffer>(value));
             }
         });
@@ -222,13 +221,13 @@ namespace {
         }
 
         auto* source = static_cast<const uint8_t*>(mpp_buffer_get_ptr(buffer));
-        if (!source || mpp_buffer_sync_ro_begin(buffer) != MPP_OK) {
+        if (!source || MppBufferReadBegin(buffer) != MPP_OK) {
             return nullptr;
         }
         struct ReadSyncGuard {
             MppBuffer buffer;
             ~ReadSyncGuard() {
-                mpp_buffer_sync_ro_end(buffer);
+                MppBufferReadEnd(buffer);
             }
         } sync_guard{buffer};
 
@@ -305,14 +304,14 @@ namespace {
             return nullptr;
         }
 
-        if (mpp_buffer_sync_ro_begin(buffer) != MPP_OK) {
+        if (MppBufferReadBegin(buffer) != MPP_OK) {
             GetPreviewPipelineMetrics().RecordMppRgaCopyOut(false);
             GetPreviewPipelineMetrics().RecordMppCpuCopyOutFallback();
             return CopyMppFrameCpu(decoder_name, frame);
         }
         struct ReadSyncGuard {
             MppBuffer buffer;
-            ~ReadSyncGuard() { mpp_buffer_sync_ro_end(buffer); }
+            ~ReadSyncGuard() { MppBufferReadEnd(buffer); }
         } sync_guard{buffer};
 
         const auto rga_started = std::chrono::steady_clock::now();
@@ -652,8 +651,7 @@ bool VideoDecoderRockchip::ConfigureFrameGroup(size_t buffer_size) {
     const bool reuse_existing_group = state_->frame_group && state_->frame_group_buffer_size == buffer_size;
     if (!state_->frame_group) {
         ret = mpp_buffer_group_get_internal(
-            &state_->frame_group,
-            static_cast<MppBufferType>(MPP_BUFFER_TYPE_DRM | MPP_BUFFER_FLAGS_CACHABLE));
+            &state_->frame_group, MPP_BUFFER_TYPE_DRM);
     } else if (!reuse_existing_group) {
         ret = mpp_buffer_group_clear(state_->frame_group);
     }

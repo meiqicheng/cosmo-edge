@@ -19,6 +19,7 @@
 #include <rockchip/rk_venc_rc.h>
 
 #include "media/PreviewPipelineMetrics.h"
+#include "media/RockchipMppCompat.h"
 #include "media/RockchipRgaBuffer.h"
 #include "media/VideoEncoderCpu.h"
 #include "util/Log.h"
@@ -208,8 +209,12 @@ bool VideoEncoderRockchip::OpenMpp() {
     }
     state_->frame_buffer_size = y_plane * 3 / 2;
 
-    auto ret = mpp_buffer_group_get_internal(
-        &state_->buffer_group, static_cast<MppBufferType>(MPP_BUFFER_TYPE_DRM | MPP_BUFFER_FLAGS_CACHABLE));
+    // This BSP's MPP (1.5.0 on kernel 5.10.198) segfaults inside
+    // mpp_buffer_create for DRM pools created with MPP_BUFFER_FLAGS_CACHABLE
+    // (verified by /tmp/mpp_probe on the board); the decoder frame group uses
+    // the same DRM-only type. Uncached DRM buffers are CPU/HW coherent, so the
+    // no-op cache-sync shims remain correct for this pool.
+    auto ret = mpp_buffer_group_get_internal(&state_->buffer_group, MPP_BUFFER_TYPE_DRM);
     if (ret != MPP_OK) {
         LOG_WARN("MPP buffer group allocation failed: {}", ret);
         CleanMpp();
@@ -227,11 +232,11 @@ bool VideoEncoderRockchip::OpenMpp() {
         CleanMpp();
         return false;
     }
-    mpp_buffer_sync_begin(state_->frame_buffer);
+    MppBufferWriteBegin(state_->frame_buffer);
     const size_t y_plane_size = state_->horizontal_stride * state_->vertical_stride;
     std::memset(frame_buffer_address, 0, y_plane_size);
     std::memset(frame_buffer_address + y_plane_size, 128, state_->frame_buffer_size - y_plane_size);
-    mpp_buffer_sync_end(state_->frame_buffer);
+    MppBufferWriteEnd(state_->frame_buffer);
     state_->rga_copy_in_available =
         state_->frame_rga_handle.ImportFd(mpp_buffer_get_fd(state_->frame_buffer), state_->frame_buffer_size);
     if (!state_->rga_copy_in_available) {
@@ -284,6 +289,17 @@ bool VideoEncoderRockchip::OpenMpp() {
             config_ok = false;
         }
     };
+
+    // This BSP's MPP (1.5.0-1 on kernel 5.10.198) exposes no rc:fps_*_denom
+    // config keys (measured with /tmp/mpp_cfg_probe on the board); setting
+    // the numerator alone is the canonical MPP usage and the denominator
+    // defaults to 1, so rejecting the optional denom keys is benign.
+    const auto set_s32_optional = [&](const char* name, RK_S32 value) {
+        const auto result = mpp_enc_cfg_set_s32(state_->config, name, value);
+        if (result != MPP_OK) {
+            LOG_INFO("MPP encoder config {}={} not supported by this MPP build: {}", name, value, result);
+        }
+    };
     set_s32("prep:width", static_cast<RK_S32>(width_));
     set_s32("prep:height", static_cast<RK_S32>(height_));
     set_s32("prep:hor_stride", static_cast<RK_S32>(state_->horizontal_stride));
@@ -292,10 +308,10 @@ bool VideoEncoderRockchip::OpenMpp() {
     set_s32("rc:mode", MPP_ENC_RC_MODE_CBR);
     set_s32("rc:fps_in_flex", 0);
     set_s32("rc:fps_in_num", kFrameRate);
-    set_s32("rc:fps_in_denom", 1);
+    set_s32_optional("rc:fps_in_denom", 1);
     set_s32("rc:fps_out_flex", 0);
     set_s32("rc:fps_out_num", kFrameRate);
-    set_s32("rc:fps_out_denom", 1);
+    set_s32_optional("rc:fps_out_denom", 1);
     set_s32("rc:drop_mode", MPP_ENC_RC_DROP_FRM_DISABLED);
     set_s32("rc:bps_target", kBitRate);
     set_s32("rc:bps_max", kBitRate * 17 / 16);
@@ -387,18 +403,18 @@ VideoPacketPtr VideoEncoderRockchip::SendYUVFrame(void* data) {
                 std::memcpy(source_dma_ptr, source, compact_y_size + compact_uv_size * 2);
                 const auto source_image = RgaFdBuffer(source_dma.Fd(), static_cast<int>(width_),
                                                       static_cast<int>(height_), RK_FORMAT_YCbCr_420_P);
-                const auto target_fd = mpp_buffer_get_fd(state_->frame_buffer);
-                auto target_image = RgaFdBuffer(target_fd, static_cast<int>(width_),
-                                                static_cast<int>(height_), RK_FORMAT_YCbCr_420_P);
-                target_image.wstride = static_cast<int>(state_->horizontal_stride);
-                target_image.hstride = static_cast<int>(state_->vertical_stride);
-            const im_rect source_rect{0, 0, static_cast<int>(width_), static_cast<int>(height_)};
-            const im_rect target_rect = source_rect;
-            const im_rect empty_rect{};
-            const rga_buffer_t empty_buffer{};
-            std::lock_guard<std::mutex> rga_lock(media::RgaGlobalLock());
-            status = improcess(source_image, target_image, empty_buffer, source_rect, target_rect, empty_rect,
-                               IM_SYNC);
+                const auto target_fd    = mpp_buffer_get_fd(state_->frame_buffer);
+                auto target_image       = RgaFdBuffer(target_fd, static_cast<int>(width_),
+                                                      static_cast<int>(height_), RK_FORMAT_YCbCr_420_P);
+                target_image.wstride    = static_cast<int>(state_->horizontal_stride);
+                target_image.hstride    = static_cast<int>(state_->vertical_stride);
+                const im_rect source_rect{0, 0, static_cast<int>(width_), static_cast<int>(height_)};
+                const im_rect target_rect = source_rect;
+                const im_rect empty_rect{};
+                const rga_buffer_t empty_buffer{};
+                std::lock_guard<std::mutex> rga_lock(media::RgaGlobalLock());
+                status = improcess(source_image, target_image, empty_buffer, source_rect, target_rect,
+                                   empty_rect, IM_SYNC);
             }
         }
         rga_copied = RockchipRgaSucceeded(status);
@@ -413,7 +429,7 @@ VideoPacketPtr VideoEncoderRockchip::SendYUVFrame(void* data) {
 
     if (!rga_copied) {
         GetPreviewPipelineMetrics().RecordMppCpuCopyInFallback();
-        mpp_buffer_sync_begin(state_->frame_buffer);
+        MppBufferWriteBegin(state_->frame_buffer);
         std::memset(destination, 0, mpp_y_size);
         std::memset(destination + mpp_y_size, 128, state_->frame_buffer_size - mpp_y_size);
         for (size_t row = 0; row < height_; ++row) {
@@ -427,7 +443,7 @@ VideoPacketPtr VideoEncoderRockchip::SendYUVFrame(void* data) {
             std::memcpy(destination_u + row * mpp_uv_stride, source_u + row * (width_ / 2), width_ / 2);
             std::memcpy(destination_v + row * mpp_uv_stride, source_v + row * (width_ / 2), width_ / 2);
         }
-        mpp_buffer_sync_end(state_->frame_buffer);
+        MppBufferWriteEnd(state_->frame_buffer);
     }
 
     MppFrame frame = nullptr;
