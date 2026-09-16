@@ -19,6 +19,7 @@
 #include "media/VideoFrameProcSophon.h"
 #include "mem/DeviceContext.h"
 #include "mem/IDeviceContext.h"
+#include "mem/MemoryPoolMng.h"
 #include "service/infra/impl/MemoryPoolServiceImpl.h"
 #include "support/ScopedServiceOverride.h"
 #endif
@@ -281,7 +282,7 @@ namespace {
                 }
             }
         }
-        for (const auto& status : pool.Status()) {
+        for (const auto& status : mem::GetMemoryPool().Status()) {
             REQUIRE(status.used_cnt == 0);
             REQUIRE(status.used_nodes_status.empty());
         }

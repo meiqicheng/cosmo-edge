@@ -8,7 +8,6 @@
 #include <string>
 #include <vector>
 
-#include "service/detail/ServiceRegistry.h"
 #include "service/model/dto/ModelDto.h"
 #include "service/model/dto/ModelInfo.h"
 #include "util/ErrorCode.h"

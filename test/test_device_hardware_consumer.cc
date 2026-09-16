@@ -1,6 +1,7 @@
 #include "catch_amalgamated.hpp"
 #include "mock/MockDeviceInfoService.h"
 #include "platform/NetCardOp.h"
+#include "service/detail/ServiceRegistry.h"
 #include "service/network/impl/NetworkConfigServiceImpl.h"
 #include "support/ScopedServiceOverride.h"
 

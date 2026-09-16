@@ -1,4 +1,5 @@
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -51,6 +52,41 @@ def make_contract(run_id: str = "rknn-conversion-test") -> dict:
 
 
 class RknnAgentConversionWorkflowTest(unittest.TestCase):
+    def test_dispatch_loads_only_the_selected_executor(self):
+        # Exercise import behavior in a fresh interpreter, so another test cannot
+        # hide an eager import by leaving the unselected backend in sys.modules.
+        script = r"""
+import importlib.abc
+import sys
+from unittest import mock
+
+sys.path.insert(0, sys.argv[1])
+family = sys.argv[2]
+blocked = 'model_conversion_workflow' if family == 'rknn' else 'rknn'
+class RejectUnselectedBackend(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == blocked or fullname.startswith(blocked + '.'):
+            raise AssertionError('unselected backend loaded: ' + fullname)
+sys.meta_path.insert(0, RejectUnselectedBackend())
+import conversion_workflow_dispatch as dispatch
+if family == 'rknn':
+    from rknn import agent_conversion_workflow as selected
+else:
+    import model_conversion_workflow as selected
+arguments = ['verify', '--contract', 'fixture']
+with mock.patch.object(dispatch, 'workflow_family', return_value=family), \
+     mock.patch.object(selected, 'main', return_value=17) as execute:
+    assert dispatch.main(arguments) == 17
+    execute.assert_called_once_with(arguments)
+"""
+        for family in ("rknn", "sophon"):
+            with self.subTest(family=family):
+                result = subprocess.run(
+                    [sys.executable, "-I", "-B", "-c", script, str(ROOT / "tools"), family],
+                    capture_output=True, text=True, check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     def test_source_and_normalized_input_use_distinct_onnx_checks(self):
         source = Path("source.onnx")
         report = Path("report.json")

@@ -3,9 +3,9 @@
 ///        log export, firmware upgrade, and debug tools.
 #pragma once
 
+#include <cstdint>
 #include <string>
 
-#include "service/detail/ServiceRegistry.h"
 #include "service/system/UpgradeSpace.h"
 #include "util/ErrorCode.h"
 

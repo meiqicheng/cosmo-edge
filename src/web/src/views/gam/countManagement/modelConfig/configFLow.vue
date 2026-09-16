@@ -18,17 +18,11 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/controls/dist/style.css'
 import { t } from '@/i18n'
 import FlowBoxNode from './FlowBoxNode.vue'
-import FlowMainNode from './FlowMainNode.vue'
-import FlowVerticalNode from './FlowVerticalNode.vue'
 
 const props = defineProps({
   flowData: {
     type: Object,
     default: () => ({})
-  },
-  modelComponents: {
-    type: Array,
-    default: () => []
   }
 })
 const emit = defineEmits(['update:flowData', 'node-config-change'])
@@ -43,14 +37,6 @@ onPaneReady((instance) => {
   instance.fitView()
 })
 
-const toText = (value) => {
-  if (Array.isArray(value) || (value && typeof value === 'object')) {
-    return JSON.stringify(value)
-  }
-  if (value === undefined || value === null) return ''
-  return String(value)
-}
-
 const toValue = (key, value) => {
   if (key === 'shape') {
     try {
@@ -62,146 +48,6 @@ const toValue = (key, value) => {
     }
   }
   return value
-}
-
-const getFormValueByNode = (kind, config) => {
-  if (kind === 'input') {
-    return {
-      name: toText(config.name),
-      shape: toText(config.shape),
-      data_type: toText(config.data_type ?? '0')
-    }
-  }
-  if (kind === 'output') {
-    return {
-      name: toText(config.name),
-      shape: toText(config.shape),
-      data_type: toText(config.data_type ?? '0')
-    }
-  }
-  return {}
-}
-
-const getSchemaByNode = (kind, config) => {
-  if (!config) return []
-
-  const parseOptions = (item) => {
-    if (Array.isArray(item?.options) && item.options.length) {
-      return item.options
-    }
-    const enumeration = item?.enumeration || item?.enums
-    if (typeof enumeration !== 'string' || !enumeration.trim()) {
-      return []
-    }
-    return enumeration
-      .split(',')
-      .map((segment) => segment.split(':'))
-      .filter((parts) => parts.length >= 2)
-      .map((parts) => ({
-        name: String(parts[0]).trim(),
-        value: String(parts[1]).trim()
-      }))
-  }
-
-  const normalizeSchemaItem = (item = {}) => ({
-    type: String(item.type || item.moduleType || 'text'),
-    key: item.key || item.keyValue || '',
-    name: item.name || item.nameValue || item.label || item.key || '',
-    defaultValue:
-      item.defaultValue !== undefined && item.defaultValue !== null
-        ? item.defaultValue
-        : '',
-    description: item.description || item.describe || '',
-    options: parseOptions(item)
-  })
-
-  const getComponentSchema = (componentType) => {
-    const parseConfigArray = (value) => {
-      if (Array.isArray(value)) return value
-      if (typeof value !== 'string' || !value.trim()) return []
-      try {
-        const parsed = JSON.parse(value)
-        return Array.isArray(parsed) ? parsed : []
-      } catch {
-        return []
-      }
-    }
-
-    const renameInputNodeKey = (configArray) => {
-      return configArray.map((item) => {
-        if (item.key === 'input_node' || item.key === 'output_node') {
-          // 只修改匹配项，其余保持不变
-          return { ...item, key: 'name' }
-        }
-        return item
-      })
-    }
-
-    const component = (
-      Array.isArray(props.modelComponents) ? props.modelComponents : []
-    ).find(
-      (item) =>
-        String(item?.componentType || item?.type || '')
-          .toLowerCase()
-          .trim() === componentType
-    )
-    if (!component) return []
-
-    const componentConfigKeyMap = {
-      input: 'inputParamConfig',
-      output: 'inputParamConfig'
-    }
-    const componentConfigKey = componentConfigKeyMap[componentType]
-    const componentConfigList = parseConfigArray(
-      component?.[componentConfigKey]
-    )
-    if (componentConfigList.length) {
-      const newComponentConfigList = renameInputNodeKey(componentConfigList)
-      return newComponentConfigList
-        .map((item) => normalizeSchemaItem(item))
-        .filter((item) => item.key && ['text', 'select'].includes(item.type))
-    }
-
-    const candidateKeys = [
-      'params',
-      'config',
-      'componentConfig',
-      'formItems',
-      'items',
-      'metaDataParams'
-    ]
-    let source = []
-    for (const key of candidateKeys) {
-      if (Array.isArray(component?.[key])) {
-        source = component[key]
-        break
-      }
-    }
-
-    return source
-      .map((item) => normalizeSchemaItem(item))
-      .filter((item) => item.key && ['text', 'select'].includes(item.type))
-  }
-
-  const baseSchema = getComponentSchema(kind) || []
-  const sourceSchema = baseSchema
-
-  return sourceSchema.map((item) => {
-    const hasConfigValue =
-      config[item.key] !== undefined && config[item.key] !== null
-    const options =
-      item.type === 'select' &&
-      (!Array.isArray(item.options) || !item.options.length)
-        ? []
-        : item.options
-    return {
-      ...item,
-      options,
-      defaultValue: hasConfigValue
-        ? toText(config[item.key])
-        : toText(item.defaultValue)
-    }
-  })
 }
 
 const handleToggleNode = (nodeId) => {
@@ -294,9 +140,7 @@ watch(
 )
 
 const nodeTypes = {
-  box: markRaw(FlowBoxNode),
-  main: markRaw(FlowMainNode),
-  vertical: markRaw(FlowVerticalNode)
+  box: markRaw(FlowBoxNode)
 }
 </script>
 

@@ -1,20 +1,21 @@
-#include "catch_amalgamated.hpp"
-/*
- * test_memory_pool_service_impl.cc — MemoryPoolServiceImpl unit tests (DEBT-T01)
- *
- * Strategy: MemoryPoolServiceImpl wraps VPU device memory (bmlib).
- * Construction requires bmlib device init which only works on aarch64.
- * All tests tagged [.device].
- */
 #include <chrono>
 #include <memory>
-#include <stdexcept>
 #include <thread>
+#include <utility>
 
+#include "catch_amalgamated.hpp"
+#include "media/VideoFrame.h"
+#include "mem/MemoryPoolMng.h"
+#include "service/detail/ServiceRegistry.h"
+#include "service/infra/impl/MemoryPoolServiceImpl.h"
+#ifdef COSMO_NN_USE_SOPHON_BACKEND
 #include "mem/DeviceContext.h"
 #include "mem/IDeviceContext.h"
-#include "service/infra/impl/MemoryPoolServiceImpl.h"
 #include "support/ScopedServiceOverride.h"
+#define MEMORY_POOL_TEST_TAGS "[MemoryPoolService][.device]"
+#else
+#define MEMORY_POOL_TEST_TAGS "[MemoryPoolService]"
+#endif
 
 using namespace cosmo::service;
 
@@ -22,6 +23,7 @@ namespace {
 
 using namespace std::chrono_literals;
 
+#ifdef COSMO_NN_USE_SOPHON_BACKEND
 class ScopedDeviceContext {
 public:
     ScopedDeviceContext()
@@ -34,6 +36,7 @@ private:
     std::unique_ptr<cosmo::mem::DeviceContext> device_context_;
     cosmo::test::ScopedServiceOverride<cosmo::mem::IDeviceContext> registration_;
 };
+#endif
 
 class MemoryPoolFixture {
 public:
@@ -42,54 +45,116 @@ public:
     MemoryPoolFixture(const MemoryPoolFixture&)            = delete;
     MemoryPoolFixture& operator=(const MemoryPoolFixture&) = delete;
 
-    MemoryPoolServiceImpl& Service() {
-        return service_;
+private:
+#ifdef COSMO_NN_USE_SOPHON_BACKEND
+    ScopedDeviceContext device_context_;
+#endif
+    MemoryPoolServiceImpl service_;
+};
+
+size_t UsedBlockCount() {
+    size_t count = 0;
+    for (const auto& status : cosmo::mem::GetMemoryPool().Status()) {
+        count += status.used_cnt;
+    }
+    return count;
+}
+
+struct RecycleBlock {
+    void operator()(cosmo::mem::Block* block) const {
+        cosmo::mem::GetMemoryPool().Recycle(block);
+    }
+};
+
+std::unique_ptr<cosmo::mem::Block, RecycleBlock> AcquireBlock() {
+    const auto deadline = std::chrono::steady_clock::now() + 2s;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (auto* block = cosmo::mem::GetMemoryPool().Acquire(1024)) {
+            return std::unique_ptr<cosmo::mem::Block, RecycleBlock>(block);
+        }
+        std::this_thread::sleep_for(10ms);
+    }
+    return {};
+}
+
+struct FrameReleaseObservation {
+    bool released             = false;
+    size_t used_after_release = 0;
+};
+
+class FrameHolder {
+public:
+    FrameHolder(std::unique_ptr<cosmo::media::VideoFrame> frame, FrameReleaseObservation& observation)
+        : frame_(std::move(frame)), observation_(observation) {}
+
+    ~FrameHolder() {
+        frame_.reset();
+        observation_.used_after_release = UsedBlockCount();
+        observation_.released           = true;
     }
 
 private:
-    ScopedDeviceContext device_context_;
-    MemoryPoolServiceImpl service_;
+    std::unique_ptr<cosmo::media::VideoFrame> frame_;
+    FrameReleaseObservation& observation_;
+};
+
+struct RegistryShutdown {
+    ~RegistryShutdown() {
+        ServiceRegistry::Instance().ShutdownAll();
+    }
 };
 
 }  // namespace
 
-TEST_CASE("MemoryPoolServiceImpl: construction and destruction", "[MemoryPoolService][.device]") {
-    REQUIRE_NOTHROW([]() { MemoryPoolFixture fixture; }());
+TEST_CASE("MemoryPoolServiceImpl: construction installs a usable pool", MEMORY_POOL_TEST_TAGS) {
+    MemoryPoolFixture fixture;
+    REQUIRE_FALSE(cosmo::mem::GetMemoryPool().Status().empty());
+    REQUIRE_FALSE(cosmo::mem::GetMemoryPool().OutputMallocBuf().empty());
 }
 
-TEST_CASE("MemoryPoolServiceImpl: Status returns pool info", "[MemoryPoolService][.device]") {
+TEST_CASE("MemoryPoolServiceImpl: global pool acquires and recycles blocks", MEMORY_POOL_TEST_TAGS) {
     MemoryPoolFixture fixture;
-    auto& sut   = fixture.Service();
-    auto status = sut.Status();
-    // Should return at least some pool buckets
-    REQUIRE(!status.empty());
+    const auto baseline = UsedBlockCount();
+    auto block          = AcquireBlock();
+    REQUIRE(block != nullptr);
+    REQUIRE(block->size >= 1024);
+    REQUIRE(UsedBlockCount() == baseline + 1);
+    block.reset();
+    REQUIRE(UsedBlockCount() == baseline);
+    REQUIRE_NOTHROW(cosmo::mem::GetMemoryPool().Recycle(nullptr));
 }
 
-TEST_CASE("MemoryPoolServiceImpl: OutputMallocBuf returns non-empty string", "[MemoryPoolService][.device]") {
-    MemoryPoolFixture fixture;
-    auto& sut = fixture.Service();
-    auto buf  = sut.OutputMallocBuf();
-    REQUIRE(!buf.empty());
-}
+TEST_CASE("MemoryPoolServiceImpl: registry releases frames before pool and can restart",
+          MEMORY_POOL_TEST_TAGS) {
+    auto& registry = ServiceRegistry::Instance();
+    REQUIRE(registry.Size() == 0);
 
-TEST_CASE("MemoryPoolServiceImpl: Acquire and Recycle", "[MemoryPoolService][.device]") {
-    MemoryPoolFixture fixture;
-    auto& sut = fixture.Service();
-
-    SECTION("Acquire returns non-null block for valid size") {
-        const auto deadline = std::chrono::steady_clock::now() + 2s;
-        cosmo::mem::Block* block{nullptr};
-        while (block == nullptr && std::chrono::steady_clock::now() < deadline) {
-            block = sut.Acquire(1024);
-            if (block == nullptr) {
-                std::this_thread::sleep_for(10ms);
-            }
-        }
+    for (int round = 0; round < 2; ++round) {
+        INFO("Lifecycle round " << round);
+#ifdef COSMO_NN_USE_SOPHON_BACKEND
+        ScopedDeviceContext device_context;
+#endif
+        FrameReleaseObservation observation;
+        RegistryShutdown shutdown;
+        registry.Register<MemoryPoolServiceImpl>(std::make_unique<MemoryPoolServiceImpl>());
+        const auto baseline = UsedBlockCount();
+        // Warm the smallest bucket with the same bounded retry as direct allocation.
+        auto block = AcquireBlock();
         REQUIRE(block != nullptr);
-        sut.Recycle(block);
-    }
+        block.reset();
+        REQUIRE(UsedBlockCount() == baseline);
 
-    SECTION("Recycle nullptr does not crash") {
-        REQUIRE_NOTHROW(sut.Recycle(nullptr));
+        auto frame = std::make_unique<cosmo::media::VideoFrame>(16, 16);
+        REQUIRE(frame->Active());
+        REQUIRE(UsedBlockCount() == baseline + 1);
+        registry.Register<FrameHolder>(std::make_unique<FrameHolder>(std::move(frame), observation));
+        registry.CompleteRegistration();
+        registry.ShutdownAll();
+
+        REQUIRE(observation.released);
+        REQUIRE(observation.used_after_release == baseline);
+        REQUIRE(registry.Size() == 0);
     }
 }
+
+#undef MEMORY_POOL_TEST_TAGS

@@ -3,7 +3,7 @@
 #include <vector>
 
 #include "catch_amalgamated.hpp"
-#include "mock/MockNetworkService.h"
+#include "mock/MockNetworkConfig.h"
 #include "service/network/DeviceDiscoveryTypes.h"
 #include "service/network/impl/DeviceDiscoveryReceivePolicy.h"
 #include "service/network/impl/DeviceDiscoveryServiceImpl.h"
@@ -102,8 +102,8 @@ TEST_CASE("DeviceDiscoveryService: construction with params", "[device-discovery
 }
 
 TEST_CASE("DeviceDiscoveryService: Start then Stop", "[device-discovery]") {
-    cosmo::test::MockNetworkService networkSvc;
-    cosmo::test::ScopedServiceOverride<cosmo::service::INetworkService> registration(networkSvc);
+    cosmo::test::MockNetworkConfig networkSvc;
+    cosmo::test::ScopedServiceOverride<cosmo::service::INetworkConfig> registration(networkSvc);
     // Some test hosts cannot join multicast through INADDR_ANY. The service
     // then asks the network service for a main-interface fallback; keep that
     // environment-dependent branch inside the mock contract.

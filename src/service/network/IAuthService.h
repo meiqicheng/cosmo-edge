@@ -6,7 +6,6 @@
 #include <string>
 #include <utility>
 
-#include "service/detail/ServiceRegistry.h"
 #include "util/ErrorCode.h"
 
 namespace cosmo::service {

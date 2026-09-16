@@ -251,10 +251,8 @@ Nine UI context scopes control where compact labels are allowed:
   - `vendor-element` — Element Plus
   - `vendor-echarts` — ECharts
   - `vendor-vue-flow` — @vue-flow/*
-  - `vendor-graph` — @antv/x6, @antv/layout (dependencies currently not installed, reserved)
   - `vendor-lodash` — lodash, dagre
   - `vendor-moment` — moment
-  - `vendor-md` — highlight.js, markdown-it (dependencies currently not installed, reserved)
   - `vendor` — remaining dependencies
 
 ### Environment Variables

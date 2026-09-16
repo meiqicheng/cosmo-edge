@@ -6,7 +6,6 @@
 #include <string>
 #include <vector>
 
-#include "service/detail/ServiceRegistry.h"
 #include "service/task/dto/ScheduleMsgTypes.h"
 #include "util/ErrorCode.h"
 

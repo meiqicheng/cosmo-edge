@@ -72,8 +72,6 @@ const associatedAreaPoints = ref([])
 const isMovingLine = ref(false)
 const isReversed = ref(false)
 
-const platformType = localStorage.getItem('platformType') || ''
-
 const setDefaultImage = (e) => {
   e.target.src = defaultImage
   // 设置默认图片后也要重新绘制
@@ -600,16 +598,9 @@ const submit = () => {
 }
 
 const pointsToRadio = (point) => {
-  if (platformType === '15') {
-    return {
-      xRatio: Number((point[0] / props.width).toFixed(6)),
-      yRatio: Number((point[1] / props.height).toFixed(6))
-    }
-  } else {
-    return {
-      xRatio: (point[0] / props.width).toFixed(6),
-      yRatio: (point[1] / props.height).toFixed(6)
-    }
+  return {
+    xRatio: Number((point[0] / props.width).toFixed(6)),
+    yRatio: Number((point[1] / props.height).toFixed(6))
   }
 }
 

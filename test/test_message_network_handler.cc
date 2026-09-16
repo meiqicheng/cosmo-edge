@@ -6,13 +6,13 @@
 #include "catch2/trompeloeil.hpp"
 // clang-format on
 #include "api/MessageNetworkHandler.h"
-#include "mock/MockNetworkService.h"
+#include "mock/MockNetworkConfig.h"
 #include "service/network/INetworkConfig.h"
 
 namespace cosmo::test {
 
 struct NetworkHandlerMocks {
-    MockNetworkService networkSvc;
+    MockNetworkConfig networkSvc;
 };
 
 TEST_CASE("MessageNetworkHandler: QueryNetCard", "[network-handler]") {

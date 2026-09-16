@@ -1,4 +1,4 @@
-// HttpFileServerCliThread — Worker thread for file upload/download operations.
+// HttpFileServerCliThread — Worker thread for file upload operations.
 
 #include "service/path/impl/file/HttpFileServerCliThread.h"
 
@@ -14,7 +14,7 @@ namespace cosmo::service {
 
 static constexpr const char* kTag = "HttpFileServerCliThread";
 
-/// Default maximum retry count for upload / download operations.
+/// Default maximum attempt count for upload operations.
 static constexpr int kMaxRetries = 3;
 
 /// Error codes that indicate an expired or invalid authentication token.
@@ -23,8 +23,7 @@ static constexpr const char* kErrCodeTokenExpA  = "180000010";
 static constexpr const char* kErrCodeTokenExpB  = "180000009";
 
 namespace {
-    template <typename Task>
-    void Notify(Task& task, bool success) noexcept {
+    void Notify(CUploadFileTask& task, bool success) noexcept {
         if (!task.callback) {
             return;
         }
@@ -54,50 +53,22 @@ CHttpFileServerCliThread::~CHttpFileServerCliThread() {
 
 void CHttpFileServerCliThread::HandleMsg(cosmo::MsgEnvelope& msg) {
     auto task_ptr = msg.ReleaseData();
+    if (static_cast<FileServerMsgId>(msg.GetMsgId()) != FileServerMsgId::kUploadFile) {
+        return;
+    }
+    auto* upload = dynamic_cast<CUploadFileTask*>(task_ptr.get());
+    if (!upload) {
+        LOG_ERRO("{} Invalid task type for kUploadFile", kTag);
+        return;
+    }
     try {
-        switch (static_cast<FileServerMsgId>(msg.GetMsgId())) {
-            case FileServerMsgId::kUploadFile:
-                if (auto* upload = dynamic_cast<CUploadFileTask*>(task_ptr.get())) {
-                    RetryUpload(kMaxRetries, *upload);
-                } else {
-                    LOG_ERRO("{} Invalid task type for kUploadFile", kTag);
-                }
-                break;
-            case FileServerMsgId::kPointUploadFile:
-                if (auto* upload = dynamic_cast<CPointUploadFileTask*>(task_ptr.get())) {
-                    ProcessPointUploadFile(*upload);
-                } else {
-                    LOG_ERRO("{} Invalid task type for kPointUploadFile", kTag);
-                }
-                break;
-            case FileServerMsgId::kGetDownload:
-                if (auto* download = dynamic_cast<CGetDownloadTask*>(task_ptr.get())) {
-                    ProcessGetDownload(kMaxRetries, *download);
-                } else {
-                    LOG_ERRO("{} Invalid task type for kGetDownload", kTag);
-                }
-                break;
-            default:
-                break;
-        }
+        RetryUpload(kMaxRetries, *upload);
     } catch (const std::exception& e) {
         LOG_ERRO("{} task failed with exception: {}", kTag, e.what());
-        if (auto* upload = dynamic_cast<CUploadFileTask*>(task_ptr.get())) {
-            Notify(*upload, false);
-        } else if (auto* point_upload = dynamic_cast<CPointUploadFileTask*>(task_ptr.get())) {
-            Notify(*point_upload, false);
-        } else if (auto* download = dynamic_cast<CGetDownloadTask*>(task_ptr.get())) {
-            Notify(*download, false);
-        }
+        Notify(*upload, false);
     } catch (...) {
         LOG_ERRO("{} task failed with an unknown exception", kTag);
-        if (auto* upload = dynamic_cast<CUploadFileTask*>(task_ptr.get())) {
-            Notify(*upload, false);
-        } else if (auto* point_upload = dynamic_cast<CPointUploadFileTask*>(task_ptr.get())) {
-            Notify(*point_upload, false);
-        } else if (auto* download = dynamic_cast<CGetDownloadTask*>(task_ptr.get())) {
-            Notify(*download, false);
-        }
+        Notify(*upload, false);
     }
 }
 
@@ -105,14 +76,9 @@ void CHttpFileServerCliThread::ClearMsg(cosmo::MsgEnvelope& msg) {
     auto task_ptr = msg.ReleaseData();
     if (auto* upload = dynamic_cast<CUploadFileTask*>(task_ptr.get())) {
         Notify(*upload, false);
-    } else if (auto* point_upload = dynamic_cast<CPointUploadFileTask*>(task_ptr.get())) {
-        Notify(*point_upload, false);
-    } else if (auto* download = dynamic_cast<CGetDownloadTask*>(task_ptr.get())) {
-        Notify(*download, false);
     }
 }
 
-// Unified retry upload — replaces both uploadFileSync and processUploadFile.
 int CHttpFileServerCliThread::RetryUpload(int max_retries, CUploadFileTask& task) {
     const std::string original_file_url = task.file_url;
     const bool absolute_file_url =
@@ -165,35 +131,6 @@ int CHttpFileServerCliThread::RetryUpload(int max_retries, CUploadFileTask& task
     LOG_ERRO("{} UploadFile[{}] failed after {} retries", kTag, task.upload_filepath, max_retries);
     Notify(task, false);
     return -1;
-}
-
-void CHttpFileServerCliThread::ProcessPointUploadFile(CPointUploadFileTask& task) {
-    auto upload_result =
-        file_server_cli_.HttpclientSubmit(cosmo::network::http::FileServerClientType::kPointUploadFile,
-                                          task.upload_filepath, task.req_point_upload);
-    if (!upload_result || 1 != task.req_point_upload.resCode) {
-        LOG_ERRO("{} PointUploadFile failed, errcode[{}]", kTag, task.req_point_upload.resCode);
-        Notify(task, false);
-        return;
-    }
-    LOG_INFO("{} Point Upload File To FileServer Success", kTag);
-    Notify(task, true);
-}
-
-void CHttpFileServerCliThread::ProcessGetDownload(int max_retries, CGetDownloadTask& task) {
-    for (int attempt = 0; attempt < max_retries; ++attempt) {
-        auto upload_result = file_server_cli_.HttpclientSubmit(
-            cosmo::network::http::FileServerClientType::kGetDownload, task.resp_up_file,
-            task.download_file_url, task.download_filepath);
-        if (upload_result) {
-            LOG_INFO("{} DownLoad File Success", kTag);
-            Notify(task, true);
-            return;
-        }
-    }
-
-    LOG_ERRO("{} DownLoad File Failed after {} retries", kTag, max_retries);
-    Notify(task, false);
 }
 
 }  // namespace cosmo::service

@@ -7,7 +7,6 @@
 #include <system_error>
 #include <vector>
 
-#include "service/detail/ServiceRegistry.h"
 #include "service/media/dto/AudioDeviceDto.h"
 
 namespace cosmo::service {

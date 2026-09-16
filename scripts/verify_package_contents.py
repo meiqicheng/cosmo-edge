@@ -69,9 +69,15 @@ MODEL_GUARD_RKNN_RUNTIME_FILE = "lib/libcosmo_model_guard_rknn.so.1.0.0"
 MODEL_GUARD_RUNTIME_HASH_FILE = "share/cosmo-model-guard/runtime.sha256"
 MODEL_GUARD_RKNN_SDK_MANIFEST_FILE = "share/cosmo-model-guard/SDK-MANIFEST.json"
 MODEL_GUARD_RKNN_HEADER_FILE = "share/cosmo-model-guard/cosmo_model_guard_rknn_v1.h"
-APPROVED_MODEL_GUARD_RUNTIME_SHA256 = (
-    "74ff8b456548e615882e5c9ee6dd18a51a2caf8124d761d7243dad014310042c"
+MODEL_GUARD_SDK_MANIFEST_FILE = "share/cosmo-model-guard/SDK-MANIFEST.json"
+MODEL_GUARD_HEADER_FILE = "share/cosmo-model-guard/cosmo_model_guard_v2.h"
+SOPHON_RELEASE_MANIFEST = json.loads(
+    (pathlib.Path(__file__).resolve().parents[1]
+     / "prebuild/model-guard-v2/SDK-MANIFEST.json").read_text(encoding="utf-8")
 )
+APPROVED_MODEL_GUARD_RUNTIME_SHA256 = SOPHON_RELEASE_MANIFEST["components"][
+    MODEL_GUARD_RUNTIME_FILE
+]
 REQUIRED_FILES = {
     "bin/version.txt",
     "scripts/common.sh",
@@ -233,6 +239,29 @@ def verify_runtime_license_bundle(
             raise PackageAuditError(
                 "packaged Model Guard runtime is not the approved artifact"
             )
+        if profile == "production-release":
+            required = (
+                MODEL_GUARD_SDK_MANIFEST_FILE, MODEL_GUARD_HEADER_FILE,
+                "bin/cosmo-model-provision",
+            )
+            for name in required:
+                if name not in contents:
+                    raise PackageAuditError(
+                        f"Protected Sophon package requires SDK component: {name}"
+                    )
+            try:
+                manifest = json.loads(contents[MODEL_GUARD_SDK_MANIFEST_FILE].decode("utf-8"))
+            except (UnicodeError, ValueError) as error:
+                raise PackageAuditError("Sophon SDK manifest is invalid") from error
+            if manifest != SOPHON_RELEASE_MANIFEST:
+                raise PackageAuditError("Sophon SDK manifest does not match the repository release")
+            components = {
+                "include/cosmo_model_guard_v2.h": content_sha256(contents[MODEL_GUARD_HEADER_FILE]),
+                MODEL_GUARD_RUNTIME_FILE: content_sha256(contents[MODEL_GUARD_RUNTIME_FILE]),
+                "bin/cosmo-model-provision": content_sha256(contents["bin/cosmo-model-provision"]),
+            }
+            if manifest["components"] != components:
+                raise PackageAuditError("Sophon SDK component hashes do not match the release manifest")
     if MODEL_GUARD_RKNN_RUNTIME_FILE in contents:
         if target_chip != "rk3576" or profile != "production-release":
             raise PackageAuditError(
@@ -548,12 +577,19 @@ def verify_package(
         raise PackageAuditError("Protected package requires cosmo-model-provision")
     if profile == "public-runtime" and MODEL_GUARD_RKNN_RUNTIME_FILE in contents:
         raise PackageAuditError("Open RK3576 package must not contain Model Guard")
-    if (
-        profile == "production-release"
-        and effective_chip == "rk3576"
-        and MODEL_GUARD_RKNN_RUNTIME_FILE not in contents
-    ):
-        raise PackageAuditError("Protected RK3576 package requires RKNN Model Guard")
+    if profile == "production-release":
+        if effective_chip == "rv1126b":
+            raise PackageAuditError("Protected RV1126B packages are unsupported")
+        guard = (
+            MODEL_GUARD_RKNN_RUNTIME_FILE
+            if effective_chip == "rk3576"
+            else MODEL_GUARD_RUNTIME_FILE
+        )
+        runtime = entries.get(guard)
+        if runtime is None or not runtime.isreg():
+            raise PackageAuditError(
+                f"Protected package requires a regular target Model Guard runtime: {guard}"
+            )
 
     models = {
         name: data

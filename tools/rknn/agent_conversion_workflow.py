@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import agent_workflow as core
-import model_conversion_workflow as common
+import conversion_common as common
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]

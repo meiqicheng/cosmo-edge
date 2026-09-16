@@ -1,6 +1,7 @@
 #include "catch_amalgamated.hpp"
 #include "mock/MockModelService.h"
 #include "service/algorithm/impl/AlgorithmValidator.h"
+#include "service/detail/ServiceRegistry.h"
 #include "service/system/impl/AppInfoServiceImpl.h"
 #include "support/ScopedServiceOverride.h"
 #include "util/Keys.h"

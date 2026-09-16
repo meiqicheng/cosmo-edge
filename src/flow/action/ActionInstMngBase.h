@@ -208,16 +208,25 @@ public:
 
     // Generic GetInst: Find by taskId + flowActionId, create if not found
     // Requires InstT constructor: (taskId, ActionNode&)
-    InstPtr GetInst(const std::string& taskId, ActionNode& action) {
-        std::lock_guard<std::shared_mutex> lock(mtx);
-        auto key  = taskId + action.flowActionId;
-        auto inst = inst_map[key];
-        if (inst) {
-            return inst;
+    [[nodiscard]] InstPtr GetInst(const std::string& taskId, ActionNode& action) {
+        auto key = taskId + action.flowActionId;
+        {
+            std::shared_lock<std::shared_mutex> lock(mtx);
+            auto it = inst_map.find(key);
+            if (it != inst_map.end() && it->second) {
+                return it->second;
+            }
         }
-        LOG_INFO("[{}] Add:{} flowActionId:{}", mng_name, taskId, action.flowActionId);
-        auto newInst  = std::make_shared<InstT>(taskId, action);
-        inst_map[key] = newInst;
+
+        std::lock_guard<std::shared_mutex> lock(mtx);
+        auto it = inst_map.find(key);
+        if (it != inst_map.end() && it->second) {
+            return it->second;
+        }
+        LOG_INFO("[{}] Add:{} flowActionId:{} atomicCode:{}", mng_name, taskId, action.flowActionId,
+                 action.atomicCode);
+        auto newInst = std::make_shared<InstT>(taskId, action);
+        inst_map.insert_or_assign(key, newInst);
         LOG_INFO("[{}] Current active instances: {}", mng_name, inst_map.size());
         return newInst;
     }

@@ -48,7 +48,6 @@
 #include "service/face/impl/PersonRecogDaoServiceImpl.h"
 #include "service/infra/IDbService.h"
 #include "service/infra/ILinkageService.h"
-#include "service/infra/IMemoryPoolService.h"
 #include "service/infra/impl/DbServiceImpl.h"
 #include "service/infra/impl/LinkageServiceImpl.h"
 #include "service/infra/impl/MemoryPoolServiceImpl.h"
@@ -70,12 +69,16 @@
 #include "service/model/impl/ModelServiceImpl.h"
 #include "service/modelguard/IModelAuthorizationService.h"
 #include "service/modelguard/impl/ModelAuthorizationServiceImpl.h"
-#include "service/network/INetworkService.h"
+#include "service/network/IHttpLifecycle.h"
+#include "service/network/IMqttLifecycle.h"
+#include "service/network/INetworkConfig.h"
 #include "service/network/impl/AuthServiceImpl.h"
 #include "service/network/impl/ClientMessageServiceImpl.h"
 #include "service/network/impl/DeviceDiscoveryServiceImpl.h"
 #include "service/network/impl/HttpClientImpl.h"
-#include "service/network/impl/NetworkServiceImpl.h"
+#include "service/network/impl/HttpLifecycleServiceImpl.h"
+#include "service/network/impl/MqttLifecycleServiceImpl.h"
+#include "service/network/impl/NetworkConfigServiceImpl.h"
 #include "service/onboarding/IOnboardingService.h"
 #include "service/onboarding/impl/OnboardingServiceImpl.h"
 #include "service/path/IUploadStagingService.h"
@@ -128,7 +131,7 @@ static void RegisterInfrastructureServices() {
     auto eventNotifier = std::make_unique<cosmo::service::EventNotifierImpl>();
     registry.Register<cosmo::service::IEventNotifier>(std::move(eventNotifier));
 
-    registry.Register<cosmo::service::IMemoryPoolService>(
+    registry.Register<cosmo::service::MemoryPoolServiceImpl>(
         std::make_unique<cosmo::service::MemoryPoolServiceImpl>());
 
     registry.Register<cosmo::service::IStorageCleanService>(
@@ -166,9 +169,16 @@ static void RegisterInfrastructureServices() {
     registry.Register<cosmo::service::ILlmInferService>(
         std::make_unique<cosmo::service::LlmInferServiceImpl>());
 
-    registry.Register<cosmo::service::INetworkService>(std::make_unique<cosmo::service::NetworkServiceImpl>(
-        []() { return std::make_unique<cosmo::ApiRouter>(cosmo::MessageFromType::MessageFromHttp); },
-        []() { return std::make_unique<cosmo::ApiRouter>(cosmo::MessageFromType::MessageFromMqtt); }));
+    // Preserve HTTP, MQTT, then network configuration construction order.
+    // Registry shutdown destroys these services in the reverse order.
+    registry.Register<cosmo::service::IHttpLifecycle>(
+        std::make_unique<cosmo::service::HttpLifecycleServiceImpl>(
+            []() { return std::make_unique<cosmo::ApiRouter>(cosmo::MessageFromType::MessageFromHttp); }));
+    registry.Register<cosmo::service::IMqttLifecycle>(
+        std::make_unique<cosmo::service::MqttLifecycleServiceImpl>(
+            []() { return std::make_unique<cosmo::ApiRouter>(cosmo::MessageFromType::MessageFromMqtt); }));
+    registry.Register<cosmo::service::INetworkConfig>(
+        std::make_unique<cosmo::service::NetworkConfigServiceImpl>());
 
     registry.Register<cosmo::service::IDeviceDiscoveryService>(
         std::make_unique<cosmo::service::DeviceDiscoveryServiceImpl>());
@@ -216,6 +226,7 @@ static void RegisterBusinessServices() {
         std::make_unique<cosmo::service::DeviceInfoServiceImpl>());
     auto& deviceInfo = registry.Get<cosmo::service::IDeviceInfoService>();
     registry.Set<cosmo::service::IDeviceHardware>(static_cast<cosmo::service::IDeviceHardware*>(&deviceInfo));
+    registry.Set<cosmo::service::IHardwareQuery>(static_cast<cosmo::service::IHardwareQuery*>(&deviceInfo));
     registry.Register<cosmo::service::ITimeService>(std::make_unique<cosmo::service::TimeServiceImpl>());
     // ISP split: SystemServiceImpl implements 3 narrow interfaces.
     // Register under IConfigReadService (owning), then alias the other two.
@@ -277,12 +288,10 @@ static void RegisterBusinessServices() {
     appInfoService->SetDevId(registry.Get<cosmo::service::IDeviceHardware>().GetDevSn());
     appInfoService->SetEngineType(cosmo::util::kEngineType);
     registry.Register<cosmo::service::IAppInfoService>(std::move(appInfoService));
-    // ISP split: AppInfoServiceImpl implements 3 narrow interfaces.
-    // Register under IAppInfoService (owning), then alias the other three.
+    // Register application metadata with aliases for overview and memory diagnostics.
     auto& appInfoImpl = registry.Get<cosmo::service::IAppInfoService>();
     registry.Set<cosmo::service::IOverviewConfig>(
         static_cast<cosmo::service::IOverviewConfig*>(&appInfoImpl));
-    registry.Set<cosmo::service::IHardwareQuery>(static_cast<cosmo::service::IHardwareQuery*>(&appInfoImpl));
     registry.Set<cosmo::service::IMemoryDiag>(static_cast<cosmo::service::IMemoryDiag*>(&appInfoImpl));
 
     registry.Register<cosmo::service::ITimerRestartService>(
@@ -315,7 +324,7 @@ static void InitializeServices() {
     // because it may depend on services registered later in the sequence.
     registry.Get<cosmo::service::IAlgorithmService>().Init();
 
-    registry.Get<cosmo::service::INetworkService>().Init();
+    registry.Get<cosmo::service::INetworkConfig>().Init();
 
     registry.Get<cosmo::service::IDbService>().Init();
 
@@ -328,7 +337,7 @@ static void InitializeServices() {
     registry.Get<cosmo::service::ICameraService>().InitCameraEntities();
     registry.Get<cosmo::service::IAppInfoService>().SetOverviewStructureRecord(true);
 
-    registry.Get<cosmo::service::INetworkService>().MqttStart();
+    registry.Get<cosmo::service::IMqttLifecycle>().MqttStart();
 }
 
 static void InitializeExternalComponents() {
@@ -339,7 +348,7 @@ static void InitializeExternalComponents() {
 
     // HTTP Server Init
     const int http_port = cosmo::util::GetEnvIntOrDefault("COSMO_HTTP_PORT", kDefaultHttpPort);
-    cosmo::service::ServiceRegistry::Instance().Get<cosmo::service::INetworkService>().InitHttpServer(
+    cosmo::service::ServiceRegistry::Instance().Get<cosmo::service::IHttpLifecycle>().InitHttpServer(
         "0.0.0.0", static_cast<uint16_t>(http_port));
 
     // uWebSockets Server Init
@@ -353,7 +362,9 @@ static void InitializeExternalComponents() {
 #ifndef COSMO_DEV_MODE
     // Hardware watchdog — feeds /dev/watchdog to prevent system reset on hang.
     // Disabled in development builds (COSMO_DEV_MODE) to avoid device resets during debugging.
-    cosmo::service::ServiceRegistry::Instance().Get<cosmo::service::IWatchDogService>().Start();
+    if (!cosmo::service::ServiceRegistry::Instance().Get<cosmo::service::IWatchDogService>().Start()) {
+        LOG_ERRO("{}", "Hardware watchdog failed to start; watchdog protection is unavailable");
+    }
 #else
     LOG_WARN("{}", "Watchdog disabled (COSMO_DEV_MODE build)");
 #endif
@@ -375,16 +386,22 @@ static void StopExternalComponents() {
     // returns non-owning references, so registry destruction is only safe after
     // ingress and background producers have joined their worker threads.
     if (registry.Has<cosmo::service::IWatchDogService>()) {
-        stop("hardware watchdog",
-             [&registry]() { static_cast<void>(registry.Get<cosmo::service::IWatchDogService>().Stop()); });
+        stop("hardware watchdog", [&registry]() {
+            if (!registry.Get<cosmo::service::IWatchDogService>().Stop()) {
+                LOG_ERRO("{}", "Hardware watchdog shutdown not confirmed");
+            }
+        });
     }
-    if (registry.Has<cosmo::service::INetworkService>()) {
+    if (registry.Has<cosmo::service::IHttpLifecycle>()) {
         stop("HTTP server",
-             [&registry]() { registry.Get<cosmo::service::INetworkService>().StopHttpServer(); });
-        stop("MQTT client",
-             [&registry]() { registry.Get<cosmo::service::INetworkService>().MqttShutdown(); });
+             [&registry]() { registry.Get<cosmo::service::IHttpLifecycle>().StopHttpServer(); });
+    }
+    if (registry.Has<cosmo::service::IMqttLifecycle>()) {
+        stop("MQTT client", [&registry]() { registry.Get<cosmo::service::IMqttLifecycle>().MqttShutdown(); });
+    }
+    if (registry.Has<cosmo::service::INetworkConfig>()) {
         stop("network configuration worker",
-             [&registry]() { registry.Get<cosmo::service::INetworkService>().StopAsyncApply(); });
+             [&registry]() { registry.Get<cosmo::service::INetworkConfig>().StopAsyncApply(); });
     }
     if (registry.Has<cosmo::service::IDeviceDiscoveryService>()) {
         stop("device discovery",
@@ -439,7 +456,7 @@ void SwDeviceInit() {
 }
 
 void SwDeviceRun() {
-    cosmo::service::ServiceRegistry::Instance().Get<cosmo::service::INetworkService>().RunHttpLoop();
+    cosmo::service::ServiceRegistry::Instance().Get<cosmo::service::IHttpLifecycle>().RunHttpLoop();
 }
 
 void SwDeviceDestroy() {

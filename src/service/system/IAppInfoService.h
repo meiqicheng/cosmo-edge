@@ -1,16 +1,15 @@
 /// @file IAppInfoService.h
 /// @brief Aggregate application information service interface.
-///        Inherits all ISP sub-interfaces (IOverviewConfig, IHardwareQuery,
-///        IMemoryDiag). Callers should prefer the narrow sub-interfaces for new code.
+///        Combines overview configuration and memory diagnostics.
+///        Callers should prefer the narrow sub-interfaces for new code.
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <system_error>
 #include <vector>
 
-#include "service/detail/ServiceRegistry.h"
-#include "service/system/IHardwareQuery.h"
 #include "service/system/IMemoryDiag.h"
 #include "service/system/IOverviewConfig.h"
 #include "service/task/dto/StatusMsgTypes.h"
@@ -21,9 +20,9 @@ namespace cosmo::service {
 /// Aggregate application info service providing runtime metadata,
 /// configuration, and system overview data.
 ///
-/// Inherits narrow sub-interfaces for hardware queries, memory diagnostics,
-/// and overview configuration.  New code should prefer the narrow interfaces.
-class IAppInfoService : public IOverviewConfig, public IHardwareQuery, public IMemoryDiag {
+/// Inherits narrow sub-interfaces for memory diagnostics and overview
+/// configuration. New code should prefer the narrow interfaces.
+class IAppInfoService : public IOverviewConfig, public IMemoryDiag {
 public:
     virtual ~IAppInfoService() = default;
 

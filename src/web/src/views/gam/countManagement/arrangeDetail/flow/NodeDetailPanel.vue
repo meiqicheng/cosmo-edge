@@ -100,6 +100,7 @@
           ref="dynamicFormRef"
           :flowData="flowData"
           :actionDetail="actionDetail"
+          :configObject="nodeData.configObject"
           :atomicList="atomicList"
           @config-change="handleConfigChange"
         ></dynamic-form>
@@ -119,6 +120,7 @@ import { getDetailPanelSize } from './layoutGeometry.js'
 const props = defineProps({
   nodeId: { type: String, required: true },
   nodeData: { type: Object, default: () => ({}) },
+  atomicList: { type: Array, default: () => [] },
   position: { type: Object, default: () => ({ x: 0, y: 0 }) }
 })
 
@@ -127,7 +129,6 @@ const emit = defineEmits(['close', 'config-change'])
 // ---- 从 nodeData 提取子数据 ----
 const actionDetail = computed(() => props.nodeData?.actionDetail)
 const flowData = computed(() => props.nodeData?.flowData)
-const atomicList = computed(() => props.nodeData?.atomicList)
 const templateVersion = computed(() => props.nodeData?.templateVersion || 0)
 
 // ---- 图标 ----

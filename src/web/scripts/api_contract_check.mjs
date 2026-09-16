@@ -11,11 +11,19 @@ const cases = [
   ['dologin', '/gtw/cwai/login/dologin'],
   ['algorithmInquire', '/gtw/cwai/algorithm/page'],
   ['queryDocumentUrl', '/gtw/cwai/System/QueryDocumentUrl'],
-  ['algorithmInfo', '/gtw/cwai/algorithm/version/info'],
-  ['schedulePollingList', '/gtw/cwai/cust/schedule/polling/list'],
   ['uploadAtomicModelTemp', '/gtw/cwai/atomic/model/uploadTemp'],
   ['cancelAtomicModelUpload', '/gtw/cwai/atomic/model/cancelUpload', { silentError: true }],
   ['boxAlgorithmUpload', '/gtw/cwai/algorithm/Upload'],
+  ['boxSwitchTask', '/gtw/cwai/Task/SwitchTask'],
+  ['boxDeleteTask', '/gtw/cwai/task/delete'],
+  ['boxGetTimeTemplate', '/gtw/cwai/schedule/Page'],
+  ['boxRecaptureImage', '/gtw/cwai/Camera/GetPicture'],
+  ['boxQueryThingsLibInfo', '/gtw/cwai/ThingsLibrary/QueryThingsLibInfo'],
+  ['boxQueryPersonLibInfo', '/gtw/cwai/BodyLibrary/QueryPersonLibInfo'],
+  ['boxQueryFaceLibInfo', '/gtw/cwai/Library/QueryFaceLibInfo'],
+  ['boxUpdateAlgorithmLayout', '/gtw/cwai/algorithm/update'],
+  ['boxDeleteAlgorithmLayout', '/gtw/cwai/algorithm/delete'],
+  ['installModelAuthorization', '/gtw/cwai/System/InstallModelAuthorization'],
   ['pTaskCreate', '/gtw/cwai/aihost/PTaskCreate', { timeout: 120000 }]
 ]
 for (const [name, url, options = {}] of cases) {
@@ -30,6 +38,10 @@ assert.deepEqual(JSON.parse(JSON.stringify(calls.pop())), {
   url: '/gtw/cwai/atomic/model/uploadCapabilities', method: 'post', data: {}, silentError: true
 })
 assert.equal(api.exportAlgorithmLayout(), '/gtw/cwai/algorithm/layout/export')
+assert.equal(api.queryModelAuthorization(), result)
+assert.deepEqual(JSON.parse(JSON.stringify(calls.pop())), {
+  url: '/gtw/cwai/System/QueryModelAuthorization', method: 'post', data: {}
+})
 assert.equal(api.exportSingleAlg(), '/gtw/cwai/algorithm/layout/exportSingleAlg')
 assert.equal(api.exportModelConfig(), '/gtw/cwai/atomic/model/exportConfig')
 assert.equal(calls.length, 0, 'URL helpers must not send a request')

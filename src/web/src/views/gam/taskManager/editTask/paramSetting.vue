@@ -6,7 +6,7 @@
         <el-radio v-model="isHigher" :value="true">{{ t('glossary.advancedParams') }}</el-radio>
       </span>
     </div>
-    <dynamicform v-model:modelValue="taskParam" :channelId="config?.channelId" :algorithmCode="algorithmCode" :alarmType="alarmType" :isHigher="isHigher" class="param-body" ref="submitForm" @resetForm="resetForm"></dynamicform>
+    <dynamicform v-model:modelValue="taskParam" :channelId="config?.channelId" :algorithmCode="algorithmCode" :alarmType="alarmType" :isHigher="isHigher" class="param-body" ref="submitForm"></dynamicform>
   </div>
 </template>
 
@@ -14,7 +14,6 @@
 import { ref, watch, onMounted, onBeforeUnmount, computed } from 'vue'
 import { t } from '@/i18n'
 import dynamicform from './dynamicForm.vue'
-import EventBus from '@/components/eventBus.js'
 
 const props = defineProps({
   area: Object,
@@ -22,8 +21,7 @@ const props = defineProps({
     type: Object,
     default: () => ({
       taskParam: [],
-      channelId: '',
-      isValited: true
+      channelId: ''
     })
   },
   algorithmCode: [String, Number],
@@ -53,29 +51,20 @@ watch(() => props.algorithmCode, (newVal) => {
   }
 })
 
-const handleValidTaskParam = () => {
-  if (submitForm.value == undefined) {
-    console.log('submitForm:undefined')
-  } else {
-    if (props.config) {
-      props.config.isValited = submitForm.value.submitForm()
-    }
-  }
+const validateAndCollect = async () => {
+  return await submitForm.value?.validateAndCollect() || { valid: false, params: [] }
 }
 
+const collect = () => submitForm.value?.collect() || []
+defineExpose({ validateAndCollect, collect })
+
 onMounted(() => {
-  EventBus.$on('validTaskParam', handleValidTaskParam)
   document.addEventListener('keydown', handleKeyDown)
 })
 
 onBeforeUnmount(() => {
-  EventBus.$off('validTaskParam', handleValidTaskParam)
   document.removeEventListener('keydown', handleKeyDown)
 })
-
-const resetForm = (data) => {
-  console.log('resetForm data:', data)
-}
 
 const handleKeyDown = (e) => {
   if (props.activeName !== 'params') return

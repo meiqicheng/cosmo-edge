@@ -1,7 +1,7 @@
 /// @file IHardwareQuery.h
 /// @brief Hardware resource query interface.
-///        ISP split from IAppInfoService.
-///        Consumed by API layer for system overview hardware utilization display.
+///        Implemented by the device info service and consumed by inference
+///        capacity checks and system overview queries.
 #pragma once
 
 #include <cstddef>

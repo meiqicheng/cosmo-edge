@@ -1,4 +1,5 @@
 #include "catch_amalgamated.hpp"
+#include "service/detail/ServiceRegistry.h"
 /*
  * test_mqtt_lifecycle_service_impl.cc — MqttLifecycleServiceImpl unit tests
  *

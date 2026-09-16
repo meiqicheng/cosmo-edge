@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 
 import agent_workflow as core
-import model_conversion_workflow as sophon_conversion
 
 
 def _contract_argument(arguments: list[str]) -> str:
@@ -44,6 +43,8 @@ def main(arguments: list[str] | None = None) -> int:
             from rknn import agent_conversion_workflow as rknn_conversion
 
             return rknn_conversion.main(args)
+        import model_conversion_workflow as sophon_conversion
+
         return sophon_conversion.main(args)
     except core.WorkflowError as error:
         print(f"error: {error}", file=sys.stderr)

@@ -251,10 +251,8 @@ export default {
   - `vendor-element` — Element Plus
   - `vendor-echarts` — ECharts
   - `vendor-vue-flow` — @vue-flow/*
-  - `vendor-graph` — @antv/x6、@antv/layout（依赖当前未在 package.json 中安装，为预留规则）
   - `vendor-lodash` — lodash, dagre
   - `vendor-moment` — moment
-  - `vendor-md` — highlight.js、markdown-it（依赖当前未安装，为预留规则）
   - `vendor` — 其余依赖
 
 ### 环境变量

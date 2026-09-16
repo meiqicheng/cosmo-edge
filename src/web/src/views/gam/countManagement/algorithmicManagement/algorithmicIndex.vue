@@ -7,7 +7,6 @@
         <span class="task-count">{{ t('common.totalTasks', { n: pageData.total }) }}</span>
       </div>
       <div class="toolbar-right">
-        <el-button v-if="platformType !=='15'" type="primary" size="small" @click="syncClick">{{ t('action.syncAll') }}</el-button>
         <el-button type="primary" size="small" class="btn-primary-gradient" @click="addAlgorithmic">{{ t('action.createTask') }}</el-button>
         <el-checkbox v-model="selectAll" @change="toggleSelectAll" :indeterminate="isIndeterminate" style="margin-right: 8px;">{{ t('action.selectAll') }}</el-checkbox>
         <el-button size="small" :disabled="batchDeleteIds.length === 0" @click="batchDelete">{{ t('action.bulkDelete') }}</el-button>
@@ -87,9 +86,6 @@
         </span>
       </template>
     </el-dialog>
-    <el-dialog :title="t('glossary.versionDetails')" v-model="detailDialogVisible" width="800px" center>
-      <VersionDetailDialog v-if="detailDialogVisible" :algorithmId="algorithmId" />
-    </el-dialog>
     <el-dialog :title="algorithmDialogTitle" v-model="addAlgorithmicVisible" width="500px" center @close="addAlgorithmiClosed">
       <div>
         <el-form ref="addAlgorithmicFormRef" :model="addAlgorithmicForm" :rules="addAlgorithmicRules" label-position="right" label-width="110px">
@@ -147,7 +143,6 @@
 
 <script>
 import TopBar from '@/components/TopBar.vue'
-import VersionDetailDialog from './components/VersionDetailDialog.vue'
 import { ArrowDown, Delete } from '@element-plus/icons-vue'
 import moment from 'moment'
 import { t, localeColon } from '@/i18n'
@@ -160,7 +155,6 @@ import {
 export default {
   components: {
     TopBar,
-    VersionDetailDialog,
     ArrowDown,
     Delete
   },
@@ -169,8 +163,6 @@ export default {
   },
   data() {
     return {
-      platformType: localStorage.getItem('platformType') || '',
-      authData: null,
       tableData: [],
       // 分页
       pageData: {
@@ -179,8 +171,6 @@ export default {
         total: 0
       },
       deleteDialogVisible: false,
-      detailDialogVisible: false,
-      algorithmId: '',
       deleteAlgorithmId: '', // 要删除的算法ID
       dialogFormBtn: false,
       value: '',
@@ -189,7 +179,6 @@ export default {
       selectAll: false,
       channelCountMap: {},
       channelCountMap: {},
-      supplierOptions: [],
       formData: {
         algorithmId: '',
         algorithmCategory: '',
@@ -228,7 +217,6 @@ export default {
       uploadAlgorithmicName: '',
       uploadAlgorithmicData: [],
       uploadAlgorithmicLoading: false,
-      engineTypeList: [],
       batchDeleteFalg: false
     }
   },
@@ -250,27 +238,8 @@ export default {
             { label: t('glossary.detection'), value: 'detect' },
             { label: t('glossary.countingAnalytics'), value: 'count' }
           ]
-        },
-        {
-          label: t('field.dataSourceType'),
-          model: 'algorithmUsage',
-          type: 'select',
-          dataList: [
-            { label: t('common.all'), value: '' },
-            { label: t('glossary.videoAnalysis'), value: 1 },
-            { label: t('glossary.imageAnalysis'), value: 2 }
-          ]
-        },
-        {
-          label: t('field.serviceProvider'),
-          model: 'supplier',
-          type: 'select',
-          dataList: this.supplierOptions
         }
       ]
-      if (this.platformType === '15') {
-        list.splice(2, 2)
-      }
       return { formList: list }
     },
     algorithmCategoryOptions() {
@@ -306,22 +275,9 @@ export default {
     }
   },
   created() {
-    if (this.platformType !== '15') {
-      this.getEngineTypeList()
-      this.getSupplier()
-      this.initAuthSummary()
-    } else {
-      this.init()
-    }
+    this.init()
   },
   methods: {
-    getEngineTypeList() {
-      this.$API.engineTypeList({}).then((res) => {
-        const { resData } = res
-        this.engineTypeList = resData || []
-        this.init()
-      })
-    },
     // 算法管理list
     init() {
       this.selectedCards = []
@@ -345,7 +301,7 @@ export default {
         algorithmCategory: expandedCategories.length === 1 ? expandedCategories[0] : '',
         pageNum: this.pageData.pageNum,
         pageSize: this.pageData.pageSize,
-        engineTypeList: this.engineTypeList
+        engineTypeList: []
       }
       // 如果选了合并分类且包含多个值，需要前端过滤
       // algorithmInquire API 只支持单值 algorithmCategory，空串=全部
@@ -377,33 +333,6 @@ export default {
         }
       })
     },
-    getSupplier() {
-      this.$API.getSupplier().then((res) => {
-        const { resData } = res
-        const options = []
-        resData.forEach((item) => {
-          options.push({
-            label: item.value,
-            value: item.code
-          })
-        })
-        this.supplierOptions = options
-      })
-    },
-    initAuthSummary() {
-      this.$API.algorithmLicenseView({ authId: 10000 }).then((res) => {
-        const { resData } = res
-        this.authData = resData
-        if (this.authData) {
-          this.authTimes = [
-            this.authData.authStartTime.split(' ')[0],
-            this.authData.authEndTime.split(' ')[0]
-          ]
-        } else {
-          this.authTimes = []
-        }
-      })
-    },
     handleInput(val, key) {
       // 使用正则表达式替换非数字字符
       this.addAlgorithmicForm[key] = val.replace(/[^\d]/g, '')
@@ -418,22 +347,15 @@ export default {
       this.init()
     },
     arrangeDetailClick(obj) {
-      let platformType = localStorage.getItem('platformType')
-      if (platformType !== '-1') {
-        this.$router.push({
-          path: '/gam/arrangeDetail',
-          query: {
-            resetUrl: this.$route.path,
-            algorithmId: obj.algorithmId,
-            supplier: obj.supplier,
-            algorithmUsage: obj.algorithmUsage
-          }
-        })
-      }
-    },
-    detailClick(obj) {
-      this.algorithmId = obj.algorithmId
-      this.detailDialogVisible = true
+      this.$router.push({
+        path: '/gam/arrangeDetail',
+        query: {
+          resetUrl: this.$route.path,
+          algorithmId: obj.algorithmId,
+          supplier: obj.supplier,
+          algorithmUsage: obj.algorithmUsage
+        }
+      })
     },
     editClick(row) {
       this.algorithmDialogMode = 'edit'
@@ -465,11 +387,7 @@ export default {
     // Btnredact() {}
     searchList() {
       this.pageData.pageNum = 1
-      if (this.platformType === '15') {
-        this.init()
-      } else {
-        this.getEngineTypeList()
-      }
+      this.init()
     },
     sureDeleteAlgorithmic() {
       if (this.batchDeleteFalg) {
@@ -491,28 +409,9 @@ export default {
         })
         return
       }
-      const params = {
-        id: this.deleteAlgorithmId
-      }
-      if (this.platformType === '15') {
-        this.$API
-          .boxDeleteAlgorithmLayout({ algorithmId: params.id })
-          .then(() => {
-            this.$message.success(t('common.operationSucceeded'))
-            this.deleteDialogVisible = false
-            this.formData.algorithmId = ''
-            this.formData.algorithmCategory = ''
-            this.formData.algorithmUsage = ''
-            this.formData.algorithmName = ''
-            this.formData.supplier = ''
-            this.pageData.pageNum = 1
-            this.searchList()
-          })
-          .catch(() => {
-            this.deleteDialogVisible = false
-          })
-      } else {
-        this.$API.deleteAlgorithmLayout(params).then(() => {
+      this.$API
+        .boxDeleteAlgorithmLayout({ algorithmId: this.deleteAlgorithmId })
+        .then(() => {
           this.$message.success(t('common.operationSucceeded'))
           this.deleteDialogVisible = false
           this.formData.algorithmId = ''
@@ -523,7 +422,9 @@ export default {
           this.pageData.pageNum = 1
           this.searchList()
         })
-      }
+        .catch(() => {
+          this.deleteDialogVisible = false
+        })
     },
     addAlgorithmic() {
       this.algorithmDialogMode = 'create'
@@ -560,28 +461,14 @@ export default {
               this.$message.success(t('common.operationSucceeded'))
               this.addAlgorithmicVisible = false
               this.searchList()
-              this.synchronousCustAlgorithnm()
             })
           } else {
-            if (this.platformType === '15') {
-              params.algorithmId = this.addAlgorithmicForm.algorithmId
-              params.algorithmCategory = Number(params.algorithmCategory)
-              delete params.supplier
-              delete params.algorithmCode
-              this.$API.boxUpdateAlgorithmLayout(params).then((res) => {
-                this.$message.success(t('common.operationSucceeded'))
-                this.addAlgorithmicVisible = false
-                this.searchList()
-                // this.synchronousCustAlgorithnm()
-              })
-            } else {
-              this.$API.updateAlgorithmLayout(params).then((res) => {
-                this.$message.success(t('common.operationSucceeded'))
-                this.addAlgorithmicVisible = false
-                this.searchList()
-                this.synchronousCustAlgorithnm()
-              })
-            }
+            params.algorithmId = this.addAlgorithmicForm.algorithmId
+            this.$API.boxUpdateAlgorithmLayout(params).then((res) => {
+              this.$message.success(t('common.operationSucceeded'))
+              this.addAlgorithmicVisible = false
+              this.searchList()
+            })
           }
         }
       })
@@ -603,38 +490,26 @@ export default {
       this.uploadAlgorithmicLoading = true
       let stagedUpload
       try {
-        if (this.platformType === '15') {
-          stagedUpload = await uploadFileInChunks(params.file, {
-            purpose: UploadPurpose.ALGORITHM,
-            uploadChunk: formData => this.$API.uploadAtomicModelTemp(formData),
-            cancelUpload: data => this.$API.cancelAtomicModelUpload(data),
-            getCapabilities: () => this.$API.getUploadCapabilities(),
-            onProgress: progress => {
-              if (typeof params.onProgress === 'function') {
-                params.onProgress({ percent: progress.percent })
-              }
+        stagedUpload = await uploadFileInChunks(params.file, {
+          purpose: UploadPurpose.ALGORITHM,
+          uploadChunk: formData => this.$API.uploadAtomicModelTemp(formData),
+          cancelUpload: data => this.$API.cancelAtomicModelUpload(data),
+          getCapabilities: () => this.$API.getUploadCapabilities(),
+          onProgress: progress => {
+            if (typeof params.onProgress === 'function') {
+              params.onProgress({ percent: progress.percent })
             }
-          })
-          if (!stagedUpload.uploadId) {
-            throw new Error(t('validate.missingUploadId'))
           }
-          await this.$API.boxAlgorithmUpload({
-            uploadId: stagedUpload.uploadId
-          })
-          this.$message.success(t('common.operationSucceeded'))
-          this.uploadAlgorithmicVisible = false
-          this.searchList()
-          return
+        })
+        if (!stagedUpload.uploadId) {
+          throw new Error(t('validate.missingUploadId'))
         }
-
-        // The platform layout-import endpoint has not migrated to upload sessions.
-        const formData = new FormData()
-        formData.append('file', params.file)
-        await this.$API.importAlgorithmLayout(formData)
+        await this.$API.boxAlgorithmUpload({
+          uploadId: stagedUpload.uploadId
+        })
         this.$message.success(t('common.operationSucceeded'))
         this.uploadAlgorithmicVisible = false
         this.searchList()
-        this.synchronousCustAlgorithnm()
       } catch (error) {
         if (stagedUpload?.uploadId) {
           try {
@@ -726,21 +601,6 @@ export default {
         }
       }
       x.send(JSON.stringify(i))
-    },
-    // 同步原始算法信息
-    synchronousCustAlgorithnm() {
-      this.$API.synchronousCustAlgorithmInfo({}).then(() => {
-        this.$API.getAlgInfo({ pageNum: 1, pageSize: 1000 }).then((res) => {
-          const { resData } = res
-          const newData = resData.rows || []
-          localStorage.setItem('algorithms', JSON.stringify(newData))
-        })
-      })
-    },
-    syncClick() {
-      this.$API.syncAlgParamToTaskConfig({ ids: [] }).then(() => {
-        this.$message.success(t('common.syncSucceeded'))
-      })
     },
     returnLostModel(list) {
       const lostModels = list.filter((item) => item.modelStatus != 1)

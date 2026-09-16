@@ -1,5 +1,5 @@
 /// @file HttpFileServerCliThread.h
-/// @brief Worker thread for file upload/download operations.
+/// @brief Worker thread for file upload operations.
 #pragma once
 
 #include <functional>
@@ -24,12 +24,9 @@ private:
     void HandleMsg(cosmo::MsgEnvelope& msg) override;
     void ClearMsg(cosmo::MsgEnvelope& msg) override;
 
-    /// Common retry-based upload logic shared by sync and async paths.
+    /// Upload a queued file, retrying transient failures.
     /// @return 0 on success, -1 on failure.
     int RetryUpload(int max_retries, CUploadFileTask& task);
-
-    void ProcessPointUploadFile(CPointUploadFileTask& task);
-    void ProcessGetDownload(int max_retries, CGetDownloadTask& task);
 
     cosmo::network::http::HttpFileServerCli& file_server_cli_;
     cosmo::network::http::HttpPost& http_post_;

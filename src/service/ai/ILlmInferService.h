@@ -8,7 +8,6 @@
 
 #include "infer/Qwen3VLUnify.h"
 #include "media/VideoFrame.h"
-#include "service/detail/ServiceRegistry.h"
 #include "util/ErrorCode.h"
 
 namespace cosmo::service {

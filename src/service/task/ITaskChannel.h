@@ -8,7 +8,6 @@
 #include <string>
 #include <vector>
 
-#include "service/detail/ServiceRegistry.h"
 #include "service/media/dto/VideoFrameFwd.h"
 #include "util/dto/CameraMsgTypes.h"
 

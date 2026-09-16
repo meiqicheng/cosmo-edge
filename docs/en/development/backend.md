@@ -102,7 +102,9 @@ auto& foo = ServiceRegistry::Instance().Get<IFooService>();
 Service initialization happens in `src/app/app_init.cc`, called from `SwDeviceInit()`, in four phases:
 
 **Phase 1 — `RegisterInfrastructureServices()`**
-Registers foundational services: `IFileService`, `IEventNotifier` (WebSocket), `IMemoryPoolService`, `IStorageCleanService`, `IWatchDogService`, `IDbService` (SQLite), `IOsdTextRenderer`, `IVideoFrameService`, `ITaskService`, `IInferPoolService`, `ILlmInferService`, `INetworkService`, `IDeviceDiscoveryService`, `IHttpClient`.
+Registers foundational services: `IFileService`, `IEventNotifier` (WebSocket), `MemoryPoolServiceImpl`, `IStorageCleanService`, `IWatchDogService`, `IDbService` (SQLite), `IOsdTextRenderer`, `IVideoFrameService`, `ITaskService`, `IInferPoolService`, `ILlmInferService`, `IHttpLifecycle`, `IMqttLifecycle`, `INetworkConfig`, `IDeviceDiscoveryService`, `IHttpClient`.
+
+The memory pool is registered as the concrete `MemoryPoolServiceImpl` type, which only manages the pool and context lifetime. Allocation, recycling, and diagnostics continue to use `mem::GetMemoryPool()`.
 
 **Phase 2 — `RegisterBusinessServices()`**
 Registers domain services: audio, linkage, camera, picture tasks, algorithms, device info, time (NTP), system config, model management, alarm records/push, auth, schedules, face/body/item libraries, live stream, actions, client messages, app info, timer restart.

@@ -4,7 +4,8 @@
 ///        the network layer directly.
 #pragma once
 
-#include "service/detail/ServiceRegistry.h"
+#include <string>
+
 #include "service/event/dto/ClientMsgCollect.h"
 #include "service/event/dto/ClientMsgInfo.h"
 #include "service/network/dto/ClientMsgTask.h"

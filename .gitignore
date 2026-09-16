@@ -458,6 +458,10 @@ build/
 !prebuild/model-guard-v2-rknn-abi1/bin/
 !prebuild/model-guard-v2-rknn-abi1/bin/cosmo-model-provision
 
+# The complete Sophon SDK is authorized for this CosmoEdge fork.
+!prebuild/model-guard-v2/bin/
+!prebuild/model-guard-v2/bin/cosmo-model-provision
+
 # Local configuration file (sdk path, etc)
 local.properties
 

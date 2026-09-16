@@ -7,7 +7,6 @@
 #include <system_error>
 #include <vector>
 
-#include "service/detail/ServiceRegistry.h"
 #include "service/infra/dto/InfraMsgTypes.h"
 #include "service/infra/dto/LinkageDto.h"
 

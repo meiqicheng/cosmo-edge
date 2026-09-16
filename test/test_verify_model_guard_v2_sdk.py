@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import importlib.machinery
 import importlib.util
 import io
+import json
 import os
 import sys
 import tempfile
@@ -40,6 +42,17 @@ HEADER = (
 )
 LIBRARY = b"synthetic-guard\n"
 PROVISION = b"synthetic-provisioner\n"
+MANIFEST = {
+    "release_id": "synthetic-sophon-production",
+    "components": {
+        name: hashlib.sha256(payload).hexdigest()
+        for name, payload in (
+            ("include/cosmo_model_guard_v2.h", HEADER),
+            ("lib/libcosmo_model_guard.so.2.0.0", LIBRARY),
+            ("bin/cosmo-model-provision", PROVISION),
+        )
+    },
+}
 
 
 class ModelGuardHeaderTest(unittest.TestCase):
@@ -69,6 +82,7 @@ class ModelGuardSdkVerifierTest(unittest.TestCase):
         *,
         provision: bool = False,
         marked: bool = False,
+        manifest: bool = False,
     ) -> Path:
         root = self.root / f"sdk-{name}"
         for relative in ("include", "lib", "share/cosmo-model-guard"):
@@ -88,6 +102,8 @@ class ModelGuardSdkVerifierTest(unittest.TestCase):
             tool = root / "bin/cosmo-model-provision"
             tool.write_bytes(PROVISION)
             tool.chmod(0o755)
+        if manifest:
+            (root / "SDK-MANIFEST.json").write_text(json.dumps(MANIFEST))
         if marked:
             (
                 root
@@ -111,6 +127,7 @@ class ModelGuardSdkVerifierTest(unittest.TestCase):
         with (
             mock.patch.object(sys, "argv", arguments),
             mock.patch.object(verifier, "verify_elf"),
+            mock.patch.object(verifier, "load_release_manifest", return_value=MANIFEST),
             mock.patch.object(verifier, "verify_provision_tool") as provision_check,
             contextlib.redirect_stdout(output),
         ):
@@ -128,7 +145,7 @@ class ModelGuardSdkVerifierTest(unittest.TestCase):
 
     def test_production_profile_adds_provisioning_tool(self) -> None:
         output, provision_check = self.verify(
-            self.sdk("production", provision=True),
+            self.sdk("production", provision=True, manifest=True),
             verifier.ADMISSION_PRODUCTION_RELEASE,
         )
 
@@ -138,9 +155,54 @@ class ModelGuardSdkVerifierTest(unittest.TestCase):
     def test_production_profile_requires_provisioning_tool(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "cannot read SDK file"):
             self.verify(
-                self.sdk("missing-provision"),
+                self.sdk("missing-provision", manifest=True),
                 verifier.ADMISSION_PRODUCTION_RELEASE,
             )
+
+    def test_production_requires_manifest(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "SDK-MANIFEST.json"):
+            self.verify(
+                self.sdk("missing-manifest", provision=True),
+                verifier.ADMISSION_PRODUCTION_RELEASE,
+            )
+
+    def test_production_rejects_changed_components(self) -> None:
+        for name in MANIFEST["components"]:
+            with self.subTest(component=name):
+                sdk = self.sdk(name.replace("/", "-"), provision=True, manifest=True)
+                with (sdk / name).open("ab") as stream:
+                    stream.write(b"changed-release-bytes\n")
+                with self.assertRaisesRegex(RuntimeError, "hash|SHA|approved artifact"):
+                    self.verify(sdk, verifier.ADMISSION_PRODUCTION_RELEASE)
+
+    def test_production_manifest_formatting_does_not_change_identity(self) -> None:
+        sdk = self.sdk("formatted", provision=True, manifest=True)
+        (sdk / "SDK-MANIFEST.json").write_text(
+            json.dumps(MANIFEST, indent=4, sort_keys=True) + "\n"
+        )
+        self.verify(sdk, verifier.ADMISSION_PRODUCTION_RELEASE)
+
+    def test_production_rejects_manifest_tampering(self) -> None:
+        for change in ("identity", "component", "extra", "invalid-json"):
+            with self.subTest(change=change):
+                sdk = self.sdk(change, provision=True, manifest=True)
+                manifest = json.loads(json.dumps(MANIFEST))
+                if change == "identity":
+                    manifest["release_id"] = "old-release"
+                elif change == "component":
+                    # A self-consistent substituted tool must still fail identity.
+                    payload = b"substituted-provisioner\n"
+                    (sdk / "bin/cosmo-model-provision").write_bytes(payload)
+                    manifest["components"]["bin/cosmo-model-provision"] = (
+                        hashlib.sha256(payload).hexdigest()
+                    )
+                elif change == "extra":
+                    manifest["unapproved"] = True
+                (sdk / "SDK-MANIFEST.json").write_text(
+                    "{invalid" if change == "invalid-json" else json.dumps(manifest)
+                )
+                with self.assertRaisesRegex(RuntimeError, "manifest|SDK-MANIFEST"):
+                    self.verify(sdk, verifier.ADMISSION_PRODUCTION_RELEASE)
 
     def test_fixture_requires_marker(self) -> None:
         sdk = self.sdk("fixture", provision=True, marked=True)

@@ -11,6 +11,7 @@
         ref="detailPanelRef"
         :node-id="detailPanelNodeId"
         :node-data="detailPanelNodeData"
+        :atomic-list="atomicList"
         :position="screenPanelPosition"
         @close="closeDetailPanel"
         @config-change="handlePanelConfigChange"
@@ -44,6 +45,7 @@ import '@vue-flow/controls/dist/style.css'
 import EventBus from '@/components/eventBus.js'
 import { generateActionId } from '@/views/gam/countManagement/arrangeDetail/flow/dataTools.js'
 import { insertNodeEdges } from '@/utils/graphEdges.js'
+import { createNodeState, updateAtomicList, updateNodeConfig as replaceNodeConfig } from '@/views/gam/countManagement/arrangeDetail/flow/nodeState.js'
 import ActionView from '@/views/gam/countManagement/arrangeDetail/flow/ActionView.vue'
 import CustomFormNode from '@/views/gam/countManagement/arrangeDetail/flow/CustomFormNode.vue'
 import StartNode from '@/views/gam/countManagement/arrangeDetail/flow/StartNode.vue'
@@ -115,7 +117,9 @@ const atomicList = ref([])
 const centeredStrategyId = ref(null)
 const detailPanelRef = ref(null)
 const detailPanelNodeId = ref(null)
-const detailPanelNodeData = ref(null)
+const detailPanelNodeData = computed(() =>
+  nodes.value.find((node) => String(node.id) === String(detailPanelNodeId.value))?.data || null
+)
 const detailPanelPosition = ref({ x: 0, y: 0 })
 const currentViewport = ref({ x: 0, y: 0, zoom: 1 })
 const screenPanelPosition = computed(() => ({
@@ -254,28 +258,9 @@ const centerView = () => {
 }
 
 const updateNodeConfig = (nodeId, config) => {
-  if (!nodeId || !config) return
-  nodes.value = nodes.value.map((node) => {
-    if (String(node.id) !== String(nodeId)) return node
-    const flowData = {
-      ...(node.data?.flowData || {}),
-      configObject: config
-    }
-    return {
-      ...node,
-      data: {
-        ...node.data,
-        flowData,
-        actionDetail: {
-          ...(node.data?.actionDetail || {}),
-          configObject: config
-        }
-      }
-    }
-  })
-  setNodes(nodes.value)
-  detailPanelNodeData.value =
-    nodes.value.find((node) => String(node.id) === String(nodeId))?.data || null
+  const nextNodes = replaceNodeConfig(nodes.value, nodeId, config)
+  nodes.value = nextNodes
+  setNodes(nextNodes)
 }
 
 const collectCurrentPanelConfig = () => {
@@ -338,7 +323,6 @@ const handleNodeClick = ({ node } = {}) => {
     panelSize
   )
   detailPanelNodeId.value = String(node.id)
-  detailPanelNodeData.value = node.data
   detailPanelPosition.value = {
     x: panelX,
     y: panelY
@@ -378,7 +362,6 @@ const handleNodeClick = ({ node } = {}) => {
 const closeDetailPanel = () => {
   collectCurrentPanelConfig()
   detailPanelNodeId.value = null
-  detailPanelNodeData.value = null
   clearNodeSelected()
   nextTick(centerView)
 }
@@ -391,22 +374,20 @@ const handleOpenDetailPanel = (nodeId) => {
 const handleCloseDetailPanel = (nodeId) => {
   if (String(detailPanelNodeId.value) === String(nodeId)) {
     detailPanelNodeId.value = null
-    detailPanelNodeData.value = null
   }
 }
 
 const handleRemoveNodes = (ids) => {
   if (!Array.isArray(ids) || ids.length === 0) return
+  if (ids.some((id) => String(id) === String(detailPanelNodeId.value))) {
+    detailPanelNodeId.value = null
+  }
   setNodes((ns) => ns.filter((n) => !ids.includes(n.id)))
   nodes.value = nodes.value.filter((n) => !ids.includes(n.id))
   // 同步清理 atomicList 中对应 position
   atomicList.value = (atomicList.value || []).filter(
     (a) => !ids.includes(String(a.position))
   )
-  // 将最新 atomicList 透传到节点 data
-  nodes.value.forEach((n) => {
-    if (n.data) n.data.atomicList = atomicList.value
-  })
 }
 
 const handleAddComponentDialogOpen = ({ edgeId, x, y, mode, sourceId } = {}) => {
@@ -419,27 +400,8 @@ const handleAddComponentDialogOpen = ({ edgeId, x, y, mode, sourceId } = {}) => 
 }
 
 // 实时同步 atomicList：来自节点表单的更新
-const handleAtomicUpdate = (payload = {}) => {
-  const { position, atomicCode, atomicName, labelList } = payload
-  if (!position) return
-  const list = atomicList.value || []
-  const idx = list.findIndex((a) => String(a.position) === String(position))
-  const entry = {
-    position: String(position),
-    atomicCode: atomicCode || '',
-    atomicName: atomicName || '',
-    labelList: Array.isArray(labelList) ? labelList : []
-  }
-  if (idx > -1) {
-    list.splice(idx, 1, entry)
-  } else {
-    list.push(entry)
-  }
-  atomicList.value = [...list]
-  // 将最新 atomicList 透传到节点 data，供后续节点依赖
-  nodes.value.forEach((n) => {
-    if (n.data) n.data.atomicList = atomicList.value
-  })
+const handleAtomicUpdate = (payload) => {
+  atomicList.value = updateAtomicList(atomicList.value, payload)
 }
 
 EventBus.$on('flow:openDetailPanel', handleOpenDetailPanel)
@@ -536,14 +498,13 @@ const addComponentFromDialog = (type, label, action) => {
       actionType: action?.actionType,
       // businessCategory: action?.businessCategory,
       description: action?.description ?? action?.remark,
-      atomicList: atomicList.value || [],
-      flowData: flowItem || {},
-      actionDetail: {
+
+      ...createNodeState(flowItem, {
         ...(action || {}),
         actionId: action?.id ?? action?.actionId ?? '',
         flowActionId: String(newNodeId),
         inputParamConfig: flowItem?.inputParamConfig ?? action?.inputParamConfig
-      }
+      })
     }
   }
   nodes.value = [...nodes.value, newNode]
@@ -667,16 +628,14 @@ const rebuildFlowGraph = () => {
         actionName: item.actionName,
         // businessCategory: actionMap.get(item.actionId)?.businessCategory,
         description: item.remark,
-        atomicList: atomicList.value || [],
-        flowData: item,
-        actionDetail: {
+
+        ...createNodeState(item, {
           actionId: item.actionId,
           actionName: item.actionName,
           remark: item.remark,
           flowActionId: item.flowActionId,
-          configObject: item.configObject || {},
           inputParamConfig: newInputParamConfig
-        }
+        })
       }
     }
   })
@@ -748,7 +707,7 @@ const saveMetaDataParams = () => {
     .filter((n) => n.type !== 'start' && n.type !== 'end')
     .forEach((n) => {
       const meta =
-        n.data?.flowData?.configObject?.webConfig?.metaDataParams ?? []
+        n.data?.configObject?.webConfig?.metaDataParams ?? []
       if (Array.isArray(meta)) {
         meta.forEach((m) => list.push({ ...m }))
       }
@@ -758,7 +717,6 @@ const saveMetaDataParams = () => {
 
 const saveFlowData = () => {
   collectCurrentPanelConfig()
-  EventBus.$emit('flow:collectConfigs')
   const incomingMap = new Map()
   edges.value.forEach((e) => {
     if (e.target) incomingMap.set(e.target, e.source)
@@ -785,7 +743,7 @@ const saveFlowData = () => {
         preFlowActionId = String(preFlowActionId)
       }
 
-      const configObject = n.data?.flowData?.configObject ?? {
+      const configObject = n.data?.configObject ?? {
         webConfig: {
           labelList: [],
           labelFilterList: [],
@@ -831,7 +789,6 @@ const saveFlowData = () => {
 // Expose functions to parent component
 const clearFlow = () => {
   detailPanelNodeId.value = null
-  detailPanelNodeData.value = null
   setNodes([])
   setEdges([])
   nodes.value = []
@@ -863,7 +820,6 @@ watch(
   [() => props.strategyId, () => props.workFlow],
   ([, newVal]) => {
     detailPanelNodeId.value = null
-    detailPanelNodeData.value = null
     newFlowData.value = parseArray(newVal)
     atomicList.value = []
     if (newFlowData.value) {

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "nn/core/abstract_context.h"
 #include "nn/core/abstract_device.h"
 #include "nn/core/blob.h"
 #include "nn/core/status.h"

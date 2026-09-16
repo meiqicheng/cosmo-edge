@@ -8,7 +8,6 @@
 #include <utility>
 #include <vector>
 
-#include "service/detail/ServiceRegistry.h"
 #include "util/dto/CameraMsgTypes.h"
 #include "util/dto/OverviewTypes.h"
 #include "util/dto/TaskCreateTypes.h"

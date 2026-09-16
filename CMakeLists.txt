@@ -268,6 +268,8 @@ if(COSMO_MODEL_GUARD AND COSMO_MODEL_GUARD_PLATFORM STREQUAL "sophon")
         "${COSMO_MODEL_GUARD_SDK_ROOT}/include/cosmo_model_guard_v2.h")
     set(MODEL_GUARD_V2_LIBRARY
         "${COSMO_MODEL_GUARD_SDK_ROOT}/lib/libcosmo_model_guard.so.2.0.0")
+    set(MODEL_GUARD_V2_SDK_MANIFEST
+        "${COSMO_MODEL_GUARD_SDK_ROOT}/SDK-MANIFEST.json")
     if(COSMO_MODEL_GUARD_BUILD_PROFILE STREQUAL "production-release")
         set(MODEL_GUARD_V2_PROVISION_TOOL
             "${COSMO_MODEL_GUARD_SDK_ROOT}/bin/cosmo-model-provision")
@@ -302,7 +304,9 @@ if(COSMO_MODEL_GUARD AND COSMO_MODEL_GUARD_PLATFORM STREQUAL "sophon")
         "${CMAKE_SOURCE_DIR}/scripts/verify_model_guard_v2_sdk.py")
     if(COSMO_MODEL_GUARD_BUILD_PROFILE STREQUAL "production-release")
         list(APPEND MODEL_GUARD_V2_ADMISSION_INPUTS
-            "${MODEL_GUARD_V2_PROVISION_TOOL}")
+            "${MODEL_GUARD_V2_PROVISION_TOOL}"
+            "${MODEL_GUARD_V2_SDK_MANIFEST}"
+            "${CMAKE_SOURCE_DIR}/prebuild/model-guard-v2/SDK-MANIFEST.json")
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         ${MODEL_GUARD_V2_ADMISSION_INPUTS})
@@ -611,23 +615,12 @@ target_include_directories(${EXECUTABLE_NAME} PRIVATE
 target_link_libraries(${EXECUTABLE_NAME} PRIVATE nlohmann stb uWebSockets)
 if(COSMO_NN_USE_SOPHON_BACKEND)
     target_link_directories(${EXECUTABLE_NAME} PRIVATE ${DEVICE_LIB_DIR})
-    target_compile_definitions(${EXECUTABLE_NAME} PRIVATE COSMO_NN_USE_SOPHON_BACKEND)
 endif()
 if(COSMO_MODEL_GUARD)
     target_compile_definitions(${EXECUTABLE_NAME} PRIVATE COSMO_HAS_MODEL_GUARD=1)
     target_link_libraries(${EXECUTABLE_NAME} PRIVATE ${COSMO_MODEL_GUARD_LINK_TARGET})
 endif()
-if(COSMO_NN_USE_CPU_BACKEND)
-    target_compile_definitions(${EXECUTABLE_NAME} PRIVATE
-        COSMO_NN_USE_CPU_BACKEND
-        COSMO_NN_USE_HOST_BACKEND
-        COSMO_NN_USE_ONNX_BACKEND)
-endif()
 if(COSMO_NN_USE_RKNN_BACKEND)
-    target_compile_definitions(${EXECUTABLE_NAME} PRIVATE
-        COSMO_NN_USE_RKNN_BACKEND
-        COSMO_NN_USE_HOST_BACKEND
-        COSMO_NN_USE_RAW_MODEL_BACKEND)
     set_target_properties(${EXECUTABLE_NAME} PROPERTIES
         BUILD_RPATH "${COSMO_RKNN_ROOT}/lib"
         INSTALL_RPATH "$ORIGIN/../lib")
@@ -646,10 +639,6 @@ if(COSMO_NN_USE_RKNN_BACKEND)
         tools/rknn/cosmo_rknn_backend_smoke.cc
         ${ALL_OBJECTS})
     target_include_directories(cosmo-rknn-backend-smoke PRIVATE ${CMAKE_SOURCE_DIR}/src)
-    target_compile_definitions(cosmo-rknn-backend-smoke PRIVATE
-        COSMO_NN_USE_RKNN_BACKEND
-        COSMO_NN_USE_HOST_BACKEND
-        COSMO_NN_USE_RAW_MODEL_BACKEND)
     target_link_libraries(cosmo-rknn-backend-smoke PRIVATE
         nlohmann stb uWebSockets ${COMMON_LIBS})
     if(COSMO_MODEL_GUARD)
@@ -665,10 +654,6 @@ if(COSMO_NN_USE_RKNN_BACKEND)
             tools/rknn/cosmo_rknn_fastpath_qualify.cc
             ${ALL_OBJECTS})
         target_include_directories(cosmo-rknn-fastpath-qualify PRIVATE ${CMAKE_SOURCE_DIR}/src)
-        target_compile_definitions(cosmo-rknn-fastpath-qualify PRIVATE
-            COSMO_NN_USE_RKNN_BACKEND
-            COSMO_NN_USE_HOST_BACKEND
-            COSMO_NN_USE_RAW_MODEL_BACKEND)
         target_link_libraries(cosmo-rknn-fastpath-qualify PRIVATE
             nlohmann stb uWebSockets ${COMMON_LIBS})
         if(COSMO_MODEL_GUARD)
@@ -694,6 +679,8 @@ if(BUILD_TESTS)
     add_executable(cosmo-tests ${APP_SRC_NO_MAIN} ${ALL_OBJECTS} ${TEST_SRC})
     add_dependencies(cosmo-tests third_build)
     target_compile_definitions(cosmo-tests PRIVATE CATCH_AMALGAMATED_CUSTOM_MAIN)
+    # Fault injection is confined to tests; production always calls the real writer.
+    target_link_options(cosmo-tests PRIVATE "-Wl,--wrap=MP4WriteSample")
     target_include_directories(cosmo-tests PRIVATE
         ${CMAKE_SOURCE_DIR}/src
         ${CMAKE_SOURCE_DIR}/test
@@ -705,23 +692,12 @@ if(BUILD_TESTS)
     target_link_libraries(cosmo-tests PRIVATE nlohmann stb uWebSockets)
     if(COSMO_NN_USE_SOPHON_BACKEND)
         target_link_directories(cosmo-tests PRIVATE ${DEVICE_LIB_DIR})
-        target_compile_definitions(cosmo-tests PRIVATE COSMO_NN_USE_SOPHON_BACKEND)
     endif()
     if(COSMO_MODEL_GUARD)
         target_compile_definitions(cosmo-tests PRIVATE COSMO_HAS_MODEL_GUARD=1)
         target_link_libraries(cosmo-tests PRIVATE ${COSMO_MODEL_GUARD_LINK_TARGET})
     endif()
-    if(COSMO_NN_USE_CPU_BACKEND)
-        target_compile_definitions(cosmo-tests PRIVATE
-            COSMO_NN_USE_CPU_BACKEND
-            COSMO_NN_USE_HOST_BACKEND
-            COSMO_NN_USE_ONNX_BACKEND)
-    endif()
     if(COSMO_NN_USE_RKNN_BACKEND)
-        target_compile_definitions(cosmo-tests PRIVATE
-            COSMO_NN_USE_RKNN_BACKEND
-            COSMO_NN_USE_HOST_BACKEND
-            COSMO_NN_USE_RAW_MODEL_BACKEND)
         set_target_properties(cosmo-tests PROPERTIES
             BUILD_RPATH "${COSMO_RKNN_ROOT}/lib")
     endif()
@@ -1060,6 +1036,9 @@ if(COSMO_MODEL_GUARD AND COSMO_MODEL_GUARD_PLATFORM STREQUAL "sophon")
         PERMISSIONS OWNER_WRITE OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
     )
     if(COSMO_MODEL_GUARD_BUILD_PROFILE STREQUAL "production-release")
+        install(FILES "${MODEL_GUARD_V2_SDK_MANIFEST}"
+            DESTINATION share/cosmo-model-guard
+            PERMISSIONS OWNER_WRITE OWNER_READ GROUP_READ WORLD_READ)
         install(PROGRAMS "${MODEL_GUARD_V2_PROVISION_TOOL}"
             DESTINATION bin
             RENAME cosmo-model-provision

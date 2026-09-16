@@ -4,7 +4,6 @@
 ///        Callers should prefer the narrow sub-interfaces for new code.
 #pragma once
 
-#include "service/detail/ServiceRegistry.h"
 #include "service/task/ITaskChannel.h"
 #include "service/task/ITaskLifecycle.h"
 #include "service/task/ITaskQuery.h"

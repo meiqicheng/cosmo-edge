@@ -2,7 +2,6 @@
 
 #include <memory>
 
-#include "nn/core/abstract_context.h"
 #include "nn/core/blob.h"
 #include "nn/core/common.h"
 #include "nn/core/status.h"
@@ -10,16 +9,14 @@
 
 namespace cosmo::nn {
 
-// create memory and context
+// Calculate, allocate, and copy device memory.
 class AbstractDevice {
 public:
     explicit AbstractDevice(DeviceType type);
 
-    virtual ~AbstractDevice() {};
+    virtual ~AbstractDevice(){};
 
     virtual BlobMemorySizeInfo Calculate(BlobDesc& desc) = 0;
-
-    virtual AbstractContext* CreateContext(int device_id_) = 0;
 
     virtual Status Allocate(void** handle, unsigned long* phy, BlobMemorySizeInfo& size_info_) = 0;
 

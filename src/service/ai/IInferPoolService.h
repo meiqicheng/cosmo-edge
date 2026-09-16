@@ -8,7 +8,6 @@
 #include <string>
 
 #include "infer/InferPoolTypes.h"
-#include "service/detail/ServiceRegistry.h"
 
 namespace cosmo::service {
 

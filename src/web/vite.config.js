@@ -32,11 +32,9 @@ export default defineConfig(({ mode }) => {
               if (id.includes('/vue')) return 'vendor-vue'
               if (id.includes('echarts')) return 'vendor-echarts'
               if (id.includes('@vue-flow')) return 'vendor-vue-flow'
-              if (id.includes('@antv/x6') || id.includes('@antv/layout')) return 'vendor-graph'
               // dagre and graphlib both depend on lodash; keep all three in the same chunk to avoid circular chunk references
               if (id.includes('lodash') || id.includes('dagre') || id.includes('graphlib')) return 'vendor-lodash'
               if (id.includes('moment')) return 'vendor-moment'
-              if (id.includes('highlight.js') || id.includes('markdown-it')) return 'vendor-md'
               return 'vendor'
             }
           }

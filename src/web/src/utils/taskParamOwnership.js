@@ -1,7 +1,5 @@
 const FORCED_CHANNEL_PARAM_KEYS = new Set(['param.videoRepeatCount'])
 const FORCED_CHANNEL_PARAM_TYPES = new Set(['retroDirect'])
-const LEGACY_UNRENDERED_TEXT_KEYS = new Set(['minFaceWidth', 'quality'])
-const LEGACY_UNRENDERED_TEXT_TYPES = new Set(['text', 'number'])
 const ROOT_CHANNEL_PARAM_TYPES = new Set([
   'select',
   'switch',
@@ -58,16 +56,6 @@ export const isChannelParamRenderableAtDepth = (param, depth) => {
     ? ROOT_CHANNEL_PARAM_TYPES
     : CHILD_CHANNEL_PARAM_TYPES
   ).has(param.type)
-}
-
-export const isLegacyUnrenderedParam = (param) => {
-  if (!param) return false
-  if (param.key === 'FaceCheck' && param.type === 'switch') return true
-  if (param.key === 'catchView' && param.type === 'radio') return true
-  return (
-    LEGACY_UNRENDERED_TEXT_KEYS.has(param.key) &&
-    LEGACY_UNRENDERED_TEXT_TYPES.has(param.type)
-  )
 }
 
 // A changed visibility selection is authoritative when metadata is saved.
@@ -623,15 +611,8 @@ export const filterTaskParamsForSubmission = (params) => {
   })
 }
 
-// Parameter ownership is an edge-device concept. The platform task editor
-// keeps its legacy behavior and continues to expose/submit every metadata
-// parameter, with `senior` only controlling normal/advanced visibility.
-export const isChannelEditableInContext = (param, platformType) =>
-  String(platformType ?? '') === '1' || isChannelEditableParam(param)
-
-export const filterChannelEditableParams = (params, platformType) => {
+export const filterChannelEditableParams = (params) => {
   const list = Array.isArray(params) ? params : []
-  if (String(platformType ?? '') === '1') return [...list]
   const flags = resolveChannelEditableFlags(list)
   return list.filter((_, index) => flags[index])
 }
@@ -648,12 +629,9 @@ export const normalizeParamOwnershipList = (params) => {
 // The edge channel editor must display every parameter it is allowed to
 // override. Work on the editor copy only so legacy `senior` visibility does not
 // hide an explicitly editable control or mutate the algorithm metadata.
-export const normalizeChannelEditorVisibility = (param, platformType) => {
+export const normalizeChannelEditorVisibility = (param) => {
   const normalized = { ...param }
-  if (
-    String(platformType ?? '') !== '1' &&
-    isChannelEditableParam(normalized)
-  ) {
+  if (isChannelEditableParam(normalized)) {
     normalized.senior = 0
   }
   return normalized

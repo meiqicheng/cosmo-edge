@@ -8,22 +8,6 @@ export default {
       data
     })
   },
-  // 查询算法版本详情列表
-  algorithmInfo: data => {
-    return request({
-      url: '/gtw/cwai/algorithm/version/info',
-      method: 'post',
-      data
-    })
-  },
-
-  // 服务分配获取服务方
-  getSupplier: () => {
-    return request({
-      url: '/gtw/cwai/dic/getDictByType/ALG_SUPPLIER',
-      method: 'get'
-    })
-  },
   // 编排动作
   atomicActionList: (data) => {
     return request({
@@ -79,32 +63,9 @@ export default {
       data
     })
   },
-  updateAlgorithmLayout: (data) => {
-    return request({
-      url: '/gtw/cwai/algorithm/layout/update',
-      method: 'post',
-      data
-    })
-  },
-  // 删除场景算法接口
-  deleteAlgorithmLayout: (data) => {
-    return request({
-      url: '/gtw/cwai/algorithm/layout/delete',
-      method: 'post',
-      data
-    })
-  },
   boxDeleteAlgorithmLayout: (data) => {
     return request({
       url: '/gtw/cwai/algorithm/delete',
-      method: 'post',
-      data
-    })
-  },
-  // 导入编排算法
-  importAlgorithmLayout: (data) => {
-    return request({
-      url: '/gtw/cwai/algorithm/layout/import',
       method: 'post',
       data
     })
@@ -117,14 +78,6 @@ export default {
   getAtomicModelPage: (data) => {
     return request({
       url: '/gtw/cwai/atomic/model/page',
-      method: 'post',
-      data
-    })
-  },
-  //系统算法授权查看  
-  algorithmLicenseView: (data) => {
-    return request({
-      url: '/gtw/cwai/algorithm/license/view',
       method: 'post',
       data
     })
@@ -166,15 +119,6 @@ export default {
       timeout: 60000
     })
   },
-  // 查询已运行分析服务类型列表
-  engineTypeList: data => {
-    return request({
-      url: '/gtw/cwai/analysis/node/engineTypeList',
-      method: 'post',
-      data
-    })
-  },
-
   // 查询原子模型组件列表接口
   getModelComponents: (data) => {
     return request({

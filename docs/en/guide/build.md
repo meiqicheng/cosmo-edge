@@ -145,8 +145,10 @@ reference for SSH installation, web upgrade, recovery boundaries, and
 post-reboot version acceptance. This guide does not duplicate device installation
 commands, so the build entry point and deployment workflow cannot drift apart.
 
-Maintainers use one command in a controlled environment containing the complete
-Guard SDK and provisioning tool:
+The authorized fork delivers the complete Sophon Guard SDK in
+`prebuild/model-guard-v2/`: runtime, header, matching provisioning tool, and
+`SDK-MANIFEST.json`, following the RK3576 delivery model.
+Maintainers use one command to build a Protected package:
 
 ```bash
 COSMO_MODEL_GUARD_BUILD_PROFILE=production-release \
@@ -156,12 +158,25 @@ COSMO_MODEL_GUARD_BUILD_PROFILE=production-release \
 This example builds a CV186X Protected package. Use `bm1688`, or omit the chip
 model, for BM1688.
 
-The Protected build fails immediately if the controlled SDK does not contain
-`cosmo-model-provision`.
-Stage the controlled production SDK under the host path
-`build_output/model-guard-sdk-production/`. The existing Compose volume exposes
-that ignored directory to the container, and Protected builds select it
-automatically. Open builds remain unchanged.
+Both Open and Protected use this checked-in SDK by default. Only an explicit
+`COSMO_MODEL_GUARD_SDK_ROOT` overrides it; for Compose builds, the value must
+refer to a directory accessible inside the container.
+`build_output/model-guard-sdk-production/` is no longer selected automatically.
+Before compilation, Protected builds verify the complete manifest and paired
+runtime/provisioner hashes, failing immediately on missing or mismatched inputs.
+Package auditing verifies the bundled artifacts against the same SDK manifest.
+Open packages still exclude the provisioning tool.
+
+With the default `COSMO_PACKAGE_MODELS=include`, a Protected package requires
+encrypted preset models in the resource directory; the complete SDK does not
+automatically encrypt plaintext models. To update the application while keeping
+the device's installed models, also set `COSMO_PACKAGE_MODELS=preserve` on the
+command above. That archive contains no models and does not establish model
+delivery acceptance or initialize a blank device.
+
+Checking in the complete SDK applies only to this explicitly authorized fork.
+It is not a general relicensing or permission to publish the SDK elsewhere;
+historical public approvals retain their original scope.
 
 The Protected CPack artifact is itself the upgrade archive accepted by the web
 management page. No offline application-signing step is required. Guard device

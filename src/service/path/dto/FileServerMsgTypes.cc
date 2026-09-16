@@ -1,4 +1,4 @@
-// FileServerMsgTypes — File-server message types for upload/download URL management.
+// FileServerMsgTypes — File-server message types for upload URL management.
 
 #include "service/path/dto/FileServerMsgTypes.h"
 
@@ -29,18 +29,6 @@ void from_json(const nlohmann::json& j, FMsgReqGetFileUrl& v) {
     JSON_OPT(j, v, resData);
 }
 
-void to_json(nlohmann::json& j, const FMsgReqPUpFile& v) {
-    to_json(j, static_cast<const FMsgSendHead&>(v));
-    j["fileUrl"]    = v.fileUrl;
-    j["uploadSize"] = v.uploadSize;
-}
-
-void from_json(const nlohmann::json& j, FMsgReqPUpFile& v) {
-    from_json(j, static_cast<FMsgSendHead&>(v));
-    JSON_OPT(j, v, fileUrl);
-    JSON_OPT(j, v, uploadSize);
-}
-
 void from_json(const nlohmann::json& j, FMsgRspGetFileUrl& v) {
     JSON_OPT(j, v, isHttps);
     JSON_OPT(j, v, suffix);
@@ -49,16 +37,6 @@ void from_json(const nlohmann::json& j, FMsgRspGetFileUrl& v) {
 void to_json(nlohmann::json& j, const FMsgRspGetFileUrl& v) {
     j["isHttps"] = v.isHttps;
     j["suffix"]  = v.suffix;
-}
-
-void from_json(const nlohmann::json& j, FMsgRspUpFile& v) {
-    JSON_OPT(j, v, fileName);
-    JSON_OPT(j, v, down);
-}
-
-void to_json(nlohmann::json& j, const FMsgRspUpFile& v) {
-    j["fileName"] = v.fileName;
-    j["down"]     = v.down;
 }
 
 void from_json(const nlohmann::json& j, FMsgReqGetFileUrl::ResData& v) {

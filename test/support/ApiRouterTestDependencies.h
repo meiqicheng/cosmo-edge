@@ -16,7 +16,7 @@
 #include "mock/MockLiveStreamService.h"
 #include "mock/MockModelAuthorizationService.h"
 #include "mock/MockModelService.h"
-#include "mock/MockNetworkService.h"
+#include "mock/MockNetworkConfig.h"
 #include "mock/MockOnboardingService.h"
 #include "mock/MockPersonDaoService.h"
 #include "mock/MockPersonRecogDaoService.h"
@@ -33,7 +33,7 @@ namespace cosmo::test {
 /// has no default behavior and no path side effects.
 struct ApiRouterTestDependencies {
     MockAuthService authSvc;
-    MockNetworkService networkSvc;
+    MockNetworkConfig networkSvc;
     MockAlgorithmService algSvc;
     MockCameraService cameraSvc;
     MockTaskService taskSvc;
@@ -59,7 +59,7 @@ struct ApiRouterTestDependencies {
     MockOnboardingService onboardingSvc;
 
     ScopedServiceOverride<service::IAuthService> auth{authSvc};
-    ScopedServiceOverride<service::INetworkService> network{networkSvc};
+    ScopedServiceOverride<service::INetworkConfig> network{networkSvc};
     ScopedServiceOverride<service::IAlgorithmQuery> algorithmQuery{algSvc};
     ScopedServiceOverride<service::IAlgorithmCrud> algorithmCrud{algSvc};
     ScopedServiceOverride<service::IAlgorithmLayout> algorithmLayout{algSvc};

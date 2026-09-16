@@ -9,7 +9,7 @@
 #include "service/detail/ServiceRegistry.h"
 #include "service/media/impl/AudioServiceImpl.h"
 #include "service/network/IHttpClient.h"
-#include "service/network/INetworkService.h"
+#include "service/network/INetworkConfig.h"
 #include "util/LimitedTypeJson.h"
 #include "util/Log.h"
 #include "util/TimeUtil.h"
@@ -298,7 +298,7 @@ bool AudioServiceImpl::PlayAudioDevice(cosmo::AudioDevicePlay& info) {
         (devInfo.ethName == cosmo::service::kMainEthName)) {
         b_main_card = true;
     }
-    auto net_cards = service::ServiceRegistry::Instance().Get<service::INetworkService>().GetNetCards();
+    auto net_cards = service::ServiceRegistry::Instance().Get<service::INetworkConfig>().GetNetCards();
     std::string ip;
     auto it = std::find_if(net_cards.begin(), net_cards.end(),
                            [b_main_card](const auto& netCard) { return netCard.isMain == b_main_card; });

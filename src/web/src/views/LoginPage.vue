@@ -175,7 +175,6 @@ const handleLogin = async () => {
     localStorage.removeItem('dialog')
     localStorage.setItem('mtk', resData.mtk)
     localStorage.setItem('token', resData.mtk)
-    localStorage.setItem('platformType', '15')
     localStorage.setItem('account', resData?.account || params.account || '')
 
     // ── SEC-001: Force password change when factory-default password is active ──

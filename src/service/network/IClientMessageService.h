@@ -3,7 +3,6 @@
 ///        for algorithm config, atomic code lists, and video playback URLs.
 #pragma once
 
-#include "service/detail/ServiceRegistry.h"
 #include "service/network/dto/ClientMsgAlgorithm.h"
 #include "service/network/dto/ClientMsgVideo.h"
 #include "util/dto/ServerMsgTypes.h"

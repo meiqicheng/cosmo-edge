@@ -13,10 +13,10 @@
         </div>
       </div>
       <div class="actions">
-        <el-button type="primary" size="small" @click="handleSave">{{ t('action.save') }}</el-button>
+        <el-button type="primary" size="small" :disabled="!configReady" @click="handleSave">{{ t('action.save') }}</el-button>
         <el-tooltip :content="t('common.presetModelNotExportable')" :disabled="isExportable" placement="top">
           <span>
-            <el-button size="small" :disabled="!isExportable" @click="handleExport">{{ t('action.export') }}</el-button>
+            <el-button size="small" :disabled="!configReady || !isExportable" @click="handleExport">{{ t('action.export') }}</el-button>
           </span>
         </el-tooltip>
         <el-button size="small" @click="handleReset">{{ t('action.restoreDefault') }}</el-button>
@@ -25,6 +25,7 @@
     </div>
 
     <div class="config-body">
+      <el-alert v-if="configError" :title="t('common.modelConfigLoadFailed')" type="error" :closable="false" show-icon />
       <ParamsConfig
         v-model="paramsConfig"
         :model-type="modelType"
@@ -45,7 +46,7 @@
           </div>
         </template>
         <div v-show="showOther">
-          <ConfigFLow v-model:flowData="flowData" v-model:modelComponents="modelComponents" />
+          <ConfigFLow v-model:flowData="flowData" />
         </div>
       </el-card>
     </div>
@@ -71,15 +72,26 @@ const modelType = ref('')
 const chipType = ref('')
 const version = ref('')
 const isExportable = ref(true)
+const configReady = ref(false)
+const configError = ref(false)
 const defaultConfigJson = ref('')
 const showOther = ref(false)
 const flowData = ref({})
 const paramsConfig = ref({})
 const labels = ref([])
-const modelComponents = ref([])
 const maxLabelCount = 80
 
 const isGenerationModel = (type) => ['qwen3vl', 'qwen3_5'].includes(String(type || '').toLowerCase())
+
+const parseModelConfig = (text) => {
+  const cfg = JSON.parse(text)
+  if (!cfg || Array.isArray(cfg) || typeof cfg !== 'object' ||
+      !Array.isArray(cfg.models) || !cfg.models.length ||
+      !cfg.models[0] || Array.isArray(cfg.models[0]) || typeof cfg.models[0] !== 'object') {
+    throw new Error('Invalid model configuration')
+  }
+  return cfg
+}
 
 const hydrate = (cfg) => {
   raw.value = cfg
@@ -106,6 +118,8 @@ const hydrate = (cfg) => {
     inputs: JSON.parse(JSON.stringify(m?.inputs || [])),
     outputs: JSON.parse(JSON.stringify(m?.outputs || []))
   }
+  configReady.value = true
+  configError.value = false
 }
 
 const collect = () => {
@@ -134,6 +148,7 @@ const collect = () => {
 }
 
 const handleSave = () => {
+  if (!configReady.value) return
   const cfg = collect()
   const params = {
     modelCode: modelCode.value,
@@ -146,6 +161,7 @@ const handleSave = () => {
 }
 
 const handleExport = () => {
+  if (!configReady.value || !isExportable.value) return
   const cfg = collect()
   const saveParams = {
     modelCode: modelCode.value,
@@ -187,16 +203,6 @@ const handleExport = () => {
   })
 }
 
-const queryModelComponents = () => {
-  const params = {
-    filePath: '/appfs/cosmo_wander/cwai_data/resource/layout/modelComponents.json'
-  }
-  proxy.$API.getModelComponents(params).then((res) => {
-    const { resData } = res
-    modelComponents.value = resData?.list || []
-  })
-}
-
 const handleReset = () => {
   proxy.$confirm(t('validate.confirmResetDefault'), t('common.notice'), {
     type: 'warning'
@@ -207,7 +213,7 @@ const handleReset = () => {
       return
     }
     try {
-      hydrate(JSON.parse(text))
+      hydrate(parseModelConfig(text))
       proxy.$message.success(t('common.defaultRestored'))
     } catch {
       proxy.$message.error(t('validate.editFailed'))
@@ -223,22 +229,21 @@ const queryModelConfig = () => {
   const routeModelCode = route.query?.modelCode || ''
   proxy.$API.getModelConfig({ modelCode: routeModelCode }).then((res) => {
     const { resData } = res || {}
-    const text = resData?.configJson || '{}'
+    const text = resData?.configJson || ''
     isExportable.value = resData?.isExportable !== false
     defaultConfigJson.value = resData?.defaultConfigJson || ''
-    let cfg = {}
     try {
-      cfg = JSON.parse(text)
+      hydrate(parseModelConfig(text))
     } catch {
-      cfg = {}
+      configError.value = true
     }
-    hydrate(cfg)
+  }).catch(() => {
+    configError.value = true
   })
 }
 
 onMounted(() => {
   queryModelConfig()
-  queryModelComponents()
 })
 </script>
 

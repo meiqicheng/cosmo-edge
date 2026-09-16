@@ -1,4 +1,5 @@
 #include "catch_amalgamated.hpp"
+#include "service/detail/ServiceRegistry.h"
 /*
  * test_api_handler_core.cc - MessageHandler core endpoint unit tests
  *

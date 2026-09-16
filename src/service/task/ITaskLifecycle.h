@@ -5,8 +5,8 @@
 #pragma once
 
 #include <string>
+#include <system_error>
 
-#include "service/detail/ServiceRegistry.h"
 #include "util/ErrorCode.h"
 #include "util/dto/CameraMsgTypes.h"
 #include "util/dto/CosmoFwd.h"

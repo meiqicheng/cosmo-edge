@@ -5,13 +5,6 @@
         <span class="formTitle">{{ t('field.channelName') }}{{ localeColon }}</span>
         <el-input class="el-form" v-model="formData.channelName" :placeholder="t('placeholder.enter', { field: t('field.channelName') })" size="small"></el-input>
       </div>
-      <!-- <div class="formDiv">
-        <span class="formTitle">{{ t('glossary.accessType') }}{{ localeColon }}</span>
-        <el-select class="el-form" v-model="formData.channelType"  size="small" clearable>
-          <el-option v-for="item in channelTypeList" :key="item.value" :label="item.label" :value="item.value">
-          </el-option>
-        </el-select>
-      </div> -->
       <div class="formDiv" v-if="active">
         <span class="formTitle">{{ t('field.channelStatus') }}{{ localeColon }}</span>
         <el-select class="el-form" v-model="formData.channelStatus" :placeholder="t('placeholder.select', { field: t('field.channelStatus') })" size="small">
@@ -19,21 +12,6 @@
           </el-option>
         </el-select>
       </div>
-      <!-- <div class="formDiv">
-        <span class="formTitle">{{ t('glossary.algorithmService') }}{{ localeColon }}</span>
-        <el-select class="el-form" filterable v-model="formData.algorithmUsage"  size="small" @change="dataSourceChange">
-          <el-option v-for="item in algorithmTree" :key="item.value" :label="item.label" :value="item.value">
-          </el-option>
-        </el-select>
-      </div>
-      <div class="formDiv" v-if="active">
-        <span class="formTitle">{{ t('glossary.runningStatus') }}{{ localeColon }}</span>
-        <el-select class="el-form" v-model="formData.taskStatus"  size="small">
-          <el-option v-for="item in stateData" :key="item.value" :label="item.label" :value="item.value">
-          </el-option>
-        </el-select>
-      </div> -->
-
     </div>
     <div class="btnBar">
       <el-button class="mv-el-button" type="primary" size="small" @click="getFormData">{{ t('action.search') }}</el-button>
@@ -43,7 +21,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, getCurrentInstance } from 'vue'
+import { reactive, computed, onMounted } from 'vue'
 import { t, localeColon } from '@/i18n'
 
 const props = defineProps({
@@ -53,9 +31,6 @@ const props = defineProps({
   }
 })
 const emit = defineEmits(['init', 'search', 'reset1', 'reset'])
-const { proxy } = getCurrentInstance()
-
-const platformType = ref(window.localStorage.getItem('platformType'))
 const formData = reactive({
   channelName: '',
   taskStatus: '',
@@ -65,50 +40,11 @@ const formData = reactive({
   algorithmUsage: ''
 })
 
-const algorithmTree = computed(() => [{ label: t('common.all'), value: '' }])
-const intellectData = ref([])
-const dataSource = computed(() => [
-  { label: t('common.all'), value: '' },
-  { label: t('glossary.videoAnalysis'), value: '1' },
-  { label: t('glossary.imageAnalysis'), value: '2' }
-])
-const stateData = computed(() => [
-  { label: t('common.all'), value: '' },
-  { label: t('status.stopped'), value: '0' },
-  { label: t('status.inProgress'), value: '1' },
-  { label: t('status.paused'), value: '2' }
-])
 const channelStatusList = computed(() => [
   { label: t('common.all'), value: -1 },
   { label: t('status.offline'), value: 0 },
   { label: t('status.online'), value: 1 }
 ])
-const runTypeData = computed(() => [
-  { label: t('common.all'), value: '' },
-  { label: t('glossary.realtime'), value: '0' },
-  { label: t('glossary.polling'), value: '1' }
-])
-const timeTemplateList = ref([])
-const schedulePollingList = ref([])
-const channelTypeList = computed(() => [
-  { label: t('common.all'), value: '' },
-  { label: 'RTSP', value: 0 },
-  { label: t('glossary.offlineVideo'), value: 3 }
-])
-const algorithmCategoryList = computed(() => [
-  { label: t('glossary.faceAndBody'), value: '1' },
-  { label: t('glossary.detection'), value: '2' },
-  { label: t('glossary.detection'), value: '3' },
-  { label: t('glossary.countingAnalytics'), value: '8' },
-  { label: t('glossary.countingAnalytics'), value: '9' },
-  { label: t('glossary.vehicleAnalysis'), value: '10' },
-  { label: t('glossary.countingAnalytics'), value: '11' }
-])
-
-const getServiceList = () => {
-  const params = { pageNum: 1, pageSize: 1000 }
-  // proxy.$API.algorithmInquire(params)
-}
 
 const init = () => {
   emit('init', formData)
@@ -130,76 +66,12 @@ const resetFormData = () => {
   formData.algorithmUsage = ''
   formData.taskStatus = ''
   formData.channelStatus = -1
-  intellectData.value = []
   emit('reset1')
   emit('reset', formData)
   localStorage.setItem('currentCustId', '')
 }
 
-const dataSourceChange = (value) => {
-  const pType = localStorage.getItem('platformType')
-  if (!formData.custId && pType == 1) {
-    return proxy.$message.warning(t('validate.selectCustomer'))
-  }
-  if (value == '') {
-    formData.algorithmId = ''
-    intellectData.value = []
-  } else {
-    formData.algorithmId = ''
-    const params = {
-      algorithmUsage: Number(value),
-      custId: window.localStorage.getItem('taskCustId')
-        ? window.localStorage.getItem('taskCustId')
-        : window.localStorage.getItem('currentCustId')
-    }
-    proxy.$API.selectAlgorithmInfo(params).then((res) => {
-      const resData = res.data
-      const data = { label: t('common.all'), value: '' }
-      const algorithmName = [data]
-      for (let item in resData) {
-        const exclist = {}
-        exclist.value = resData[item].algorithmId
-        exclist.label = resData[item].algorithmName
-        algorithmName.push(exclist)
-      }
-      intellectData.value = algorithmName
-    })
-  }
-}
-
-const categoryChange = (val) => {
-  if (!formData.custId && platformType.value == '1') {
-    return proxy.$message.warning(t('validate.selectCustomerFirst'))
-  }
-  if (val == '0') {
-    getTimetemplate()
-  } else if (val == '1') {
-    getSchedulePollingList()
-  }
-}
-
-const getTimetemplate = () => {
-  formData.scheduleId = ''
-  const params = { custId: formData.custId }
-  proxy.$API.selectScheduleInfo(params).then((res) => {
-    timeTemplateList.value = [
-      { scheduleName: t('common.all'), scheduleId: '' },
-      ...res.data
-    ]
-  })
-}
-
-const getSchedulePollingList = () => {
-  formData.pollingId = ''
-  const params = { custId: formData.custId }
-  proxy.$API.schedulePollingList(params).then((res) => {
-    const { resData } = res.data
-    schedulePollingList.value = [{ name: t('common.all'), id: '' }, ...resData]
-  })
-}
-
 onMounted(() => {
-  getServiceList()
   init()
 })
 </script>

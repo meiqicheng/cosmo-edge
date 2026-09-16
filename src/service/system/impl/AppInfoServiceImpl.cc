@@ -10,7 +10,7 @@
 #include "mem/MemoryPoolMng.h"
 #include "service/detail/ServiceRegistry.h"
 #include "service/model/IModelPathMapping.h"
-#include "service/system/IDeviceInfoService.h"
+#include "service/system/IHardwareQuery.h"
 #include "service/task/ITaskQuery.h"
 #include "util/DateTimeFormat.h"
 #include "util/Exception.h"
@@ -160,36 +160,6 @@ std::string AppInfoServiceImpl::LogWebPath() {
     return "/logs/";
 }
 
-// ── HwResUtilization ──
-
-double AppInfoServiceImpl::GetCpuUtilization() {
-    return ServiceRegistry::Instance().Get<IDeviceInfoService>().GetCpuUtilization();
-}
-
-cosmo::MsgGpuInfo AppInfoServiceImpl::GetGpuUtilization() {
-    return ServiceRegistry::Instance().Get<IDeviceInfoService>().GetGpuUtilization();
-}
-
-cosmo::MsgMemoryInfo AppInfoServiceImpl::GetMemoryUtilization() {
-    return ServiceRegistry::Instance().Get<IDeviceInfoService>().GetMemoryUtilization();
-}
-
-cosmo::MsgDiskInfo AppInfoServiceImpl::GetDiskUtilization() {
-    return ServiceRegistry::Instance().Get<IDeviceInfoService>().GetDiskUtilization();
-}
-
-cosmo::MsgNetInfo AppInfoServiceImpl::GetNetUtilization() {
-    return ServiceRegistry::Instance().Get<IDeviceInfoService>().GetNetUtilization();
-}
-
-int64_t AppInfoServiceImpl::GetAvailableGpuMemoryMB() {
-    return ServiceRegistry::Instance().Get<IDeviceInfoService>().GetAvailableGpuMemoryMB();
-}
-
-size_t AppInfoServiceImpl::GetGpuNum() {
-    return ServiceRegistry::Instance().Get<IDeviceInfoService>().GetGpuNum();
-}
-
 // ── ModelPathUtil ──
 
 void AppInfoServiceImpl::SetModelPath(const std::string& algCode, const std::string& modelPath) {
@@ -284,11 +254,12 @@ cosmo::MsgInfoSend AppInfoServiceImpl::GetSystemOverviewInfo(const cosmo::MsgInf
     retData.devId           = dev_id;
     retData.runtimeDuration = GetAppRuntime();
 
-    retData.cpuUsage     = static_cast<float>(GetCpuUtilization());
-    auto gpu_info        = GetGpuUtilization();
-    auto mem_info        = GetMemoryUtilization();
-    auto disk_info       = GetDiskUtilization();
-    auto net_info        = GetNetUtilization();
+    auto& hardware       = ServiceRegistry::Instance().Get<IHardwareQuery>();
+    retData.cpuUsage     = static_cast<float>(hardware.GetCpuUtilization());
+    auto gpu_info        = hardware.GetGpuUtilization();
+    auto mem_info        = hardware.GetMemoryUtilization();
+    auto disk_info       = hardware.GetDiskUtilization();
+    auto net_info        = hardware.GetNetUtilization();
     retData.memTotal     = mem_info.memtotal;
     retData.memAvailable = mem_info.memavailable;
 

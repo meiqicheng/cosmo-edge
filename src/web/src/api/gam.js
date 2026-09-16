@@ -35,38 +35,6 @@ export default {
       timeout: 30000
     })
   },
-  // 开始任务
-  startTask: data => {
-    return request({
-      url: '/gtw/cwai/task/startTask',
-      method: 'post',
-      data
-    })
-  },
-  // 停止任务
-  stopTask: data => {
-    return request({
-      url: '/gtw/cwai/task/stopTask',
-      method: 'post',
-      data
-    })
-  },
-  // 删除任务
-  deleteTask: data => {
-    return request({
-      url: '/gtw/cwai/task/deleteTask',
-      method: 'post',
-      data
-    })
-  },
-  //查询基础算法
-  selectAlgorithmInfo(data) {
-    return request({
-      url: '/gtw/cwai/task/selectAlgorithmInfo',
-      method: 'post',
-      data
-    })
-  },
   // 任务管理-查询启用指定算法的通道列表
   listChannel(data) {
     return request({
@@ -87,14 +55,6 @@ export default {
   channelCodeDetail(data) {
     return request({
       url: '/gtw/cwai/videoDevice/channel/detail',
-      method: 'post',
-      data
-    })
-  },
-  // 轮询策略列表
-  schedulePollingList: data => {
-    return request({
-      url: '/gtw/cwai/cust/schedule/polling/list',
       method: 'post',
       data
     })

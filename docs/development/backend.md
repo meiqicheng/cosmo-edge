@@ -97,7 +97,9 @@ auto& foo = ServiceRegistry::Instance().Get<IFooService>();
 服务初始化在 `src/app/app_init.cc` 中完成，由 `SwDeviceInit()` 按四阶段调用：
 
 **阶段一 — `RegisterInfrastructureServices()`**
-注册基础设施服务：`IFileService`、`IEventNotifier`（WebSocket 推送）、`IMemoryPoolService`、`IStorageCleanService`、`IWatchDogService`、`IDbService`（SQLite）、`IOsdTextRenderer`、`IVideoFrameService`、`ITaskService`、`IInferPoolService`、`ILlmInferService`、`INetworkService`、`IDeviceDiscoveryService`、`IHttpClient`。
+注册基础设施服务：`IFileService`、`IEventNotifier`（WebSocket 推送）、`MemoryPoolServiceImpl`、`IStorageCleanService`、`IWatchDogService`、`IDbService`（SQLite）、`IOsdTextRenderer`、`IVideoFrameService`、`ITaskService`、`IInferPoolService`、`ILlmInferService`、`IHttpLifecycle`、`IMqttLifecycle`、`INetworkConfig`、`IDeviceDiscoveryService`、`IHttpClient`。
+
+内存池以具体类型 `MemoryPoolServiceImpl` 注册，仅管理池和上下文的生命周期；分配、回收及诊断继续使用 `mem::GetMemoryPool()`。
 
 **阶段二 — `RegisterBusinessServices()`**
 注册业务服务：音频、联动、摄像头、图片任务、算法、设备信息、时间（NTP）、系统配置、模型管理、告警记录/推送、认证、计划任务、人脸/人体/物品底库、直播流、动作、客户端消息、应用信息、定时重启。

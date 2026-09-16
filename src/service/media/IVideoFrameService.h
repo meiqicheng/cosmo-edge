@@ -4,7 +4,6 @@
 ///        Callers should prefer the narrow sub-interfaces for new code.
 #pragma once
 
-#include "service/detail/ServiceRegistry.h"
 #include "service/media/IVideoFrameCodec.h"
 #include "service/media/IVideoFrameOSD.h"
 #include "service/media/IVideoFrameTransform.h"

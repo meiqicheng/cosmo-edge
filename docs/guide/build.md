@@ -139,7 +139,9 @@ cat "build_output/public-runtime/${chip}/TARGET_CHIP"
 SSH 安装、Web 升级、恢复边界和重启后的版本验收统一见[部署指南](./deployment.md#ssh-安装路径)。
 构建指南不重复维护设备安装命令，避免构建入口和部署流程独立演进后出现两套口径。
 
-维护人员在包含完整 Guard SDK 和授权工具的受控环境中使用一条命令构建：
+当前授权 fork 在 `prebuild/model-guard-v2/` 中交付完整 Sophon Guard SDK，
+包含 runtime、头文件、配套授权工具及 `SDK-MANIFEST.json`，与 RK3576 的交付方式一致。
+维护人员使用一条命令构建 Protected 包：
 
 ```bash
 COSMO_MODEL_GUARD_BUILD_PROFILE=production-release \
@@ -148,10 +150,19 @@ COSMO_MODEL_GUARD_BUILD_PROFILE=production-release \
 
 上例构建 CV186X Protected 包；构建 BM1688 时把末尾型号改为 `bm1688`，或省略型号。
 
-如果受控 SDK 中缺少 `cosmo-model-provision`，Protected 构建会直接失败。
-受控生产 SDK 应放在宿主机的
-`build_output/model-guard-sdk-production/`，该目录通过现有 Compose 挂载进入
-容器且不会提交到 Git。Protected 构建会自动优先使用它；Open 构建不受影响。
+Open 和 Protected 默认都使用仓库内这套 SDK，仅显式设置
+`COSMO_MODEL_GUARD_SDK_ROOT` 才会覆盖默认路径；Compose 构建时该值须指向
+容器内可访问的目录。`build_output/model-guard-sdk-production/` 不再自动优先。
+Protected 构建在编译前校验完整清单及 runtime、授权工具的配套哈希，缺失或不匹配
+立即失败；整包审计依据同一 SDK 清单校验入包文件。Open 包仍不包含授权工具。
+
+默认 `COSMO_PACKAGE_MODELS=include` 时，Protected 包要求资源目录中的预设模型
+已经加密，完整 SDK 不会自动转换明文模型。仅更新应用并保留设备现有模型时，
+可在上述命令前同时设置 `COSMO_PACKAGE_MODELS=preserve`；该包不携带模型，
+不能用于验收模型交付或初始化空白设备。
+
+完整 SDK 入库仅适用于当前明确授权的 fork，不构成广泛重授权或向其他位置发布 SDK
+的许可；历史公开授权仍保持原范围。
 
 Protected 的 CPack 产物本身就是管理页面接受的升级包，不再需要离线应用签名步骤。
 Guard 设备证书和模型加密秘密仍属于受控输入，不得写入公开仓库。

@@ -22,7 +22,7 @@
 #include "mem/DeviceContext.h"
 #include "mem/IDeviceContext.h"
 #include "service/detail/ServiceRegistry.h"
-#include "service/network/INetworkService.h"
+#include "service/network/IHttpLifecycle.h"
 #include "util/Log.h"
 #include "util/PathUtil.h"
 #include "util/Version.h"
@@ -194,9 +194,9 @@ int Application::run(const char* base_dir) {
         cosmo::service::ServiceRegistry::Instance().Set<cosmo::mem::IDeviceContext>(device_ctx.get());
         SwDeviceInit();
 
-        auto& network_service =
-            cosmo::service::ServiceRegistry::Instance().Get<cosmo::service::INetworkService>();
-        shutdown_signals->Start([&network_service]() { network_service.RequestHttpStop(); });
+        auto& http_lifecycle =
+            cosmo::service::ServiceRegistry::Instance().Get<cosmo::service::IHttpLifecycle>();
+        shutdown_signals->Start([&http_lifecycle]() { http_lifecycle.RequestHttpStop(); });
 
         // Blocking — runs the HTTP server event loop until shutdown.
         SwDeviceRun();

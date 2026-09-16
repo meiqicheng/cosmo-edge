@@ -5,7 +5,6 @@
 #include <new>
 #include <stdexcept>
 
-#include "nn/device/sophon/sophon_context.h"
 #include "nn/node/node.h"
 #include "nn/utils/blob_memory_size_utils.h"
 #include "nn/utils/dims_vector_utils.h"
@@ -77,10 +76,6 @@ void SophonDevice::ReleaseRuntimeHandle(bm_handle_t handle) noexcept {
             return;
         }
     }
-}
-
-AbstractContext* SophonDevice::CreateContext(int device_id_) {
-    return nullptr;
 }
 
 BlobMemorySizeInfo SophonDevice::Calculate(BlobDesc& desc) {

@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import {
   collapseTaskParamSchemasByKey,
   combineTaskParamSources,
@@ -9,7 +8,7 @@ import {
   flattenTaskParamTree,
   getParamDependencyCycleBreakIndexes,
   getTaskParamSchemaFingerprint,
-  isChannelEditableInContext,
+  isChannelEditableParam,
   isChannelParamRenderableAtDepth,
   mergeTaskParamSchemasByKey,
   normalizeChannelEditorVisibility,
@@ -20,30 +19,6 @@ import {
   resolveFinalTaskParamDependencies,
   serializeTaskParamTree
 } from '../src/utils/taskParamOwnership.js'
-
-const parameterSettingSource = readFileSync(
-  new URL(
-    '../src/views/gam/countManagement/arrangeDetail/flow/ParameterSetting.vue',
-    import.meta.url
-  ),
-  'utf8'
-)
-const dynamicFormSource = readFileSync(
-  new URL(
-    '../src/views/gam/taskManager/editTask/dynamicForm.vue',
-    import.meta.url
-  ),
-  'utf8'
-)
-assert.doesNotMatch(parameterSettingSource, /glossary\.(?:allHidden|clientHidden)/)
-assert.doesNotMatch(
-  parameterSettingSource,
-  /el-radio-group\s+v-model="item\.checkedClient"/
-)
-assert.match(
-  parameterSettingSource,
-  /el-checkbox\s+v-model="item\.checkedClient"\s+:true-value="0"\s+:false-value="2"/
-)
 
 assert.equal(normalizeChannelVisibilitySelection({ senior: 0 }), 0)
 assert.equal(normalizeChannelVisibilitySelection({ senior: '0' }), 0)
@@ -81,18 +56,6 @@ assert.deepEqual(
     { key: 'hidden', senior: 2, channelEditable: false }
   ]
 )
-assert.doesNotMatch(parameterSettingSource, /checkedClient:\s*2/)
-assert.match(parameterSettingSource, /checkedClient:\s*0/g)
-assert.doesNotMatch(
-  dynamicFormSource,
-  /v-if="el\.dependsOn\.value == item\.value"/
-)
-assert.match(dynamicFormSource, /v-if="showChildParam\(item, el\)"/)
-assert.match(
-  dynamicFormSource,
-  /:disabled="disableChildParam\(item, el\)"/
-)
-
 const equivalentSchemaA = {
   key: 'threshold',
   type: 'text',
@@ -498,31 +461,27 @@ assert.deepEqual(
 
 assert.deepEqual(
   normalizeChannelEditorVisibility(
-    { key: 'explicitVisible', senior: 2, channelEditable: true },
-    '15'
+    { key: 'explicitVisible', senior: 2, channelEditable: true }
   ),
   { key: 'explicitVisible', senior: 0, channelEditable: true }
 )
 assert.deepEqual(
   normalizeChannelEditorVisibility(
-    { key: 'sceneOnly', senior: 2, channelEditable: false },
-    '15'
+    { key: 'sceneOnly', senior: 2, channelEditable: false }
   ),
   { key: 'sceneOnly', senior: 2, channelEditable: false }
 )
 assert.deepEqual(
   normalizeChannelEditorVisibility(
-    { key: 'legacyVisible', senior: 1, channelEditable: false },
-    '15'
+    { key: 'legacyVisible', senior: 1, channelEditable: false }
   ),
   { key: 'legacyVisible', senior: 0, channelEditable: false }
 )
 assert.deepEqual(
   normalizeChannelEditorVisibility(
-    { key: 'platformAdvanced', senior: 2, channelEditable: true },
-    '1'
+    { key: 'advanced', senior: 2, channelEditable: true }
   ),
-  { key: 'platformAdvanced', senior: 2, channelEditable: true }
+  { key: 'advanced', senior: 0, channelEditable: true }
 )
 
 assert.deepEqual(
@@ -890,22 +849,12 @@ const edgeOnlyParams = [
   { key: 'cycle', type: 'switch', dependsOn: { key: 'cycle', value: '1' } }
 ]
 assert.deepEqual(
-  filterChannelEditableParams(edgeOnlyParams, '15').map((param) => param.key),
-  ['FaceCheck', 'explicitFalse']
-)
-assert.deepEqual(filterChannelEditableParams(edgeOnlyParams, '1'), edgeOnlyParams)
-assert.deepEqual(filterChannelEditableParams(edgeOnlyParams, 1), edgeOnlyParams)
-assert.deepEqual(
-  filterChannelEditableParams(edgeOnlyParams, '01').map((param) => param.key),
-  ['FaceCheck', 'explicitFalse']
-)
-assert.deepEqual(
   filterChannelEditableParams(edgeOnlyParams).map((param) => param.key),
   ['FaceCheck', 'explicitFalse']
 )
 assert.equal(
-  isChannelEditableInContext({ channelEditable: false }, '1'),
-  true
+  isChannelEditableParam({ senior: 2, channelEditable: false }),
+  false
 )
 
 console.log('task parameter ownership checks passed')

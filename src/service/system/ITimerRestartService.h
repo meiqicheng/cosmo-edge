@@ -3,8 +3,6 @@
 ///        reboots based on configured schedules.
 #pragma once
 
-#include "service/detail/ServiceRegistry.h"
-
 namespace cosmo::service {
 
 /// Controls the scheduled device restart timer.

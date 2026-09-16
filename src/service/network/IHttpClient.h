@@ -6,8 +6,6 @@
 #include <utility>
 #include <vector>
 
-#include "service/detail/ServiceRegistry.h"
-
 namespace cosmo::service {
 
 struct HttpResponse {

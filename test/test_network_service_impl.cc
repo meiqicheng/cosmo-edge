@@ -9,7 +9,9 @@
 #include "mock/MockConfigNetworkService.h"
 #include "mock/MockConfigReadService.h"
 #include "mock/MockDeviceInfoService.h"
-#include "service/network/impl/NetworkServiceImpl.h"
+#include "service/network/impl/HttpLifecycleServiceImpl.h"
+#include "service/network/impl/MqttLifecycleServiceImpl.h"
+#include "service/network/impl/NetworkConfigServiceImpl.h"
 #include "support/ScopedCurrentPath.h"
 #include "support/ScopedPathOverride.h"
 #include "support/ScopedServiceOverride.h"
@@ -100,7 +102,7 @@ public:
 
 }  // namespace
 
-TEST_CASE("NetworkServiceImpl: network config and core dependency test", "[network-service]") {
+TEST_CASE("MQTT lifecycle: unavailable broker leaves MQTT disabled", "[network-service]") {
     std::string testBaseDir =
         "/tmp/cosmo_test_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(testBaseDir);
@@ -112,8 +114,7 @@ TEST_CASE("NetworkServiceImpl: network config and core dependency test", "[netwo
     ClosedLoopbackPort closed_port;
     REQUIRE(closed_port.Port() > 0);
 
-    NetworkServiceImpl sut([]() { return std::make_unique<StubDispatcher>(); },
-                           []() { return std::make_unique<StubDispatcher>(); });
+    MqttLifecycleServiceImpl sut([]() { return std::make_unique<StubDispatcher>(); });
 
     SECTION("MQTT Start call (StandAlone)") {
         ALLOW_CALL(mocks.configReadSvc, GetRunMode()).RETURN(cosmo::RunMode::RunModeStandAlone);
@@ -133,7 +134,7 @@ TEST_CASE("NetworkServiceImpl: network config and core dependency test", "[netwo
     }
 }
 
-TEST_CASE("NetworkServiceImpl: HttpInit and Stop lifecycle", "[network-service]") {
+TEST_CASE("HTTP lifecycle: stop before initialization is safe", "[network-service]") {
     std::string testBaseDir =
         "/tmp/cosmo_test_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(testBaseDir);
@@ -143,8 +144,7 @@ TEST_CASE("NetworkServiceImpl: HttpInit and Stop lifecycle", "[network-service]"
     cosmo::test::ScopedPathOverride path_override(testBaseDir, testBaseDir);
     NetworkServiceDependencies mocks;
 
-    NetworkServiceImpl sut([]() { return std::make_unique<StubDispatcher>(); },
-                           []() { return std::make_unique<StubDispatcher>(); });
+    HttpLifecycleServiceImpl sut([]() { return std::make_unique<StubDispatcher>(); });
 
     SECTION("StopHttpServer without Init is safe") {
         REQUIRE_NOTHROW(sut.RequestHttpStop());
@@ -157,7 +157,7 @@ TEST_CASE("NetworkServiceImpl: HttpInit and Stop lifecycle", "[network-service]"
     }
 }
 
-TEST_CASE("NetworkServiceImpl: IsMqttRegistered and IsMqttEnabled initial state", "[network-service]") {
+TEST_CASE("MQTT lifecycle: initial state and shutdown are safe", "[network-service]") {
     std::string testBaseDir =
         "/tmp/cosmo_test_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(testBaseDir);
@@ -167,8 +167,7 @@ TEST_CASE("NetworkServiceImpl: IsMqttRegistered and IsMqttEnabled initial state"
     cosmo::test::ScopedPathOverride path_override(testBaseDir, testBaseDir);
     NetworkServiceDependencies mocks;
 
-    NetworkServiceImpl sut([]() { return std::make_unique<StubDispatcher>(); },
-                           []() { return std::make_unique<StubDispatcher>(); });
+    MqttLifecycleServiceImpl sut([]() { return std::make_unique<StubDispatcher>(); });
 
     SECTION("IsMqttRegistered returns false before start") {
         REQUIRE(sut.IsMqttRegistered() == false);
@@ -187,11 +186,12 @@ TEST_CASE("NetworkServiceImpl: IsMqttRegistered and IsMqttEnabled initial state"
         REQUIRE_NOTHROW(sut.MqttShutdown());
         REQUIRE_NOTHROW(sut.MqttStart());
     }
+}
 
-    SECTION("StopAsyncApply is safe and idempotent without an update") {
-        REQUIRE_NOTHROW(sut.StopAsyncApply());
-        REQUIRE_NOTHROW(sut.StopAsyncApply());
-        cosmo::platform::NetCardInfo info;
-        REQUIRE_NOTHROW(sut.ApplyCardInfoAsync(info));
-    }
+TEST_CASE("Network configuration: stopped worker rejects further updates", "[network-service]") {
+    NetworkConfigServiceImpl sut;
+    REQUIRE_NOTHROW(sut.StopAsyncApply());
+    REQUIRE_NOTHROW(sut.StopAsyncApply());
+    cosmo::platform::NetCardInfo info;
+    REQUIRE_NOTHROW(sut.ApplyCardInfoAsync(info));
 }

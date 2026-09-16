@@ -1,5 +1,5 @@
 /// @file HttpFileServerCli.h
-/// @brief HTTP client for file-server upload / download operations.
+/// @brief HTTP client for file-server upload operations.
 #pragma once
 
 #include <fstream>
@@ -17,8 +17,6 @@ namespace cosmo::network::http {
 enum class FileServerClientType {
     kGetUploadFilePath = 0,
     kUploadFile,
-    kPointUploadFile,
-    kGetDownload,
 };
 
 /// Credential and endpoint information for the file server.
@@ -55,11 +53,6 @@ public:
     bool HttpclientSubmit(FileServerClientType type, const std::string& rgtIn,
                           cosmo::FMsgReqGetFileUrl& rgtOut, const std::string& bucket,
                           const std::string& fileUrl);
-    // TODO(refactor): point upload is unimplemented and fails closed.
-    bool HttpclientSubmit(FileServerClientType type, const std::string& filepath,
-                          cosmo::FMsgReqPUpFile& rgtOut);
-    bool HttpclientSubmit(FileServerClientType type, cosmo::FMsgRspUpFile& rgtIn,
-                          const std::string& downloadfileurl, const std::string& rgtOut);
 
 private:
     void BoundaryGen();
@@ -69,7 +62,6 @@ private:
     FileServerAppInfo app_info_;
     std::string get_upload_file_path_url_;
     std::string upload_file_url_;
-    std::string point_upload_file_url_;
     std::string ip_port_;
     std::shared_mutex mtx_;
 };

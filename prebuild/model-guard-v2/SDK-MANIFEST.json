@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "release_id": "cmg-sdk-v2.3.3-sophon-abi2",
+  "product_version": "2.3.3",
+  "abi": {
+    "soname": "libcosmo_model_guard.so.2",
+    "version_node": "CMG_2.0",
+    "major": 2,
+    "exports": [
+      "CmgV2CloseArtifact",
+      "CmgV2GetArtifactInfo",
+      "CmgV2LoadSophonSegment",
+      "CmgV2OpenArtifact"
+    ]
+  },
+  "source": {
+    "repository": "cosmo-model-guard",
+    "tree": "db6ab59a62fa37aa8c486629349b2a3daf539156"
+  },
+  "components": {
+    "include/cosmo_model_guard_v2.h": "b2d4d115ae5179ddd19c3dba1bb3b63478d2d341cafaa41510f9fdf3ebc52cab",
+    "lib/libcosmo_model_guard.so.2.0.0": "568bbc836180f5528fc343a5fd969c7b754d7f86f87be02ca5c4c1f1912bea3e",
+    "bin/cosmo-model-provision": "5a2f80e14359421626eccd88d476aef2a2d84d00383ffc63957baf082ea3e41a"
+  },
+  "binding_contract": "internal-to-sdk",
+  "certificate_storage": "caller-selected",
+  "build": {
+    "image": "ghcr.io/cosmo-wander-ai/cosmo_edge-build-env_sophon@sha256:0b92ba44a28091fe704558910a590b8cc33f94aba58304e6e9938ec1f5247e7f"
+  }
+}

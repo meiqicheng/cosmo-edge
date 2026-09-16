@@ -17,6 +17,7 @@
 #include "mock/MockAppInfoService.h"
 #include "mock/MockModelService.h"
 #include "mock/MockTaskService.h"
+#include "service/detail/ServiceRegistry.h"
 #include "service/media/impl/PicTaskServiceImpl.h"
 #include "support/MockDefaults.h"
 #include "support/ScopedServiceOverride.h"

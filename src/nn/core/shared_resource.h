@@ -10,8 +10,6 @@
 #include <string>
 #include <vector>
 
-#include "nn/core/abstract_context.h"
-
 namespace cosmo::nn {
 
 #ifdef COSMO_NN_USE_SOPHON_BACKEND

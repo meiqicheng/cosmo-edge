@@ -39,9 +39,9 @@
                 </div>
                 <div class="abc" style="margin-left:10px;">{{ resolvedAlgorithmName }}</div>
                 <div class="serve-config-header-btns">
-                  <el-button type="danger" v-if="taskEnableStatus == 1 && (taskId != '' || platformType === '15')" @click="stopServe(0)" size="small">{{ t('action.disableService') }}</el-button>
-                  <el-button type="primary" v-if="taskEnableStatus == 0 && (taskId != '' || platformType === '15')" @click="startServe(1)" size="small">{{ t('action.enableService') }}</el-button>
-                  <el-button type="danger" v-if="(taskId || platformType === '15')" @click="handleDelServe()" size="small">{{ t('action.deleteService') }}</el-button>
+                  <el-button type="danger" v-if="taskEnableStatus == 1" @click="boxSwitchTask(0)" size="small">{{ t('action.disableService') }}</el-button>
+                  <el-button type="primary" v-if="taskEnableStatus == 0" @click="boxSwitchTask(1)" size="small">{{ t('action.enableService') }}</el-button>
+                  <el-button type="danger" @click="handleDelServe()" size="small">{{ t('action.deleteService') }}</el-button>
                   <el-button id="onboarding-save-service" class="mv-el-button" type="primary" @click="clickSaveServe()" size="small">{{ t('action.save') }}</el-button>
                 </div>
               </div>
@@ -148,7 +148,7 @@ import {
   filterChannelEditableParams,
   filterTaskParamsForSubmission,
   flattenTaskParamTree,
-  isChannelEditableInContext,
+  isChannelEditableParam,
   normalizeChannelEditorVisibility,
   normalizeParamOwnershipList,
   resolveSceneParamValue
@@ -166,9 +166,7 @@ const props = defineProps({
   joinType: Number
 })
 
-const platformType = localStorage.getItem('platformType') || ''
 const BatchApplication = ref(false)
-const taskId = ref('')
 const taskEnableStatus = ref(0)
 const config = ref({
   channelId: '',
@@ -180,7 +178,6 @@ const config = ref({
   shieldAreaRows: [],
   shieldAreaHeader: [],
   areasTitle: [],
-  isValited: true,
   warning: '',
   data: [],
   Multiple: '',
@@ -204,8 +201,6 @@ const scheduleSupport = ref(null)
 const algorithmUsage = window.localStorage.getItem('algorithmUsage')
 const arithmeticTree = ref([])
 const timeTemplateList = ref([])
-const sourceSchedulePollingList = ref([])
-const schedulePollingList = ref([])
 const category = ref(0)
 const colors = ['24,144,255', '255,115,24', '24,255,89', '255,239,24']
 const loading = ref(false)
@@ -214,10 +209,6 @@ const parameterData = ref({})
 const parameterVisible = ref(false)
 const arithmeticShow = ref(true)
 const algorithmName = ref('')
-const runTypeOptions = computed(() => [
-  { label: t('glossary.realtime'), value: 0 },
-  { label: t('glossary.polling'), value: 1 }
-])
 const algorithmCategoryGroups = computed(() => [
   {
     key: 'face-body',
@@ -553,10 +544,6 @@ const resetConfig = () => {
 }
 
 const getSelectConfig = () => {
-  schedulePollingList.value = sourceSchedulePollingList.value.filter(
-    (item) => item.algorithmId === algorithmId.value
-  )
-
   resetConfig()
   scheduleSupport.value = 1
   let taskCustId = window.localStorage.getItem('taskCustId')
@@ -570,9 +557,7 @@ const getSelectConfig = () => {
     })
     .then((res) => {
       const { resData } = res
-      if (platformType == '15') {
-        resData.algorithmMetadata = JSON.parse(resData.algorithmMetadata)
-      }
+      resData.algorithmMetadata = JSON.parse(resData.algorithmMetadata)
       category.value = resData.category ? resData.category : 0
       if (joinTypeS.value == -1 || joinTypeEdits.value == -1) {
         scheduleSupport.value = 0
@@ -601,9 +586,8 @@ const getSelectConfig = () => {
       const videoRepeatCountMetadata = normalizedMetaParams.find(
         (item) => item.key === 'param.videoRepeatCount'
       )
-      videoRepeatCountChannelEditable.value = isChannelEditableInContext(
-        videoRepeatCountMetadata || { key: 'param.videoRepeatCount' },
-        platformType
+      videoRepeatCountChannelEditable.value = isChannelEditableParam(
+        videoRepeatCountMetadata || { key: 'param.videoRepeatCount' }
       )
       const isVideoPlayback =
         joinTypeS.value == -1 || joinTypeEdits.value == -1
@@ -617,23 +601,14 @@ const getSelectConfig = () => {
       ) {
         videoRepeatCount.value = taskParamByKey.get('param.videoRepeatCount')
       }
-      taskId.value = resData.taskId
       taskEnableStatus.value = resData.taskEnableStatus
       config.value.scheduleId = resData.scheduleId || ''
       config.value.pollingId = resData.pollingId || ''
 
       normalizedMetaParams.forEach((metadataParam) => {
-        const metaItem = normalizeChannelEditorVisibility(
-          metadataParam,
-          platformType
-        )
-        const channelEditable = isChannelEditableInContext(
-          metaItem,
-          platformType
-        )
-        if (platformType !== '1') {
-          metaItem.value = resolveSceneParamValue(metaItem)
-        }
+        const metaItem = normalizeChannelEditorVisibility(metadataParam)
+        const channelEditable = isChannelEditableParam(metaItem)
+        metaItem.value = resolveSceneParamValue(metaItem)
 
         if (
           channelEditable &&
@@ -746,28 +721,6 @@ const chooseType = (data) => {
   getSelectConfig()
 }
 
-const startServe = (status) => {
-  if (platformType === '15') {
-    boxSwitchTask(status)
-  } else {
-    proxy.$API.startTask({ taskId: taskId.value }).then((res) => {
-      proxy.$message.success(t('common.serviceStarted'))
-      getServeTypes()
-    })
-  }
-}
-
-const stopServe = (status) => {
-  if (platformType === '15') {
-    boxSwitchTask(status)
-  } else {
-    proxy.$API.stopTask({ taskId: taskId.value }).then((res) => {
-      proxy.$message.success(t('common.serviceStopped'))
-      getServeTypes()
-    })
-  }
-}
-
 const boxSwitchTask = (status) => {
   const params = {
     channelId: config.value.channelId,
@@ -785,22 +738,15 @@ const handleDelServe = () => {
 }
 
 const deleteServe = () => {
-  if (platformType === '15') {
-    proxy.$API
-      .boxDeleteTask({
-        channelId: config.value.channelId,
-        algorithmId: algorithmId.value
-      })
-      .then((res) => {
-        proxy.$message.success(t('common.operationSucceeded'))
-        getServeTypes()
-      })
-  } else {
-    proxy.$API.deleteTask({ taskId: taskId.value }).then((res) => {
+  proxy.$API
+    .boxDeleteTask({
+      channelId: config.value.channelId,
+      algorithmId: algorithmId.value
+    })
+    .then((res) => {
       proxy.$message.success(t('common.operationSucceeded'))
       getServeTypes()
     })
-  }
   confirmDialogVisible.value = false
 }
 
@@ -830,11 +776,21 @@ const clickSaveServe = () => {
   }, 3000)
 }
 
-const newSave = (skipRefresh = false) => {
-  EventBus.$emit('validTaskParam')
-  if (!config.value.isValited) {
-    return
+const newSave = async (skipRefresh = false) => {
+  const editingConfig = config.value
+  const editingAlgorithmId = algorithmId.value
+  const editingChannelId = config.value.channelId
+  let result
+  try {
+    result = await parm.value?.validateAndCollect()
+  } catch {
+    return false
   }
+  if (!result?.valid || config.value !== editingConfig ||
+      algorithmId.value !== editingAlgorithmId || config.value.channelId !== editingChannelId) {
+    return false
+  }
+  config.value.taskParam = result.params
 
   let params = {
     channelId: config.value.channelId,
@@ -933,14 +889,9 @@ const newSave = (skipRefresh = false) => {
 
   let flag = false
   const channelEditableParams = filterChannelEditableParams(
-    flattenTaskParamTree(config.value.taskParam),
-    platformType
+    flattenTaskParamTree(config.value.taskParam)
   )
-  params.taskConfig.params = (
-    String(platformType ?? '') === '1'
-      ? channelEditableParams
-      : filterTaskParamsForSubmission(channelEditableParams)
-  )
+  params.taskConfig.params = filterTaskParamsForSubmission(channelEditableParams)
     .map((item) => {
       if (item.type === 'retroDirect') {
         return {
@@ -1018,6 +969,7 @@ const newSave = (skipRefresh = false) => {
     if (!skipRefresh) {
       getServeTypes()
     }
+    return true
   })
 }
 
@@ -1041,42 +993,9 @@ const handleVideoRepeatInput = (val) => {
 }
 
 const getTimetemplate = () => {
-  let custId = window.localStorage.getItem('taskCustId')
-    ? window.localStorage.getItem('taskCustId')
-    : window.localStorage.getItem('currentCustId')
-  const param = {
-    custId: custId
-  }
-  if (platformType === '15') {
-    proxy.$API.boxGetTimeTemplate({}).then((res) => {
-      const { resData } = res
-      timeTemplateList.value = resData.rows || []
-    })
-  } else {
-    proxy.$API.selectScheduleInfo(param).then((res) => {
-      const { resData } = res
-      timeTemplateList.value = resData || []
-    })
-  }
-}
-
-const getSchedulePollingList = () => {
-  let custId = window.localStorage.getItem('taskCustId')
-    ? window.localStorage.getItem('taskCustId')
-    : window.localStorage.getItem('currentCustId')
-
-  const params = {
-    custId: custId
-  }
-  proxy.$API.schedulePollingList(params).then((res) => {
+  proxy.$API.boxGetTimeTemplate({}).then((res) => {
     const { resData } = res
-    sourceSchedulePollingList.value = [...resData]
-
-    if (algorithmId.value) {
-      schedulePollingList.value = sourceSchedulePollingList.value.filter(
-        (item) => item.algorithmId === algorithmId.value
-      )
-    }
+    timeTemplateList.value = resData.rows || []
   })
 }
 
@@ -1085,10 +1004,8 @@ const batch = () => {
 }
 
 const BatchConfirm = async (data) => {
-  const saveResult = newSave(true)
-  if (!saveResult) return // 校验未通过
   try {
-    await saveResult
+    if (await newSave(true) !== true) return
   } catch (e) {
     return
   }
@@ -1103,7 +1020,7 @@ const BatchConfirm = async (data) => {
 }
 
 const resetParameter = () => {
-  filterChannelEditableParams(config.value.taskParam, platformType).forEach(
+  filterChannelEditableParams(config.value.taskParam).forEach(
     (item) => {
       if (item.type == 'check') {
         item.value = item.defaultValue.split(',')
@@ -1121,9 +1038,6 @@ const resetParameter = () => {
     }
   )
 
-  if (parm.value.$refs.submitForm) {
-    parm.value.$refs.submitForm.transferList = []
-  }
   parameterVisible.value = false
 }
 

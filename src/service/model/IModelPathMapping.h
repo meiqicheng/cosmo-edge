@@ -7,8 +7,6 @@
 
 #include <string>
 
-#include "service/detail/ServiceRegistry.h"
-
 namespace cosmo::service {
 
 /// Maintains a runtime mapping from algorithm codes to model file paths

@@ -1,11 +1,13 @@
 #include "catch_amalgamated.hpp"
 #include "util/PathUtil.h"
 // Unit tests for AppInfoServiceImpl — validates state management,
-// delegation to DeviceInfoService, and thread-safe property accessors.
+// overview queries through IHardwareQuery, and thread-safe property accessors.
 
 #include <thread>
 
 #include "mock/MockDeviceInfoService.h"
+#include "mock/MockTaskService.h"
+#include "service/detail/ServiceRegistry.h"
 #include "service/system/impl/AppInfoServiceImpl.h"
 #include "support/ScopedPathOverride.h"
 #include "support/ScopedServiceOverride.h"
@@ -83,36 +85,66 @@ TEST_CASE("AppInfoServiceImpl: Path delegation", "[appinfo][service]") {
     }
 }
 
-TEST_CASE("AppInfoServiceImpl: HW utilization delegates to DeviceInfoService", "[appinfo][service]") {
-    cosmo::test::MockDeviceInfoService deviceInfoSvc;
-    cosmo::test::ScopedServiceOverride<cosmo::service::IDeviceInfoService> registration(deviceInfoSvc);
-    cosmo::service::AppInfoServiceImpl appInfoSvc;
+TEST_CASE("AppInfoServiceImpl: overview uses only narrow hardware queries",
+          "[appinfo][service][hardware-query]") {
+    cosmo::test::MockDeviceInfoService hardware;
+    cosmo::test::MockTaskService tasks;
+    cosmo::test::ScopedServiceOverride<cosmo::service::IHardwareQuery> hardware_registration(hardware);
+    cosmo::test::ScopedServiceOverride<cosmo::service::ITaskQuery> task_registration(tasks);
+    REQUIRE_FALSE(cosmo::service::ServiceRegistry::Instance().Has<cosmo::service::IDeviceInfoService>());
 
-    SECTION("GetCpuUtilization delegates correctly") {
-        REQUIRE_CALL(deviceInfoSvc, GetCpuUtilization()).RETURN(45.5);
-        REQUIRE(appInfoSvc.GetCpuUtilization() == Catch::Approx(45.5));
-    }
+    cosmo::service::AppInfoServiceImpl app;
+    app.SetDevId("overview-test");
+    cosmo::MsgGpuInfo gpu;
+    gpu.gpuusage        = 0.5;
+    gpu.gpumemtotal     = 4096;
+    gpu.gpumemavailable = 1024;
+    gpu.gpuCapacity     = "test-capacity";
+    gpu.gpudevusage.resize(2);
+    gpu.gpudevusage[0].gpumemtotal     = 3072;
+    gpu.gpudevusage[0].gpumemavailable = 768;
+    gpu.gpudevusage[1].gpumemtotal     = 1024;
+    gpu.gpudevusage[1].gpumemavailable = 256;
+    cosmo::MsgMemoryInfo memory;
+    memory.memtotal     = 16384;
+    memory.memavailable = 8192;
+    cosmo::MsgDiskInfo disk;
+    disk.disktotal     = 32768;
+    disk.diskavailable = 16384;
+    cosmo::MsgNetInfo network;
+    network.networkupperrate    = 12;
+    network.networkdownwardrate = 34;
 
-    SECTION("GetAvailableGpuMemoryMB delegates correctly") {
-        REQUIRE_CALL(deviceInfoSvc, GetAvailableGpuMemoryMB()).RETURN(int64_t(4096));
-        REQUIRE(appInfoSvc.GetAvailableGpuMemoryMB() == 4096);
-    }
+    trompeloeil::sequence sampling;
+    REQUIRE_CALL(hardware, GetCpuUtilization()).IN_SEQUENCE(sampling).RETURN(0.25);
+    REQUIRE_CALL(hardware, GetGpuUtilization()).IN_SEQUENCE(sampling).RETURN(gpu);
+    REQUIRE_CALL(hardware, GetMemoryUtilization()).IN_SEQUENCE(sampling).RETURN(memory);
+    REQUIRE_CALL(hardware, GetDiskUtilization()).IN_SEQUENCE(sampling).RETURN(disk);
+    REQUIRE_CALL(hardware, GetNetUtilization()).IN_SEQUENCE(sampling).RETURN(network);
+    REQUIRE_CALL(tasks, QueueStatusDto(trompeloeil::_, 30)).IN_SEQUENCE(sampling);
 
-    SECTION("GetGpuNum delegates correctly") {
-        REQUIRE_CALL(deviceInfoSvc, GetGpuNum()).RETURN(size_t(2));
-        REQUIRE(appInfoSvc.GetGpuNum() == 2);
-    }
-
-    SECTION("GetMemoryUtilization delegates correctly") {
-        cosmo::MsgMemoryInfo memInfo;
-        memInfo.memtotal     = 16384;
-        memInfo.memavailable = 8192;
-        REQUIRE_CALL(deviceInfoSvc, GetMemoryUtilization()).RETURN(memInfo);
-
-        auto result = appInfoSvc.GetMemoryUtilization();
-        REQUIRE(result.memtotal == 16384);
-        REQUIRE(result.memavailable == 8192);
-    }
+    cosmo::MsgInfoRecv request;
+    request.devId              = "overview-test";
+    std::error_condition error = cosmo::util::ErrorEnum::Success;
+    const auto result          = app.GetSystemOverviewInfo(request, error);
+    REQUIRE(error == cosmo::util::ErrorEnum::Success);
+    CHECK(result.devId == request.devId);
+    CHECK(result.cpuUsage == Catch::Approx(0.25));
+    CHECK(result.gpuUsage == Catch::Approx(0.5));
+    CHECK(result.memTotal == 16384);
+    CHECK(result.memAvailable == 8192);
+    CHECK(result.gpuMemTotal == 4096);
+    CHECK(result.gpuMemAvailable == 1024);
+    CHECK(result.gpuCapacity == "test-capacity");
+    CHECK(result.gpuModelMemTotal == 3072);
+    CHECK(result.gpuModelMemAvailable == 768);
+    CHECK(result.gpuPicMemTotal == 1024);
+    CHECK(result.gpuPicMemAvailable == 256);
+    REQUIRE(result.gpuMemDetails.size() == 2);
+    CHECK(result.diskTotal == 32768);
+    CHECK(result.diskAvailable == 16384);
+    CHECK(result.networkUpperrate == 12);
+    CHECK(result.networkDownwardrate == 34);
 }
 
 TEST_CASE("AppInfoServiceImpl: GetPagedLogs validation", "[appinfo][service]") {

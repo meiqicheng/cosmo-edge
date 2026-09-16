@@ -2,8 +2,6 @@
 // network card config, HW info write and auth code management.
 #pragma once
 
-#include "service/detail/ServiceRegistry.h"
-
 namespace cosmo::service {
 
 class IDeviceDiscoveryService {

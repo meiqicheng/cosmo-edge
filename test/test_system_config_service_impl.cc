@@ -4,7 +4,7 @@
 
 #include "catch_amalgamated.hpp"
 #include "mock/MockAlarmPushService.h"
-#include "mock/MockNetworkService.h"
+#include "mock/MockMqttLifecycle.h"
 #include "service/system/impl/SystemServiceImpl.h"
 #include "support/ScopedPathOverride.h"
 #include "support/ScopedServiceOverride.h"
@@ -20,8 +20,8 @@ struct AlarmPushDependency {
 };
 
 struct NetworkDependency {
-    cosmo::test::MockNetworkService networkSvc;
-    cosmo::test::ScopedServiceOverride<cosmo::service::INetworkService> registration{networkSvc};
+    cosmo::test::MockMqttLifecycle networkSvc;
+    cosmo::test::ScopedServiceOverride<cosmo::service::IMqttLifecycle> registration{networkSvc};
 };
 
 // Helper: create a minimal valid JSON config file at the given path

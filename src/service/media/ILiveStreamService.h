@@ -6,7 +6,6 @@
 #include <string>
 #include <system_error>
 
-#include "service/detail/ServiceRegistry.h"
 #include "service/media/dto/LiveStreamDto.h"
 #include "util/ErrorCode.h"
 

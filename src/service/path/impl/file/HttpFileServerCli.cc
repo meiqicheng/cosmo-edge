@@ -1,4 +1,4 @@
-// HttpFileServerCli — HTTP client for file-server upload / download operations.
+// HttpFileServerCli — HTTP client for file-server upload operations.
 
 #include "service/path/impl/file/HttpFileServerCli.h"
 
@@ -44,7 +44,6 @@ void HttpFileServerCli::SetIpPort(const std::string& ip_port) {
         std::string base_url      = ip_port + "/file/auth/";
         get_upload_file_path_url_ = base_url + "getUploadFilePath";
         upload_file_url_          = base_url + "uploadFile";
-        point_upload_file_url_    = base_url + "pointUploadFile";
     }
 }
 
@@ -55,8 +54,6 @@ std::string HttpFileServerCli::GetPostUrl(FileServerClientType type) {
             return get_upload_file_path_url_;
         case FileServerClientType::kUploadFile:
             return upload_file_url_;
-        case FileServerClientType::kPointUploadFile:
-            return point_upload_file_url_;
         default:
             break;
     }
@@ -184,26 +181,6 @@ bool HttpFileServerCli::HttpclientSubmit(FileServerClientType type, const std::s
     std::string json_str = FileServerRespTrim(http_req.GetContent());
     if (!cosmo::util::DecodeJson(json_str, rgtOut)) {
         LOG_ERRO("{} DecodeJson failed, response_bytes:{}", kTag, json_str.size());
-        return false;
-    }
-    return true;
-}
-
-// Point upload is not implemented.  Report failure so callers never publish a
-// false successful completion.
-bool HttpFileServerCli::HttpclientSubmit(FileServerClientType /*type*/, const std::string& /*filepath*/,
-                                         cosmo::FMsgReqPUpFile& /*rgtOut*/) {
-    return false;
-}
-
-bool HttpFileServerCli::HttpclientSubmit(FileServerClientType /*type*/, cosmo::FMsgRspUpFile& /*rgtIn*/,
-                                         const std::string& downloadfileurl, const std::string& rgtOut) {
-    HttpFileHandler http_hnd(rgtOut);
-    HttpRequest http_req(downloadfileurl, &http_hnd);
-    http_req.SetTimeout(200);
-    auto ret_code = static_cast<int>(http_req.Submit(HttpRequestMethod::kGet));
-    if (ret_code != 200) {
-        LOG_ERRO("{} Get_Download_File HTTP Fail! curl return [{}]", kTag, ret_code);
         return false;
     }
     return true;

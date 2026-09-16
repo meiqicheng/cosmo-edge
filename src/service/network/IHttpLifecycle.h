@@ -1,4 +1,4 @@
-// HTTP server lifecycle interface (ISP split from INetworkService).
+// HTTP server lifecycle interface.
 // Consumed by app_init.cc for HTTP server bind, dispatch loop, and shutdown.
 #pragma once
 

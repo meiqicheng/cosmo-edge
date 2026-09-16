@@ -4,7 +4,6 @@
 ///        Callers should prefer the narrow sub-interfaces for new code.
 #pragma once
 
-#include "service/detail/ServiceRegistry.h"
 #include "service/media/IPicTaskDetect.h"
 #include "service/media/IPicTaskLifecycle.h"
 #include "service/media/IPicTaskQuery.h"

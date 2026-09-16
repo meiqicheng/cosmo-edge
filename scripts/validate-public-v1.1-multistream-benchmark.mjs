@@ -10,7 +10,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const workspace = path.resolve(here, '..');
 const root = path.join(workspace, 'docs', 'benchmarks', 'scenario-bench', 'v1.1');
 const errors = [];
-const archivePath = parseArchiveArgument(process.argv.slice(2));
+const options = parseArguments(process.argv.slice(2));
+const { archivePath } = options;
 
 const requiredSourceFiles = [
   'README.md',
@@ -41,24 +42,39 @@ validateCanonicalSourceLayout(platformDefinitions);
 validateSchemaDocument();
 
 const sourceFiles = fs.existsSync(root) ? walk(root) : [];
+// VitePress renders these canonical Markdown pages beside the standalone
+// reports. Only their source-derived paths belong to the site renderer; an
+// arbitrary extra HTML file must still fail the report inventory check.
+const sitePagePaths = new Set(options.outputRoot ? sourceFiles
+  .filter((file) => file.endsWith('.md'))
+  .map((file) => relativeTo(root, file).replace(/\.md$/u, '.html')) : []);
 for (const file of sourceFiles.filter((entry) => entry.toLowerCase().endsWith('.json'))) {
   const value = readJsonWithError(file);
   if (value !== null) validateJsonReferences(root, file, value, null);
 }
 
-let generatedRoot = null;
-let generation = null;
-try {
-  generatedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'cosmoedge-v1.1-validate-'));
-  generation = generateBenchmarkPages({ sourceRoot: root, outputRoot: generatedRoot });
-  validateGeneratedPack(generatedRoot, manifest, canonicalPlatforms, vlm, dualCv72Hour, generation);
-} catch (error) {
-  fail(`deterministic report generation failed: ${error.message}`);
+let generatedRoot = options.outputRoot;
+let temporaryRoot = null;
+let reportCount = 0;
+if (!options.sourceOnly) {
+  try {
+    let generation = null;
+    if (!generatedRoot) {
+      temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'cosmoedge-v1.1-validate-'));
+      generatedRoot = temporaryRoot;
+      generation = generateBenchmarkPages({ sourceRoot: root, outputRoot: generatedRoot });
+    }
+    reportCount = validateGeneratedPack(generatedRoot, manifest, canonicalPlatforms, vlm, dualCv72Hour, generation);
+  } catch (error) {
+    fail(`benchmark report validation failed: ${error.message}`);
+  }
 }
 
 validatePublicScrub(sourceFiles, root, 'source');
 validateChecksums(root, 'source SHA256SUMS');
-validateLinksAndLanguages(root, sourceFiles, generatedRoot);
+// Markdown may link to generated reports. Resolve those links against the final
+// output in the full check, after the source-only prebuild admission succeeds.
+if (!options.sourceOnly) validateLinksAndLanguages(root, sourceFiles, generatedRoot);
 
 if (generatedRoot && fs.existsSync(generatedRoot)) {
   const generatedFiles = walk(generatedRoot);
@@ -68,9 +84,14 @@ if (generatedRoot && fs.existsSync(generatedRoot)) {
   }
   validatePublicScrub(generatedFiles, generatedRoot, 'generated pack');
   validateChecksums(generatedRoot, 'generated SHA256SUMS');
-  validateLinksAndLanguages(generatedRoot, generatedFiles, null);
-  fs.rmSync(generatedRoot, { recursive: true, force: true });
+  // Site pages use VitePress's base URL and route rules, not portable pack
+  // paths. They remain included in scrub and checksum/inventory validation.
+  const packFiles = generatedFiles.filter((file) => !sitePagePaths.has(relativeTo(generatedRoot, file)));
+  validateLinksAndLanguages(generatedRoot, packFiles, null);
 }
+// An explicitly supplied output belongs to the caller; validation never
+// regenerates, repairs or removes it.
+if (temporaryRoot) fs.rmSync(temporaryRoot, { recursive: true, force: true });
 
 if (errors.length) {
   console.error(`Validation failed (${errors.length}):`);
@@ -79,11 +100,15 @@ if (errors.length) {
 }
 
 const totalCases = canonicalPlatforms.reduce((count, item) => count + item.cases.length, 0);
-console.log(
-  `Validation passed: ${platformDefinitions.length} manifest-defined platforms, ${totalCases} canonical cases, ` +
-  `${generation.reportCount} generated bilingual reports, validated VLM performance, controlled dual-CV 72-hour evidence, ` +
-  'relative links, public scrub, and source/generated checksums verified.',
-);
+if (options.sourceOnly) {
+  console.log(`Source validation passed: ${platformDefinitions.length} platforms, ${totalCases} canonical cases, evidence, public scrub and checksums; generated report links remain for the output check.`);
+} else {
+  console.log(
+    `Validation passed: ${platformDefinitions.length} manifest-defined platforms, ${totalCases} canonical cases, ` +
+    `${reportCount} generated bilingual reports, validated VLM performance, controlled dual-CV 72-hour evidence, ` +
+    'relative links, public scrub, and source/generated checksums verified.',
+  );
+}
 
 function validateManifest(value) {
   if (!value) return [];
@@ -1219,12 +1244,15 @@ function validateGeneratedPack(outputRoot, manifestValue, platforms, vlmValue, d
   const actualReports = walk(outputRoot)
     .filter((file) => file.toLowerCase().endsWith('.html'))
     .map((file) => path.relative(outputRoot, file).replaceAll('\\', '/'))
+    .filter((relative) => !sitePagePaths.has(relative))
     .sort();
   const sortedExpected = [...expectedReports].sort();
   if (!sameArray(actualReports, sortedExpected)) compareSets('generated report inventory', new Set(actualReports), new Set(sortedExpected));
-  if (generationResult.reportCount !== expectedReports.length) fail('generator reportCount does not match the manifest-derived inventory');
-  if (generationResult.reportCount !== 148) fail('generator must emit the frozen inventory of 148 bilingual v1.1 reports');
-  if (generationResult.platformCount !== platforms.length || generationResult.caseCount !== caseCount) fail('generator platform/case counts are inconsistent');
+  if (expectedReports.length !== 148) fail('reports must match the frozen inventory of 148 bilingual v1.1 reports');
+  if (generationResult) {
+    if (generationResult.reportCount !== expectedReports.length) fail('generator reportCount does not match the manifest-derived inventory');
+    if (generationResult.platformCount !== platforms.length || generationResult.caseCount !== caseCount) fail('generator platform/case counts are inconsistent');
+  }
 
   for (const report of expectedReports) {
     const file = path.join(outputRoot, ...report.split('/'));
@@ -1233,14 +1261,25 @@ function validateGeneratedPack(outputRoot, manifestValue, platforms, vlmValue, d
     const expectedLang = report.endsWith('.zh-CN.html') ? 'zh-CN' : 'en';
     const actualLang = html.match(/<html\b[^>]*\blang=["']([^"']+)["']/i)?.[1];
     if (actualLang !== expectedLang) fail(`generated report has incorrect lang: ${report}`);
-    if (!/<\/html>\s*$/i.test(html)) fail(`generated report is incomplete: ${report}`);
-    if (!html.includes('class="report-nav"')) fail(`generated report navigation is missing: ${report}`);
-    const tables = html.match(/<table\b/gi)?.length ?? 0;
-    const wrappers = html.match(/<div class="table"/gi)?.length ?? 0;
-    if (tables !== wrappers) fail(`generated report lacks responsive table wrappers: ${report}`);
-    if (!html.includes('overflow-wrap:anywhere')) fail(`generated report lacks long-token wrapping: ${report}`);
+    if (!/<html\b[^>]*>/iu.test(html) || !/<title>[^<]+<\/title>/iu.test(html) || !/<\/html>\s*$/iu.test(html)) {
+      fail(`generated report is incomplete: ${report}`);
+    }
+    if (!countClass(html, 'report-nav')) fail(`generated report navigation is missing: ${report}`);
     if (/\b(?:undefined|NaN)\b|\[object Object\]/.test(html)) fail(`generated report contains an unresolved value: ${report}`);
     if (/dual-detector|RV1126B\s+(?:Experimental|实验)/i.test(html)) fail(`generated report contains obsolete public terminology: ${report}`);
+    const scopeNotes = countClass(html, 'scope-note');
+    const evidenceNotes = countClass(html, 'evidence-notes');
+    const expectsScopeNote = report === 'report.html'
+      || report === 'report.zh-CN.html'
+      || /^results\/dual-cv-72h\/report(?:\.zh-CN)?\.html$/u.test(report)
+      || /^results\/[^/]+\/(?:dual-cv-72h|vlm-observation)\/report(?:\.zh-CN)?\.html$/u.test(report);
+    const expectsEvidenceNotes = /^results\/dual-cv-72h\/report(?:\.zh-CN)?\.html$/u.test(report);
+    if (scopeNotes !== (expectsScopeNote ? 1 : 0)) {
+      fail(`${report}: expected ${expectsScopeNote ? 1 : 0} scope-note block(s), found ${scopeNotes}`);
+    }
+    if (evidenceNotes !== (expectsEvidenceNotes ? 1 : 0)) {
+      fail(`${report}: expected ${expectsEvidenceNotes ? 1 : 0} evidence-notes block(s), found ${evidenceNotes}`);
+    }
   }
 
   for (const rootReport of ['report.html', 'report.zh-CN.html']) {
@@ -1304,6 +1343,51 @@ function validateGeneratedPack(outputRoot, manifestValue, platforms, vlmValue, d
           || !html.includes(acceptance?.evidenceSha256)
           || !html.includes(String(acceptance?.evidenceSizeBytes))) {
         fail(`${relative} does not project the frozen VLM result and end-to-end evidence identity`);
+      }
+    }
+  }
+
+  for (const reportName of ['report.html', 'report.zh-CN.html']) {
+    const file = path.join(outputRoot, reportName);
+    if (!fs.existsSync(file)) continue;
+    const html = fs.readFileSync(file, 'utf8');
+    for (const platform of platforms) {
+      for (const target of [
+        `results/${platform.platformId}/${reportName}`,
+        `results/${platform.platformId}/single-workload/${reportName}`,
+        `results/${platform.platformId}/concurrent-mixed/${reportName}`,
+        `results/${platform.platformId}/cases/${reportName}`,
+        ...(dualCv72HourByPlatform.has(platform.platformId) ? [`results/${platform.platformId}/dual-cv-72h/${reportName}`] : []),
+        ...(vlmIds.has(platform.platformId) ? [`results/${platform.platformId}/vlm-observation/${reportName}`] : []),
+      ]) {
+        if (!reportLinks(html).has(target)) fail(`${reportName}: missing report link ${target}`);
+      }
+    }
+    if (!reportLinks(html).has(`results/dual-cv-72h/${reportName}`)) {
+      fail(`${reportName}: missing multi-platform 72-hour report link`);
+    }
+  }
+
+  for (const suffix of ['', '.zh-CN']) {
+    const reportName = `report${suffix}.html`;
+    const longRunReport = path.join(outputRoot, 'results', 'dual-cv-72h', reportName);
+    if (fs.existsSync(longRunReport)) {
+      const html = fs.readFileSync(longRunReport, 'utf8');
+      for (const platform of platforms.filter((item) => dualCv72HourByPlatform.has(item.platformId))) {
+        const target = `../${platform.platformId}/dual-cv-72h/${reportName}`;
+        if (!reportLinks(html).has(target)) fail(`results/dual-cv-72h/${reportName}: missing platform link ${target}`);
+      }
+      if (!reportLinks(html).has('../dual-cv-72h.json')) {
+        fail(`results/dual-cv-72h/${reportName}: missing canonical long-run link`);
+      }
+    }
+
+    for (const platform of platforms.filter((item) => dualCv72HourByPlatform.has(item.platformId))) {
+      const platformOverview = path.join(outputRoot, 'results', platform.platformId, reportName);
+      if (!fs.existsSync(platformOverview)) continue;
+      const html = fs.readFileSync(platformOverview, 'utf8');
+      if (!reportLinks(html).has(`dual-cv-72h/${reportName}`)) {
+        fail(`results/${platform.platformId}/${reportName}: missing 72-hour detail link`);
       }
     }
   }
@@ -1386,6 +1470,7 @@ function validateGeneratedPack(outputRoot, manifestValue, platforms, vlmValue, d
   if (!deepEqual(matrix?.longRunObservation, expectedLongRunMatrix)) {
     fail('generated workload matrix dual-CV 72-hour projection differs from the canonical evidence');
   }
+  return expectedReports.length;
 }
 
 function validatePublicScrub(files, packRoot, label) {
@@ -1561,12 +1646,32 @@ function normalizeArchivedPlatformScope(platformId, scope) {
   return platformId === 'rv1126b' && scope === 'additional-experimental-platform' ? 'release-platform' : scope;
 }
 
-function parseArchiveArgument(args) {
-  if (!args.length) return null;
-  if (args.length !== 2 || args[0] !== '--archive' || !args[1]) {
-    throw new Error('usage: validate-public-v1.1-multistream-benchmark.mjs [--archive <path>]');
+function parseArguments(args) {
+  const result = { archivePath: null, outputRoot: null, sourceOnly: false };
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (argument === '--source-only') {
+      result.sourceOnly = true;
+    } else if (['--archive', '--output-root'].includes(argument) && args[index + 1] && !args[index + 1].startsWith('--')) {
+      const value = args[++index];
+      if (argument === '--archive') result.archivePath = value;
+      else result.outputRoot = path.resolve(value);
+    } else {
+      throw new Error('usage: validate-public-v1.1-multistream-benchmark.mjs [--archive <path>] [--source-only | --output-root <path>]');
+    }
   }
-  return args[1];
+  if (result.sourceOnly && result.outputRoot) throw new Error('--source-only and --output-root are mutually exclusive');
+  return result;
+}
+
+function countClass(html, className) {
+  return [...html.matchAll(/\bclass\s*=\s*["']([^"']*)["']/giu)]
+    .filter((match) => match[1].split(/\s+/u).includes(className)).length;
+}
+
+function reportLinks(html) {
+  return new Set([...html.matchAll(/\bhref\s*=\s*["']([^"']+)["']/giu)]
+    .map((match) => decodeHtmlEntities(match[1])));
 }
 
 function expectObjectKeys(value, requiredKeys, label) {

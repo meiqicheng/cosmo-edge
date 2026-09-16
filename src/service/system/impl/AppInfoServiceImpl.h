@@ -1,5 +1,5 @@
 // AppInfoService implementation — owns app-info state previously held by UserDataUtil.
-// Hardware utilization delegates to IDeviceInfoService.
+// System overviews read utilization through IHardwareQuery.
 #pragma once
 
 #include <atomic>
@@ -35,15 +35,6 @@ public:
     size_t GetNumber() override;
     std::string LogPath() override;
     std::string LogWebPath() override;
-
-    // ── HwResUtilization ──
-    double GetCpuUtilization() override;
-    cosmo::MsgGpuInfo GetGpuUtilization() override;
-    cosmo::MsgMemoryInfo GetMemoryUtilization() override;
-    cosmo::MsgDiskInfo GetDiskUtilization() override;
-    cosmo::MsgNetInfo GetNetUtilization() override;
-    int64_t GetAvailableGpuMemoryMB() override;
-    size_t GetGpuNum() override;
 
     // ── ModelPathUtil ──
     void SetModelPath(const std::string& algCode, const std::string& modelPath) override;

@@ -8,7 +8,7 @@
 #include "api/MessageEventHandler.h"
 #include "mock/MockAlarmRecordService.h"
 #include "mock/MockAlgorithmService.h"
-#include "mock/MockNetworkService.h"
+#include "mock/MockNetworkConfig.h"
 #include "util/ErrorCode.h"
 
 using namespace cosmo;
@@ -20,7 +20,7 @@ namespace {
 struct EventHandlerMocks {
     MockAlarmRecordService alarmRecordSvc;
     MockAlgorithmService algSvc;
-    MockNetworkService networkSvc;
+    MockNetworkConfig networkSvc;
 };
 
 MessageEventHandler MakeHandler(EventHandlerMocks& mocks) {

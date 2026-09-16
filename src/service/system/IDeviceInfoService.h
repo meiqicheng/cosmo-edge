@@ -1,14 +1,16 @@
 /// @file IDeviceInfoService.h
 /// @brief Aggregate device info service interface — inherits
-///        IDeviceHardware sub-interface.
+///        IDeviceHardware and IHardwareQuery sub-interfaces.
 ///        Callers should prefer the narrow sub-interfaces for new code.
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "service/system/IDeviceHardware.h"
+#include "service/system/IHardwareQuery.h"
 #include "service/system/dto/SystemMsgTypes.h"
 #include "util/MsgBaseTypes.h"
 
@@ -37,7 +39,7 @@ struct HwResourceItem {
 
 /// Aggregate device info service providing device identity
 /// and hardware resource monitoring.
-class IDeviceInfoService : public IDeviceHardware {
+class IDeviceInfoService : public IDeviceHardware, public IHardwareQuery {
 public:
     virtual ~IDeviceInfoService() = default;
 
@@ -51,29 +53,6 @@ public:
     /// @param customScore [out] Computed health score (0.0–100.0).
     /// @return Vector of resource utilization items.
     virtual std::vector<HwResourceItem> GetHardwareResource(double& customScore) = 0;
-
-    // ── Hardware Resource Monitoring ──
-
-    /// Get current CPU utilization percentage.
-    virtual double GetCpuUtilization() = 0;
-
-    /// Get current GPU (NPU) utilization info.
-    virtual cosmo::MsgGpuInfo GetGpuUtilization() = 0;
-
-    /// Get current memory utilization info.
-    virtual cosmo::MsgMemoryInfo GetMemoryUtilization() = 0;
-
-    /// Get current disk utilization info.
-    virtual cosmo::MsgDiskInfo GetDiskUtilization() = 0;
-
-    /// Get current network I/O utilization info.
-    virtual cosmo::MsgNetInfo GetNetUtilization() = 0;
-
-    /// Get available GPU (NPU) memory in megabytes.
-    virtual int64_t GetAvailableGpuMemoryMB() = 0;
-
-    /// Get the number of GPU (NPU) devices.
-    virtual size_t GetGpuNum() = 0;
 };
 
 }  // namespace cosmo::service

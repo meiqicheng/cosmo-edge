@@ -7,7 +7,6 @@
 #include "service/camera/ICameraChannelQuery.h"
 #include "service/camera/ICameraDeviceCrud.h"
 #include "service/camera/ICameraTaskConfig.h"
-#include "service/detail/ServiceRegistry.h"
 
 namespace cosmo::service {
 

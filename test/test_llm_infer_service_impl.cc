@@ -1,4 +1,5 @@
 #include "catch_amalgamated.hpp"
+#include "service/detail/ServiceRegistry.h"
 // Unit tests for LlmInferServiceImpl — validates thread-safe state machine:
 //   uninitialized → EnsureInit → Generate/GetMaxBatchSize → Reset → re-init
 // Also tests worker start/stop lifecycle and auto-release on last worker stop.

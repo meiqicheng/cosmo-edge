@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import pathlib
 import re
@@ -40,6 +41,28 @@ ADMISSION_PROFILES = (
 )
 TEST_FIXTURE_MARKER_NAME = "TEST_FIXTURE_DO_NOT_DEPLOY"
 TEST_FIXTURE_MARKER_CONTENT = b"COSMO_MODEL_GUARD_V2_TEST_FIXTURE_DO_NOT_DEPLOY\n"
+
+
+def load_release_manifest() -> dict:
+    path = (
+        pathlib.Path(__file__).resolve().parents[1]
+        / "prebuild/model-guard-v2/SDK-MANIFEST.json"
+    )
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def verify_manifest(data: bytes, components: dict[str, str]) -> None:
+    try:
+        manifest = json.loads(data.decode("utf-8", "strict"))
+    except (UnicodeError, ValueError) as error:
+        raise RuntimeError("Sophon SDK manifest is invalid") from error
+    if manifest != load_release_manifest():
+        fail("Sophon SDK manifest does not match the repository release")
+    if manifest.get("components") != components:
+        fail(
+            "Sophon SDK component hashes do not match the release manifest; "
+            "restore the complete matching SDK"
+        )
 
 
 def fail(message: str) -> NoReturn:
@@ -194,6 +217,16 @@ def main() -> int:
     )
     if provision_path is not None:
         verify_provision_tool(provision_path, pathlib.Path(arguments.readelf))
+
+    if arguments.admission_profile == ADMISSION_PRODUCTION_RELEASE:
+        verify_manifest(
+            checked_file(root / "SDK-MANIFEST.json", 128 * 1024),
+            {
+                "include/cosmo_model_guard_v2.h": hashlib.sha256(header).hexdigest(),
+                "lib/libcosmo_model_guard.so.2.0.0": hashlib.sha256(library).hexdigest(),
+                "bin/cosmo-model-provision": hashlib.sha256(provision).hexdigest(),
+            },
+        )
 
     print(f"admission_profile={arguments.admission_profile}")
     print(f"verified_sdk_root={root}")

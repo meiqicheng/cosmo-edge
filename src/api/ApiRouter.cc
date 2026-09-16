@@ -28,7 +28,7 @@
 #include "service/model/IModelService.h"
 #include "service/modelguard/IModelAuthorizationService.h"
 #include "service/network/IAuthService.h"
-#include "service/network/INetworkService.h"
+#include "service/network/INetworkConfig.h"
 #include "service/onboarding/IOnboardingService.h"
 #include "service/system/IConfigNetworkService.h"
 #include "service/system/IConfigReadService.h"
@@ -48,7 +48,7 @@ ApiRouter::ApiRouter(MessageFromType from)
       auth_handler_(std::make_unique<MessageAuthHandler>(
           service::ServiceRegistry::Instance().Get<service::IAuthService>())),
       network_handler_(std::make_unique<MessageNetworkHandler>(
-          service::ServiceRegistry::Instance().Get<service::INetworkService>())),
+          service::ServiceRegistry::Instance().Get<service::INetworkConfig>())),
       algorithm_handler_(std::make_unique<MessageAlgorithmHandler>(
           service::ServiceRegistry::Instance().Get<service::IAlgorithmQuery>(),
           service::ServiceRegistry::Instance().Get<service::IAlgorithmCrud>(),
@@ -63,7 +63,7 @@ ApiRouter::ApiRouter(MessageFromType from)
       event_handler_(std::make_unique<MessageEventHandler>(
           service::ServiceRegistry::Instance().Get<service::IAlarmRecordService>(),
           service::ServiceRegistry::Instance().Get<service::IAlgorithmQuery>(),
-          service::ServiceRegistry::Instance().Get<service::INetworkService>())),
+          service::ServiceRegistry::Instance().Get<service::INetworkConfig>())),
       camera_handler_(std::make_unique<MessageCameraHandler>(
           service::ServiceRegistry::Instance().Get<service::ICameraDeviceCrud>(),
           service::ServiceRegistry::Instance().Get<service::ICameraChannelQuery>(),

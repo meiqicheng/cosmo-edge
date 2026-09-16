@@ -16,7 +16,7 @@
 #include <nlohmann/json.hpp>
 
 #include "service/detail/ServiceRegistry.h"
-#include "service/network/INetworkService.h"
+#include "service/network/INetworkConfig.h"
 #include "service/network/impl/DeviceDiscoveryReceivePolicy.h"
 #include "util/ErrorCode.h"
 #include "util/TimingConstants.h"
@@ -202,7 +202,7 @@ bool DeviceDiscoveryServiceImpl::JoinMulticastGroup() {
     LOG_WARN("IP_ADD_MEMBERSHIP with default interface failed, errno {}, errorMsg {}; trying main interface",
              default_interface_error, strerror(default_interface_error));
 
-    auto net_card_list = ServiceRegistry::Instance().Get<INetworkService>().GetCardRealInfos();
+    auto net_card_list = ServiceRegistry::Instance().Get<INetworkConfig>().GetCardRealInfos();
     for (const auto& net_card : net_card_list) {
         if (!net_card.is_main) {
             continue;

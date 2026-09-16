@@ -7,7 +7,6 @@
 #include <string>
 #include <vector>
 
-#include "service/detail/ServiceRegistry.h"
 #include "util/ErrorCode.h"
 
 namespace cosmo::service {

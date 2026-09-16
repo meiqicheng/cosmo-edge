@@ -67,15 +67,23 @@ BUILD_DIR="${PROJECT_ROOT_PATH}/build"
 INSTALL_DIR="${BUILD_DIR}/install"
 PACKAGE_DIR="${BUILD_DIR}/packages"
 DEFAULT_COSMO_GUARD_SDK_DIR="${PROJECT_ROOT_PATH}/prebuild/model-guard-v2"
-if [ "${COSMO_MODEL_GUARD_BUILD_PROFILE}" = "production-release" ] &&
-   [ -d /build_output/model-guard-sdk-production ]; then
-    DEFAULT_COSMO_GUARD_SDK_DIR=/build_output/model-guard-sdk-production
-fi
 COSMO_GUARD_SDK_DIR="${COSMO_MODEL_GUARD_SDK_ROOT:-${DEFAULT_COSMO_GUARD_SDK_DIR}}"
 MODEL_GUARD_PROFILE_ARGS=(
     -DCOSMO_MODEL_GUARD_BUILD_PROFILE="${COSMO_MODEL_GUARD_BUILD_PROFILE}"
     -DCOSMO_PACKAGE_MODELS="${COSMO_PACKAGE_MODELS:-include}"
 )
+# Reject incomplete or mixed SDKs before removing the previous installation or
+# invoking CMake. Explicit overrides must satisfy the same release contract.
+echo "Model Guard SDK: ${COSMO_GUARD_SDK_DIR}"
+if ! /usr/bin/python3 -I -B "${PROJECT_ROOT_PATH}/scripts/verify_model_guard_v2_sdk.py" \
+    --admission-profile "${COSMO_MODEL_GUARD_BUILD_PROFILE}" \
+    --sdk-root "${COSMO_GUARD_SDK_DIR}" \
+    --readelf "$(command -v aarch64-linux-gnu-readelf)" \
+    --nm "$(command -v aarch64-linux-gnu-nm)"; then
+    echo "ERROR: restore the complete prebuild/model-guard-v2 SDK from this checkout's release." >&2
+    echo "An explicit COSMO_MODEL_GUARD_SDK_ROOT must contain the same matching release." >&2
+    exit 1
+fi
 if [ -d "${INSTALL_DIR}" ]; then
     rm -rf -- "${INSTALL_DIR}"
 fi
@@ -162,7 +170,8 @@ fi
 /usr/bin/python3 -I -B \
     "${PROJECT_ROOT_PATH}/scripts/verify_package_contents.py" \
     --archive "${package_artifacts[0]}" \
-    --build-profile "${COSMO_MODEL_GUARD_BUILD_PROFILE}"
+    --build-profile "${COSMO_MODEL_GUARD_BUILD_PROFILE}" \
+    --target-chip "${CHIP_MODEL:-unspecified}"
 
 package_sha256="$(sha256sum -- "${package_artifacts[0]}")"
 package_sha256="${package_sha256%% *}"

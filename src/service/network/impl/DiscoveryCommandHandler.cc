@@ -3,7 +3,7 @@
 #include <nlohmann/json.hpp>
 
 #include "service/detail/ServiceRegistry.h"
-#include "service/network/INetworkService.h"
+#include "service/network/INetworkConfig.h"
 #include "service/network/impl/DeviceDiscoveryServiceImpl.h"
 #include "service/system/IDeviceHardware.h"
 #include "util/ErrorCode.h"
@@ -19,7 +19,7 @@ void DeviceDiscoveryServiceImpl::HandleProbe(DiscoveryProbeRecv&& data) {
     ret_data.reqId = data.reqId;
 
     std::error_condition errc{};
-    auto cards = ServiceRegistry::Instance().Get<INetworkService>().GetCardRealInfos();
+    auto cards = ServiceRegistry::Instance().Get<INetworkConfig>().GetCardRealInfos();
     for (auto& card : cards) {
         MsgNetCardInfo info;
         info.mainCard = card.is_main;

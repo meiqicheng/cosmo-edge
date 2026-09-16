@@ -21,7 +21,7 @@
 
 #include "service/detail/ServiceRegistry.h"
 #include "service/event/IAlarmPushService.h"
-#include "service/network/INetworkService.h"
+#include "service/network/IMqttLifecycle.h"
 #include "service/system/ISystemOperationService.h"
 #include "service/system/dto/SystemConfigTypes.h"
 #include "service/system/dto/SystemDebugDto.h"
@@ -600,7 +600,7 @@ MqttParam SystemServiceImpl::GetMqttParam() {
         result.userName = info.mqttParam.userName;
         result.passwd   = info.mqttParam.passwd;
     }
-    result.status = service::ServiceRegistry::Instance().Get<service::INetworkService>().IsMqttRegistered();
+    result.status = service::ServiceRegistry::Instance().Get<service::IMqttLifecycle>().IsMqttRegistered();
     return result;
 }
 
@@ -633,10 +633,10 @@ cosmo::util::ErrorEnum SystemServiceImpl::SetMqttParam(const MqttParam& param) {
     }
     if (changed) {
         if (param.enable) {
-            service::ServiceRegistry::Instance().Get<service::INetworkService>().MqttStop();
-            service::ServiceRegistry::Instance().Get<service::INetworkService>().MqttStart();
+            service::ServiceRegistry::Instance().Get<service::IMqttLifecycle>().MqttStop();
+            service::ServiceRegistry::Instance().Get<service::IMqttLifecycle>().MqttStart();
         } else {
-            service::ServiceRegistry::Instance().Get<service::INetworkService>().MqttStop();
+            service::ServiceRegistry::Instance().Get<service::IMqttLifecycle>().MqttStop();
         }
     }
     return cosmo::util::ErrorEnum::Success;
@@ -680,7 +680,7 @@ IotNetworkParam SystemServiceImpl::GetIotNetworkParam() {
         result.mqttIp   = param.mqttParam.ip;
         result.mqttPort = param.mqttParam.port;
     }
-    result.status = service::ServiceRegistry::Instance().Get<service::INetworkService>().IsMqttEnabled();
+    result.status = service::ServiceRegistry::Instance().Get<service::IMqttLifecycle>().IsMqttEnabled();
     return result;
 }
 

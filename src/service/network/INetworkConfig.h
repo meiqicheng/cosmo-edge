@@ -1,6 +1,5 @@
 /// @file INetworkConfig.h
 /// @brief Network card and DNS configuration interface.
-///        ISP split from INetworkService.
 ///        Consumed by api/MessageNetworkHandler for network config operations.
 #pragma once
 

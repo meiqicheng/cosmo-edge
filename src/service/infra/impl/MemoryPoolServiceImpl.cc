@@ -1,4 +1,4 @@
-// MemoryPoolServiceImpl — IMemoryPoolService implementation — owns MemoryPoolMng lifecycle.
+// MemoryPoolServiceImpl owns the memory pool lifecycle.
 
 #include "service/infra/impl/MemoryPoolServiceImpl.h"
 
@@ -30,22 +30,6 @@ MemoryPoolServiceImpl::~MemoryPoolServiceImpl() {
     LOG_INFO("{}", "MemoryPoolServiceImpl: destroying pool");
     cosmo::mem::SetMemoryPoolContext(nullptr);
     pool_.reset();
-}
-
-cosmo::mem::Block* MemoryPoolServiceImpl::Acquire(size_t size) {
-    return pool_->Acquire(size);
-}
-
-void MemoryPoolServiceImpl::Recycle(cosmo::mem::Block* block) {
-    pool_->Recycle(block);
-}
-
-std::vector<cosmo::mem::PoolStatus> MemoryPoolServiceImpl::Status() {
-    return pool_->Status();
-}
-
-std::string MemoryPoolServiceImpl::OutputMallocBuf() {
-    return pool_->OutputMallocBuf();
 }
 
 }  // namespace cosmo::service

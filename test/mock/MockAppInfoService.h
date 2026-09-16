@@ -27,13 +27,6 @@ public:
     MAKE_MOCK0(GetNumber, size_t(), override);
     MAKE_MOCK0(LogPath, std::string(), override);
     MAKE_MOCK0(LogWebPath, std::string(), override);
-    MAKE_MOCK0(GetCpuUtilization, double(), override);
-    MAKE_MOCK0(GetGpuUtilization, cosmo::MsgGpuInfo(), override);
-    MAKE_MOCK0(GetMemoryUtilization, cosmo::MsgMemoryInfo(), override);
-    MAKE_MOCK0(GetDiskUtilization, cosmo::MsgDiskInfo(), override);
-    MAKE_MOCK0(GetNetUtilization, cosmo::MsgNetInfo(), override);
-    MAKE_MOCK0(GetAvailableGpuMemoryMB, int64_t(), override);
-    MAKE_MOCK0(GetGpuNum, size_t(), override);
     MAKE_MOCK2(SetModelPath, void(const std::string&, const std::string&), override);
     MAKE_MOCK0(OutputMallocBuf, std::string(), override);
     MAKE_MOCK0(GetMemoryPoolStatus, std::vector<service::PoolStatusDto>(), override);

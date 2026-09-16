@@ -9,7 +9,6 @@
 
 #include "service/detail/ServiceRegistry.h"
 #include "service/network/IHttpClient.h"
-#include "service/network/INetworkService.h"
 #include "util/JsonFileUtil.h"
 #include "util/LimitedTypeJson.h"
 #include "util/Log.h"

@@ -318,6 +318,10 @@ const props = defineProps({
     type: Object,
     required: true
   },
+  configObject: {
+    type: Object,
+    default: () => ({})
+  },
   atomicList: {
     type: Array,
     default: () => []
@@ -330,10 +334,10 @@ const isAreaAlarmAction = computed(
     (props.actionDetail?.actionId || props.actionDetail?.id) === 'BA_00005'
 )
 const originalAreaParams = isAreaAlarmAction.value
-  ? _.cloneDeep(props.actionDetail.configObject?.params || [])
+  ? _.cloneDeep(props.configObject?.params || [])
   : []
 const originalAreaWebConfig = isAreaAlarmAction.value
-  ? _.cloneDeep(props.actionDetail.configObject?.webConfig || {})
+  ? _.cloneDeep(props.configObject?.webConfig || {})
   : {}
 const areaRuleUiType = ref(AREA_RULE_UI_TYPES.TARGET_LIMIT)
 const areaRulePurpose = ref('alarm')
@@ -469,7 +473,7 @@ const formReady = ref(false)
 onMounted(() => {
   const params = JSON.parse(props.actionDetail.inputParamConfig)
   params.forEach((item, index) => {
-    const input = _.find(props.actionDetail.configObject?.params, {
+    const input = _.find(props.configObject?.params, {
       key: item.key
     })
     if (input) {
@@ -504,7 +508,7 @@ onMounted(() => {
     modelSelectType.value = modelSelect.type
     // 快照保存的 labelList，供 getModelSelectList 回显 used（响应式 props 会被异步 config-change 覆盖）
     savedWebLabelList.value =
-      _.get(props.actionDetail, 'configObject.webConfig.labelList', []) || []
+      _.get(props.configObject, 'webConfig.labelList', []) || []
     if (modelSelect.value) {
       getModelSelectList(modelSelect.value, modelSelect.type)
     } else {
@@ -522,7 +526,7 @@ onMounted(() => {
     labelFilterListType.value = true
     labelFilterList.value = props.atomicList
     const targetLabelArrTemp = []
-    props.actionDetail.configObject?.webConfig?.labelFilterList.forEach(
+    props.configObject?.webConfig?.labelFilterList.forEach(
       (item) => {
         targetLabelArrTemp.push({
           ...item,
@@ -542,7 +546,7 @@ onMounted(() => {
     labelAdjustType.value = true
     labelFilterList.value = props.atomicList
     const targetLabelArrTemp = []
-    props.actionDetail.configObject.params.forEach((item) => {
+    props.configObject.params.forEach((item) => {
       if (item.key.includes('preParam.confidence'))
         targetLabelArrTemp.push({
           labelCode: item.key.split('.')[2],
@@ -592,13 +596,13 @@ onMounted(() => {
     labelTargetLimitType.value = true
     const targetLimitLabelArrTemp = []
     const resultTargetTypeArr = _.filter(
-      props.actionDetail.configObject.params,
+      props.configObject.params,
       (item) => {
         return item.key.startsWith('areaLimitTargetType')
       }
     )
     const resultTargetCountArr = _.filter(
-      props.actionDetail.configObject.params,
+      props.configObject.params,
       (item) => {
         return item.key.startsWith('areaLimitTargetCount')
       }
@@ -643,8 +647,8 @@ onMounted(() => {
   if (conditionItem) {
     conditionType.value = true
     if (
-      !props.actionDetail.configObject?.condition ||
-      Object.keys(props.actionDetail.configObject.condition).length === 0
+      !props.configObject?.condition ||
+      Object.keys(props.configObject.condition).length === 0
     ) {
       condition.value = {
         key: v4().slice(0, 8),
@@ -656,7 +660,7 @@ onMounted(() => {
         showTools: false
       }
     } else {
-      condition.value = props.actionDetail.configObject.condition
+      condition.value = props.configObject.condition
     }
   }
 
@@ -673,7 +677,7 @@ const emitConfigChange = _.debounce(() => {
   if (!formReady.value) return
   // modelSelect 表单在算法清单加载完成前不向上同步，否则会用空 labelList 覆盖已保存的配置
   if (modelSelectType.value && !modelListLoaded.value) return
-  const config = submitForm({ persist: false })
+  const config = submitForm()
   if (config) emit('config-change', config)
 }, 100)
 
@@ -766,7 +770,6 @@ const getChannelList = (toValue) => {
           id: channelId,
           parentId: '0',
           label: channelName,
-          disabled: true,
           children: fromChildren
         })
       }
@@ -775,7 +778,6 @@ const getChannelList = (toValue) => {
           id: channelId,
           parentId: '0',
           label: channelName,
-          disabled: true,
           children: toChildren
         })
       }
@@ -1306,7 +1308,7 @@ const mergeList = (obj) => {
   }
 }
 
-const submitForm = ({ persist = true } = {}) => {
+const submitForm = () => {
   const configObject = {
     webConfig: {
       labelList: [],
@@ -1565,10 +1567,6 @@ const submitForm = ({ persist = true } = {}) => {
         configObject.webConfig.metaDataParams
       )
     }
-  }
-  if (persist) {
-    localStorage.setItem('flowConfigObject', JSON.stringify(configObject))
-    console.log('========submitForm=========', configObject)
   }
   return configObject
 }

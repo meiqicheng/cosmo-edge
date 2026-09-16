@@ -1,6 +1,5 @@
 /// @file IMqttLifecycle.h
 /// @brief MQTT lifecycle interface — start/stop control for the MQTT client.
-///        ISP split from INetworkService.
 ///        Consumed by app_init.cc for MQTT start/stop control.
 #pragma once
 

@@ -5,7 +5,6 @@
 
 #include <string>
 
-#include "service/detail/ServiceRegistry.h"
 #include "util/dto/CosmoFwd.h"
 
 namespace cosmo::service {

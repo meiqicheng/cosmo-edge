@@ -16,8 +16,6 @@ public:
 
     virtual Status Free(void* handle, unsigned long phy) override;
 
-    virtual AbstractContext* CreateContext(int device_id_) override;
-
     virtual Status CopyToDevice(BlobHandle* dst, const BlobHandle* src, BlobDesc& desc, void* queue) override;
 
     virtual Status CopyFromDevice(BlobHandle* dst, const BlobHandle* src, BlobDesc& desc,

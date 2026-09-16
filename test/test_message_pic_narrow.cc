@@ -6,6 +6,7 @@
 #include "mock/MockAlgorithmService.h"
 #include "mock/MockTaskService.h"
 #include "mock/MockVideoFrameCodec.h"
+#include "service/detail/ServiceRegistry.h"
 #include "service/media/impl/PicTaskServiceImpl.h"
 #include "support/ScopedServiceOverride.h"
 #include "util/Keys.h"

@@ -3,7 +3,6 @@
 #include <cstring>
 
 #include "nn/core/macros.h"
-#include "nn/device/naive/naive_context.h"
 #include "nn/utils/dims_vector_utils.h"
 
 namespace cosmo::nn {
@@ -76,10 +75,6 @@ Status NaiveDevice::CopyFromDevice(BlobHandle* dst, const BlobHandle* src, BlobD
     memcpy(reinterpret_cast<char*>(dst->base), reinterpret_cast<char*>(src->base),
            static_cast<size_t>(size_in_bytes));
     return COSMO_NN_OK;
-}
-
-AbstractContext* NaiveDevice::CreateContext(int device_id_) {
-    return new NaiveContext();
 }
 
 TypeDeviceRegister<NaiveDevice> g_naive_device_register(DEVICE_NAIVE);

@@ -154,7 +154,6 @@ const emit = defineEmits(['update:config'])
 const resolveHeaderName = (item) =>
   resolveResourceParamText(item, props.algorithmCode, 'name')
 
-const platformType = localStorage.getItem('platformType') || ''
 const width = ref(550)
 const height = ref(550 / 1.8)
 const imgSrc = ref('')
@@ -281,34 +280,14 @@ const getImage = (forceRefresh = false) => {
     isLoadingImage.value = true
     lastChannelId.value = props.config.channelId
     
-    let params = {
-      channelId: props.config.channelId,
-      cacheEnable: true
-    }
-    
-    if (platformType == '15') {
-      proxy.$API.boxRecaptureImage({ videoChannelId: params.channelId }).then((res) => {
-        const { resData } = res
-        imgSrc.value = resData.url
-      }).catch(() => {
-        imgSrc.value = CatchPhoto
-      }).finally(() => {
-        isLoadingImage.value = false
-      })
-    } else {
-      proxy.$API.recaptureImage(params).then((res) => {
-        const { resData } = res
-        if (resData == 'DEFAULT_EMPTY_SNAP') {
-          imgSrc.value = CatchPhoto
-        } else {
-          imgSrc.value = resData
-        }
-      }).catch(() => {
-        imgSrc.value = CatchPhoto
-      }).finally(() => {
-        isLoadingImage.value = false
-      })
-    }
+    proxy.$API.boxRecaptureImage({ videoChannelId: props.config.channelId }).then((res) => {
+      const { resData } = res
+      imgSrc.value = resData.url
+    }).catch(() => {
+      imgSrc.value = CatchPhoto
+    }).finally(() => {
+      isLoadingImage.value = false
+    })
   }, forceRefresh ? 0 : 100) // 强制刷新时立即执行，否则延迟100ms
 }
 
@@ -465,8 +444,9 @@ const handleDelete = (index, type) => {
 }
 
 const sureAddClick = async () => {
-  const canSubmit = submitFormRef.value.submitForm()
-  if (!canSubmit) return
+  const result = await submitFormRef.value?.validateAndCollect()
+  if (!result?.valid) return
+  addAreaDialogConfig.value = result.params
 
   if (areaDialogMode.value === 'add-line') {
     console.log('当前addAreaDialogConfig:', JSON.parse(JSON.stringify(addAreaDialogConfig.value)))

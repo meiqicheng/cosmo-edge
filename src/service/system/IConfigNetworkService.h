@@ -2,7 +2,7 @@
 /// @brief Network protocol configuration service interface.
 ///        ISP split from ISystemConfigService.
 ///        Manages HTTP push, MQTT, and IoT networking parameters.
-///        Consumed by NetworkServiceImpl and api/ handlers.
+///        Consumed by network lifecycle services and API handlers.
 #pragma once
 
 #include <string>

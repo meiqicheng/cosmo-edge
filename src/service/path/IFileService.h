@@ -8,8 +8,6 @@
 #include <string>
 #include <vector>
 
-#include "service/detail/ServiceRegistry.h"
-
 namespace cosmo::service {
 
 /// File type enumeration for URL routing.
