@@ -267,22 +267,85 @@ TEST_CASE("RKNN core scheduling maps explicit and split modes deterministically"
     CHECK(valid);
     CHECK(ParseRknnCoreMode("split", &valid) == RknnCoreMode::Split);
     CHECK(valid);
+    CHECK(ParseRknnCoreMode("tri", &valid) == RknnCoreMode::Core012);
+    CHECK(valid);
+    CHECK(ParseRknnCoreMode("core0_1_2", &valid) == RknnCoreMode::Core012);
+    CHECK(valid);
+    CHECK(ParseRknnCoreMode("all", &valid) == RknnCoreMode::All);
+    CHECK(valid);
     CHECK(ParseRknnCoreMode("unsupported", &valid) == RknnCoreMode::Auto);
     CHECK_FALSE(valid);
-
-    CHECK(ResolveRknnCoreMask(RknnCoreMode::Auto, 7) == RKNN_NPU_CORE_AUTO);
-    CHECK(ResolveRknnCoreMask(RknnCoreMode::Core0, 7) == RKNN_NPU_CORE_0);
-    CHECK(ResolveRknnCoreMask(RknnCoreMode::Core1, 7) == RKNN_NPU_CORE_1);
-    CHECK(ResolveRknnCoreMask(RknnCoreMode::Core01, 7) == RKNN_NPU_CORE_0_1);
-    CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 0) == RKNN_NPU_CORE_0);
-    CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 1) == RKNN_NPU_CORE_1);
-    CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 2) == RKNN_NPU_CORE_0);
-    CHECK_FALSE(ShouldConfigureRknnCoreMask(RknnCoreMode::Auto));
-    CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core0));
-    CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core1));
-    CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core01));
-    CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Split));
     CHECK(std::string(RknnCoreModeName(RknnCoreMode::Core01)) == "core0_1");
+    CHECK(std::string(RknnCoreModeName(RknnCoreMode::Core012)) == "core0_1_2");
+    CHECK(std::string(RknnCoreModeName(RknnCoreMode::All)) == "all");
+
+    // Dual-core (RK3576) is the existing regression baseline: every mapping below must
+    // stay bit-identical to the pre-N-core implementation.
+    constexpr int kDual = 2;
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Auto, 7, kDual) == RKNN_NPU_CORE_AUTO);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Core0, 7, kDual) == RKNN_NPU_CORE_0);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Core1, 7, kDual) == RKNN_NPU_CORE_1);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Core01, 7, kDual) == RKNN_NPU_CORE_0_1);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 0, kDual) == RKNN_NPU_CORE_0);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 1, kDual) == RKNN_NPU_CORE_1);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 2, kDual) == RKNN_NPU_CORE_0);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::All, 3, kDual) == RKNN_NPU_CORE_0_1);
+    CHECK_FALSE(ShouldConfigureRknnCoreMask(RknnCoreMode::Auto, kDual));
+    CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core0, kDual));
+    CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core1, kDual));
+    CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core01, kDual));
+    CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Split, kDual));
+
+    // A tri-core request on a dual-core part degrades to both cores rather than failing.
+    const auto tri_on_dual = ResolveRknnCoreSelection(RknnCoreMode::Core012, 0, kDual);
+    CHECK(tri_on_dual.mask == RKNN_NPU_CORE_0_1);
+    CHECK(tri_on_dual.apply);
+    CHECK(tri_on_dual.degraded);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Core012, 0, kDual) == RKNN_NPU_CORE_0_1);
+}
+
+TEST_CASE("RKNN triple-core parts round-robin over all three NPU cores", "[nn][rknn][core-scheduling]") {
+    using namespace cosmo::nn;
+    constexpr int kTriple = 3;
+    // The third core is reachable only through the detected core count; assuming the
+    // dual-core shape leaves it idle, which is the defect this change removes.
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 0, kTriple) == RKNN_NPU_CORE_0);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 1, kTriple) == RKNN_NPU_CORE_1);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 2, kTriple) == RKNN_NPU_CORE_2);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 3, kTriple) == RKNN_NPU_CORE_0);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 4, kTriple) == RKNN_NPU_CORE_1);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 5, kTriple) == RKNN_NPU_CORE_2);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 2, 2) != RKNN_NPU_CORE_2);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Core012, 0, kTriple) == RKNN_NPU_CORE_0_1_2);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Core01, 0, kTriple) == RKNN_NPU_CORE_0_1);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::All, 0, kTriple) == RKNN_NPU_CORE_0_1_2);
+    CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core012, kTriple));
+    CHECK_FALSE(ResolveRknnCoreSelection(RknnCoreMode::Core012, 0, kTriple).degraded);
+    CHECK_FALSE(ResolveRknnCoreSelection(RknnCoreMode::All, 0, kTriple).degraded);
+
+    // An out-of-range count is clamped to the supported envelope, never trusted raw.
+    CHECK(NormalizeRknnNpuCoreCount(0) == kRknnMinNpuCoreCount);
+    CHECK(NormalizeRknnNpuCoreCount(-4) == kRknnMinNpuCoreCount);
+    CHECK(NormalizeRknnNpuCoreCount(4) == kRknnMaxNpuCoreCount);
+    CHECK(NormalizeRknnNpuCoreCount(3) == 3);
+}
+
+TEST_CASE("Single-core RKNN parts never receive an explicit core mask", "[nn][rknn][core-scheduling]") {
+    using namespace cosmo::nn;
+    constexpr int kSingle = 1;
+    // RKNPU2 rejects every explicit mask on a single-core part, RKNN_NPU_CORE_AUTO
+    // included, so every explicit request must collapse to "leave the runtime alone".
+    for (const auto mode : {RknnCoreMode::Core0, RknnCoreMode::Core1, RknnCoreMode::Core01,
+                            RknnCoreMode::Core012, RknnCoreMode::Split, RknnCoreMode::All}) {
+        const auto selection = ResolveRknnCoreSelection(mode, 0, kSingle);
+        CHECK_FALSE(selection.apply);
+        CHECK(selection.mask == RKNN_NPU_CORE_AUTO);
+        CHECK(selection.degraded);
+        CHECK_FALSE(ShouldConfigureRknnCoreMask(mode, kSingle));
+    }
+    const auto automatic = ResolveRknnCoreSelection(RknnCoreMode::Auto, 0, kSingle);
+    CHECK_FALSE(automatic.apply);
+    CHECK_FALSE(automatic.degraded);
 }
 
 TEST_CASE("RKNN MPP DMA-BUF switch defaults on and supports explicit rollback", "[nn][rknn][mpp-dmabuf]") {

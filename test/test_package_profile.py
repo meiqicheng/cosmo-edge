@@ -27,6 +27,12 @@ verifier = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(verifier)
 
 
+# Sentinel meaning "derive the fixture's NPU core count from its chip", so existing
+# callers keep building realistic profiles while negative tests can inject a wrong or
+# absent value explicitly (pass platform_core_count=None to omit the field).
+_DERIVE_CORE_COUNT = object()
+
+
 class PackageProfileTests(unittest.TestCase):
     def make_package(
         self,
@@ -36,6 +42,7 @@ class PackageProfileTests(unittest.TestCase):
         target_chip: str | None = None,
         platform_chip: str | None = None,
         platform_runtime: str | None = None,
+        platform_core_count: object = _DERIVE_CORE_COUNT,
         runtime_data_dir: str | None = None,
         runtime_app_data_dir: str = "/appfs/cosmo_wander/cwai_data",
         model_bundle_scope: str | None = None,
@@ -66,7 +73,7 @@ class PackageProfileTests(unittest.TestCase):
                 archive.addfile(info)
             files = set(executable_files) | set(regular_files)
             files.add("lib/libavcodec.so.58.134.100")
-            if target_chip in ("rk3576", "rv1126b"):
+            if target_chip in ("rk3576", "rv1126b", "rk3588"):
                 files.update(verifier.RKNN_LICENSE_FILES)
             if include_model_guard:
                 files.update(
@@ -96,7 +103,7 @@ class PackageProfileTests(unittest.TestCase):
                 if name == "share/cosmo/runtime-paths.env":
                     selected_data_dir = runtime_data_dir or (
                         "/userdata/cwaiuserdata"
-                        if target_chip in ("rk3576", "rv1126b")
+                        if target_chip in ("rk3576", "rv1126b", "rk3588")
                         else "/data/cwaiuserdata"
                     )
                     data = (
@@ -196,6 +203,17 @@ class PackageProfileTests(unittest.TestCase):
                 if platform_runtime is not None:
                     platform_value["media"] = {
                         "runtime_profile": platform_runtime
+                    }
+                resolved_core_count = (
+                    verifier.ROCKCHIP_NPU_CORE_COUNTS.get(platform_chip)
+                    if platform_core_count is _DERIVE_CORE_COUNT
+                    else platform_core_count
+                )
+                if resolved_core_count is not None:
+                    platform_value["runtime"] = {
+                        "architecture": "aarch64",
+                        "npu_core_count": resolved_core_count,
+                        "default_core_mode": "auto",
                     }
                 platform = json.dumps(platform_value).encode()
                 info = tarfile.TarInfo(
@@ -499,7 +517,7 @@ class PackageProfileTests(unittest.TestCase):
             verifier.verify_package(wrong_platform, "public-runtime", "rv1126b")
 
     def test_runtime_paths_match_target_chip(self) -> None:
-        for target_chip in ("rk3576", "rv1126b"):
+        for target_chip in ("rk3576", "rv1126b", "rk3588"):
             package = self.make_package(
                 "public-runtime",
                 target_chip=target_chip,
@@ -530,6 +548,94 @@ class PackageProfileTests(unittest.TestCase):
             verifier.PackageAuditError, "application directory is incompatible"
         ):
             verifier.verify_package(wrong_app_root, "public-runtime", "bm1688")
+
+    def test_rk3588_preserve_candidate_accepts_rknn_package(self):
+        package = self.make_package(
+            "public-runtime",
+            target_chip="rk3588",
+            platform_chip="rk3588",
+            platform_runtime="mpp-1.1.0-rga-1.10.6-repro-v1",
+        )
+        verifier.verify_package(package, "public-runtime", "rk3588")
+        verifier.verify_package(
+            package,
+            "public-runtime",
+            "rk3588",
+            {
+                "required_package_paths": ["share/cosmo/platform-profile.json"],
+                "forbidden_package_paths": ["lib/librkllmrt.so"],
+            },
+        )
+
+    def test_rk3588_rejects_wrong_platform_and_chip(self):
+        with self.assertRaisesRegex(verifier.PackageAuditError, "marker is missing"):
+            verifier.verify_package(
+                self.make_package("public-runtime"), "public-runtime", "rk3588"
+            )
+        with self.assertRaisesRegex(
+            verifier.PackageAuditError, "platform profile is missing"
+        ):
+            verifier.verify_package(
+                self.make_package("public-runtime", target_chip="rk3588"),
+                "public-runtime",
+                "rk3588",
+            )
+        wrong_platform = self.make_package(
+            "public-runtime", target_chip="rk3588", platform_chip="rk3576"
+        )
+        with self.assertRaisesRegex(
+            verifier.PackageAuditError, "platform profile does not match"
+        ):
+            verifier.verify_package(wrong_platform, "public-runtime", "rk3588")
+        with self.assertRaisesRegex(verifier.PackageAuditError, "target chip mismatch"):
+            verifier.verify_package(
+                self.make_package(
+                    "public-runtime", target_chip="rk3588", platform_chip="rk3588"
+                ),
+                "public-runtime",
+                "rk3576",
+            )
+
+    def test_rockchip_profile_binds_npu_core_count_to_chip(self) -> None:
+        """A wrong count silently strands NPU capacity on the multi-core parts."""
+        for chip, expected_cores in verifier.ROCKCHIP_NPU_CORE_COUNTS.items():
+            package = self.make_package(
+                "public-runtime", target_chip=chip, platform_chip=chip
+            )
+            verifier.verify_package(package, "public-runtime", chip)
+
+            mismatched = self.make_package(
+                "public-runtime",
+                target_chip=chip,
+                platform_chip=chip,
+                platform_core_count=expected_cores + 1,
+            )
+            with self.assertRaisesRegex(
+                verifier.PackageAuditError, "NPU core count does not match"
+            ):
+                verifier.verify_package(mismatched, "public-runtime", chip)
+
+            absent = self.make_package(
+                "public-runtime",
+                target_chip=chip,
+                platform_chip=chip,
+                platform_core_count=None,
+            )
+            with self.assertRaisesRegex(
+                verifier.PackageAuditError, "NPU core count does not match"
+            ):
+                verifier.verify_package(absent, "public-runtime", chip)
+
+    def test_rk3588_profile_must_declare_three_cores(self) -> None:
+        """rk3588 must not inherit the two-core rk3576 shape."""
+        dual = self.make_package(
+            "public-runtime",
+            target_chip="rk3588",
+            platform_chip="rk3588",
+            platform_core_count=2,
+        )
+        with self.assertRaisesRegex(verifier.PackageAuditError, "expected 3, got 2"):
+            verifier.verify_package(dual, "public-runtime", "rk3588")
 
     def mutate_package(self, package, changes, reverse=False, additions=None):
         """Rewrite members and always recalculate MD5 so negatives reach the audit."""
