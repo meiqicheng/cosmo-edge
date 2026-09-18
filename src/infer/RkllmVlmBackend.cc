@@ -10,6 +10,7 @@
 
 #include "infer/Qwen3VLUnify.h"
 #include "media/PixelFormat.h"
+#include "nn/device/rknn/rknn_net_node.h"
 #include "nn/guard/ModelLoadPolicy.h"
 #ifdef COSMO_HAS_MODEL_GUARD
 #include "nn/guard/CemRknnV1Loader.h"
@@ -17,6 +18,7 @@
 #include "rkllm.h"
 #include "rknn_api.h"
 #include "util/Log.h"
+#include "util/NnBackendConstants.h"
 #include "util/PathUtil.h"
 
 namespace cosmo {
@@ -107,11 +109,23 @@ namespace {
             return false;
         }
 
-        int ret = rknn_set_core_mask(encoder.ctx, RKNN_NPU_CORE_0_1);
-        if (ret != RKNN_SUCC) {
-            LOG_ERRO("RKLLM vision encoder core selection failed. ret:{}", ret);
-            ReleaseImageEncoder(encoder);
-            return false;
+        int ret = RKNN_SUCC;
+        // Route the encoder through the shared core resolver instead of pinning the
+        // dual-core pairing. All on a packaged rk3576 resolves to CORE_0_1 exactly as
+        // before, while rk3588 now resolves to CORE_0_1_2 and uses its third core.
+        const auto core_selection =
+            nn::ResolveRknnCoreSelection(nn::RknnCoreMode::All, 0, util::kRknnNpuCoreCount);
+        if (core_selection.apply) {
+            ret = rknn_set_core_mask(encoder.ctx, core_selection.mask);
+            if (ret != RKNN_SUCC) {
+                LOG_ERRO("RKLLM vision encoder core selection failed. ret:{} cores:{} mask:{}", ret,
+                         util::kRknnNpuCoreCount, static_cast<int>(core_selection.mask));
+                ReleaseImageEncoder(encoder);
+                return false;
+            }
+        } else if (core_selection.degraded) {
+            LOG_WARN("RKLLM vision encoder keeps the runtime default on {} NPU core(s)",
+                     util::kRknnNpuCoreCount);
         }
 
         ret = rknn_query(encoder.ctx, RKNN_QUERY_IN_OUT_NUM, &encoder.io_num, sizeof(encoder.io_num));

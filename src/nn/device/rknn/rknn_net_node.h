@@ -39,17 +39,40 @@ bool RknnDirectCandidatesEnabled();
 bool RknnBoundInputEnabled();
 bool RknnRgaBoundInputEnabled();
 
+// RKNPU2 exposes one core per silicon NPU cluster: 1 on RV1126B, 2 on RK3576 and
+// 3 on RK3588. The count is a hardware fact carried in the packaged
+// platform-profile.json (`runtime.npu_core_count`) so the scheduler below can be
+// sized from configuration instead of assuming the two-core RK3576 shape.
+inline constexpr int kRknnMinNpuCoreCount = 1;
+inline constexpr int kRknnMaxNpuCoreCount = 3;
+
 enum class RknnCoreMode : uint8_t {
     Auto = 0,
     Core0,
     Core1,
     Core01,
+    // Tri-core selection; only RK3588 can honour it. Lower-core parts degrade.
+    Core012,
     Split,
+    // Saturate every core the detected part has, without naming a count.
+    All,
+};
+
+// Result of resolving a requested mode against the detected core count. Resolving
+// once keeps the mask and the "should we call rknn_set_core_mask at all" decision
+// from disagreeing, which is how a single-core part would receive a mask it rejects.
+struct RknnCoreSelection {
+    rknn_core_mask mask{RKNN_NPU_CORE_AUTO};
+    bool apply{false};
+    bool degraded{false};
 };
 
 RknnCoreMode ParseRknnCoreMode(const std::string& value, bool* valid = nullptr);
-rknn_core_mask ResolveRknnCoreMask(RknnCoreMode mode, uint64_t context_sequence);
-bool ShouldConfigureRknnCoreMask(RknnCoreMode mode);
+// Clamps a configured/observed core count into [kRknnMinNpuCoreCount, kRknnMaxNpuCoreCount].
+int NormalizeRknnNpuCoreCount(int npu_core_count);
+RknnCoreSelection ResolveRknnCoreSelection(RknnCoreMode mode, uint64_t context_sequence, int npu_core_count);
+rknn_core_mask ResolveRknnCoreMask(RknnCoreMode mode, uint64_t context_sequence, int npu_core_count);
+bool ShouldConfigureRknnCoreMask(RknnCoreMode mode, int npu_core_count);
 const char* RknnCoreModeName(RknnCoreMode mode);
 
 class RknnNetNode final : public NetNode, public RknnBoundInputProvider {
@@ -66,6 +89,11 @@ public:
     Status AttachOwnedContext(rknn_context context, uint64_t model_fingerprint);
     Status Forward(std::vector<std::shared_ptr<Blob>>& bottom_blobs,
                    std::vector<std::shared_ptr<Blob>>& top_blobs) override;
+    // NetNode also declares a three-argument Forward for nodes that take parameter
+    // blobs. Overriding only the two-argument form hides that overload by name, which
+    // -Woverloaded-virtual reports in strict-warning translation units such as
+    // RkllmVlmBackend.cc; re-expose it rather than silently hiding it.
+    using NetNode::Forward;
     bool EnsureRgaBoundInput(int height, int width, std::string& reason) override;
 
 private:

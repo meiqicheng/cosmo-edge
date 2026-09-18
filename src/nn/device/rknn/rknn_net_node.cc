@@ -22,6 +22,7 @@
 #include "nn/device/rknn/rknn_yolov8_adapter.h"
 #include "nn/node/node_type_utils.h"
 #include "util/Log.h"
+#include "util/NnBackendConstants.h"
 
 namespace cosmo::nn {
 namespace {
@@ -160,6 +161,12 @@ RknnCoreMode ParseRknnCoreMode(const std::string& value, bool* valid) {
         normalized == "dual") {
         return RknnCoreMode::Core01;
     }
+    if (normalized == "core012" || normalized == "core0_1_2" || normalized == "core_0_1_2" ||
+        normalized == "tri" || normalized == "triple") {
+        return RknnCoreMode::Core012;
+    }
+    if (normalized == "all" || normalized == "max")
+        return RknnCoreMode::All;
     if (normalized == "split")
         return RknnCoreMode::Split;
     if (valid)
@@ -167,27 +174,78 @@ RknnCoreMode ParseRknnCoreMode(const std::string& value, bool* valid) {
     return RknnCoreMode::Auto;
 }
 
-rknn_core_mask ResolveRknnCoreMask(RknnCoreMode mode, uint64_t context_sequence) {
-    switch (mode) {
-        case RknnCoreMode::Core0:
-            return RKNN_NPU_CORE_0;
-        case RknnCoreMode::Core1:
-            return RKNN_NPU_CORE_1;
-        case RknnCoreMode::Core01:
-            return RKNN_NPU_CORE_0_1;
-        case RknnCoreMode::Split:
-            return (context_sequence % 2 == 0) ? RKNN_NPU_CORE_0 : RKNN_NPU_CORE_1;
-        case RknnCoreMode::Auto:
-        default:
-            return RKNN_NPU_CORE_AUTO;
-    }
+int NormalizeRknnNpuCoreCount(int npu_core_count) {
+    if (npu_core_count < kRknnMinNpuCoreCount)
+        return kRknnMinNpuCoreCount;
+    if (npu_core_count > kRknnMaxNpuCoreCount)
+        return kRknnMaxNpuCoreCount;
+    return npu_core_count;
 }
 
-bool ShouldConfigureRknnCoreMask(RknnCoreMode mode) {
-    // Leaving the runtime default untouched is the portable automatic mode.
-    // Single-core RKNPU2 devices reject even RKNN_NPU_CORE_AUTO, while
-    // multi-core targets still accept the explicit core/split modes below.
-    return mode != RknnCoreMode::Auto;
+RknnCoreSelection ResolveRknnCoreSelection(RknnCoreMode mode, uint64_t context_sequence, int npu_core_count) {
+    const int cores = NormalizeRknnNpuCoreCount(npu_core_count);
+    RknnCoreSelection selection;
+    // A single-core RPU rejects every explicit mask, RKNN_NPU_CORE_AUTO included, so any
+    // explicit request on such a part collapses to "leave the runtime default alone"
+    // rather than being forwarded and rejected. RKNN_NPU_CORE_ALL (0xffff) would express
+    // "all cores on this platform" without a count, but then the count would stop gating
+    // anything; the explicit masks keep the selected core set deterministic and auditable.
+    if (mode == RknnCoreMode::Auto || cores < 2) {
+        selection.degraded = mode != RknnCoreMode::Auto;
+        return selection;
+    }
+    switch (mode) {
+        case RknnCoreMode::Core0:
+            selection.mask = RKNN_NPU_CORE_0;
+            break;
+        case RknnCoreMode::Core1:
+            selection.mask = RKNN_NPU_CORE_1;
+            break;
+        case RknnCoreMode::Core01:
+            selection.mask = RKNN_NPU_CORE_0_1;
+            break;
+        case RknnCoreMode::Core012:
+            if (cores >= 3) {
+                selection.mask = RKNN_NPU_CORE_0_1_2;
+            } else {
+                // Two cores cannot satisfy a tri-core request; take both and say so.
+                selection.mask     = RKNN_NPU_CORE_0_1;
+                selection.degraded = true;
+            }
+            break;
+        case RknnCoreMode::All:
+            selection.mask = (cores >= 3) ? RKNN_NPU_CORE_0_1_2 : RKNN_NPU_CORE_0_1;
+            break;
+        case RknnCoreMode::Split:
+            // Round-robin over the detected count, so a triple-core part finally uses its
+            // third core. At cores == 2 this is bit-identical to the previous `% 2` rule.
+            switch (context_sequence % static_cast<uint64_t>(cores)) {
+                case 0:
+                    selection.mask = RKNN_NPU_CORE_0;
+                    break;
+                case 1:
+                    selection.mask = RKNN_NPU_CORE_1;
+                    break;
+                default:
+                    selection.mask = RKNN_NPU_CORE_2;
+                    break;
+            }
+            break;
+        case RknnCoreMode::Auto:
+        default:
+            return selection;
+    }
+    selection.apply = true;
+    return selection;
+}
+
+rknn_core_mask ResolveRknnCoreMask(RknnCoreMode mode, uint64_t context_sequence, int npu_core_count) {
+    return ResolveRknnCoreSelection(mode, context_sequence, npu_core_count).mask;
+}
+
+bool ShouldConfigureRknnCoreMask(RknnCoreMode mode, int npu_core_count) {
+    // Split's decision does not depend on the sequence, so any sequence resolves alike.
+    return ResolveRknnCoreSelection(mode, 0, npu_core_count).apply;
 }
 
 const char* RknnCoreModeName(RknnCoreMode mode) {
@@ -198,8 +256,12 @@ const char* RknnCoreModeName(RknnCoreMode mode) {
             return "core1";
         case RknnCoreMode::Core01:
             return "core0_1";
+        case RknnCoreMode::Core012:
+            return "core0_1_2";
         case RknnCoreMode::Split:
             return "split";
+        case RknnCoreMode::All:
+            return "all";
         case RknnCoreMode::Auto:
         default:
             return "auto";
@@ -745,15 +807,39 @@ Status RknnNetNode::AttachOwnedContext(rknn_context context, uint64_t model_fing
 }
 
 Status RknnNetNode::InitializeLoadedContext(uint64_t context_sequence) {
-    int result                = RKNN_SUCC;
-    bool core_mode_valid      = true;
+    int result = RKNN_SUCC;
+    // Resolution order: operator override (env) > packaged platform default > built-in
+    // automatic. Both packaged values were frozen from config/rknn/platforms/<chip>.json
+    // at configure time, so a deployment that ships the RK3588 profile schedules three
+    // cores without the runtime having to infer the part it is running on.
     const char* core_mode_env = std::getenv("COSMO_RKNN_CORE_MODE");
-    const auto core_mode      = ParseRknnCoreMode(core_mode_env ? core_mode_env : "auto", &core_mode_valid);
+    const char* core_mode_raw =
+        (core_mode_env && *core_mode_env) ? core_mode_env : cosmo::util::kRknnDefaultCoreMode;
+    bool core_mode_valid = true;
+    const auto core_mode = ParseRknnCoreMode(core_mode_raw, &core_mode_valid);
     if (!core_mode_valid) {
-        LOG_WARN("Invalid COSMO_RKNN_CORE_MODE value:{}, fallback:auto", core_mode_env ? core_mode_env : "");
+        LOG_WARN("Invalid RKNN core mode value:{}, fallback:auto", core_mode_raw);
     }
-    const auto core_mask           = ResolveRknnCoreMask(core_mode, context_sequence);
-    const bool configure_core_mask = ShouldConfigureRknnCoreMask(core_mode);
+    int npu_core_count         = cosmo::util::kRknnNpuCoreCount;
+    const char* core_count_env = std::getenv("COSMO_RKNN_NPU_CORE_COUNT");
+    if (core_count_env && *core_count_env) {
+        char* parsed_end  = nullptr;
+        const long parsed = std::strtol(core_count_env, &parsed_end, 10);
+        if (parsed_end && *parsed_end == '\0' && parsed >= kRknnMinNpuCoreCount &&
+            parsed <= kRknnMaxNpuCoreCount) {
+            npu_core_count = static_cast<int>(parsed);
+        } else {
+            LOG_WARN("Invalid COSMO_RKNN_NPU_CORE_COUNT value:{}, keeping packaged value:{}", core_count_env,
+                     cosmo::util::kRknnNpuCoreCount);
+        }
+    }
+    const auto selection           = ResolveRknnCoreSelection(core_mode, context_sequence, npu_core_count);
+    const auto core_mask           = selection.mask;
+    const bool configure_core_mask = selection.apply;
+    if (selection.degraded) {
+        LOG_WARN("RKNN core mode:{} is unavailable on {} NPU core(s); using mask:{}",
+                 RknnCoreModeName(core_mode), npu_core_count, static_cast<int>(core_mask));
+    }
     if (configure_core_mask) {
         result = rknn_set_core_mask(context_, core_mask);
         if (result != RKNN_SUCC) {
@@ -792,11 +878,11 @@ Status RknnNetNode::InitializeLoadedContext(uint64_t context_sequence) {
 
     LOG_INFO(
         "RKNN model loaded: api={} driver={} inputs={} runtime_outputs={} logical_outputs={} "
-        "output_adapter={} native_int8_output={} rgb_uint8_input_contract={} core_mode={} core_mask={} "
-        "core_mask_applied={} context_sequence={}",
+        "output_adapter={} native_int8_output={} rgb_uint8_input_contract={} npu_cores={} core_mode={} "
+        "core_mask={} core_mask_applied={} context_sequence={}",
         version.api_version, version.drv_version, io_count_.n_input, io_count_.n_output, logical_outputs,
         RknnOutputAdapterName(output_adapter_contract_.kind), native_yolov8_outputs_,
-        IsRknnRgbUint8InputContract(input_contract_), RknnCoreModeName(core_mode),
+        IsRknnRgbUint8InputContract(input_contract_), npu_core_count, RknnCoreModeName(core_mode),
         static_cast<int>(core_mask), configure_core_mask, context_sequence);
     return COSMO_NN_OK;
 }
