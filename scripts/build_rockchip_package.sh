@@ -9,7 +9,7 @@ while (($#)); do
     case "$1" in
         --chip)
             if (($# < 2)); then
-                echo "ERROR: --chip requires rk3576 or rv1126b" >&2
+                echo "ERROR: --chip requires rk3576, rv1126b, or rk3588" >&2
                 exit 2
             fi
             chip="$2"
@@ -24,7 +24,7 @@ while (($#)); do
             shift 2
             ;;
         -h|--help)
-            echo "Usage: $0 [--chip <rk3576|rv1126b>] [--models <include|preserve>]"
+            echo "Usage: $0 [--chip <rk3576|rv1126b|rk3588>] [--models <include|preserve>]"
             exit 0
             ;;
         *)
@@ -35,9 +35,9 @@ while (($#)); do
 done
 
 case "${chip}" in
-    rk3576|rv1126b) ;;
+    rk3576|rv1126b|rk3588) ;;
     *)
-        echo "ERROR: unsupported Rockchip target '${chip}'; expected rk3576 or rv1126b" >&2
+        echo "ERROR: unsupported Rockchip target '${chip}'; expected rk3576, rv1126b, or rk3588" >&2
         exit 2
         ;;
 esac

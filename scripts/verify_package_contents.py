@@ -17,7 +17,7 @@ class PackageAuditError(RuntimeError):
 
 
 PROFILES = ("public-runtime", "production-release")
-TARGET_CHIPS = ("bm1688", "cv186x", "rk3576", "rv1126b", "unspecified")
+TARGET_CHIPS = ("bm1688", "cv186x", "rk3576", "rv1126b", "rk3588", "unspecified")
 REQUIRED_DIRS = {"bin", "files", "font", "lib", "resource", "scripts", "web"}
 REQUIRED_EXECUTABLES = {
     "bin/cosmo-engine",
@@ -90,6 +90,17 @@ RUNTIME_DATA_DIRS = {
     "rockchip": "/userdata/cwaiuserdata",
 }
 RUNTIME_APP_DATA_DIR = "/appfs/cosmo_wander/cwai_data"
+# NPU core count is a hardware fact per Rockchip chip. It is declared in the platform
+# profile's `runtime.npu_core_count` so the runtime can size its core-mask scheduling
+# instead of assuming two cores. Keep this table and the profile in lockstep: a wrong
+# value silently wastes NPU capacity on the triple-core part (rk3588) or requests a
+# mask the silicon cannot honour.
+ROCKCHIP_NPU_CORE_COUNTS = {
+    "rk3576": 2,
+    "rk3588": 3,
+    "rv1126b": 1,
+}
+ROCKCHIP_CHIPS = tuple(ROCKCHIP_NPU_CORE_COUNTS)
 PRIVATE_MARKERS = (
     b"-----BEGIN PRIVATE KEY-----",
     b"-----BEGIN ENCRYPTED PRIVATE KEY-----",
@@ -169,7 +180,7 @@ def verify_runtime_license_bundle(
     contents: dict[str, bytes], target_chip: str | None, profile: str
 ) -> None:
     required = set(REQUIRED_LICENSE_FILES)
-    if target_chip in ("rk3576", "rv1126b"):
+    if target_chip in ("rk3576", "rv1126b", "rk3588"):
         required.update(RKNN_LICENSE_FILES)
     if MODEL_GUARD_RUNTIME_FILE in contents or MODEL_GUARD_RKNN_RUNTIME_FILE in contents:
         required.add(MODEL_GUARD_TERMS_FILE)
@@ -207,7 +218,7 @@ def verify_runtime_license_bundle(
         raise PackageAuditError(
             "packaged FFmpeg runtime is not identified as LGPL-2.1-or-later"
         )
-    if target_chip in ("rk3576", "rv1126b"):
+    if target_chip in ("rk3576", "rv1126b", "rk3588"):
         rknn_terms = contents[
             "share/licenses/third-party/rknn-runtime/LICENSE"
         ]
@@ -506,7 +517,7 @@ def verify_package(
     if effective_chip is not None:
         expected_data_dir = (
             RUNTIME_DATA_DIRS["rockchip"]
-            if effective_chip in ("rk3576", "rv1126b")
+            if effective_chip in ROCKCHIP_CHIPS
             else RUNTIME_DATA_DIRS["default"]
         )
         if runtime_paths["COSMO_PACKAGE_DATA_DIR"] != expected_data_dir:
@@ -522,7 +533,7 @@ def verify_package(
     verify_model_bundle(entries, contents, effective_chip)
 
     if target_chip is not None:
-        if target_chip in ("rk3576", "rv1126b"):
+        if target_chip in ROCKCHIP_CHIPS:
             platform_name = "share/cosmo/platform-profile.json"
             platform_entry = entries.get(platform_name)
             if platform_entry is None or not platform_entry.isreg():
@@ -541,6 +552,18 @@ def verify_package(
                 )
             if platform.get("backend") != "rknn":
                 raise PackageAuditError("Rockchip platform profile must use RKNN")
+            platform_runtime = platform.get("runtime")
+            actual_cores = (
+                platform_runtime.get("npu_core_count")
+                if isinstance(platform_runtime, dict)
+                else None
+            )
+            if actual_cores != ROCKCHIP_NPU_CORE_COUNTS.get(target_chip):
+                raise PackageAuditError(
+                    "Rockchip platform profile NPU core count does not match "
+                    f"{target_chip}: expected {ROCKCHIP_NPU_CORE_COUNTS.get(target_chip)}, "
+                    f"got {actual_cores!r}"
+                )
             if target_policy is not None:
                 expected_runtime = target_policy.get("media_runtime_profile")
                 platform_media = platform.get("media")
