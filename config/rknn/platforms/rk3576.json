@@ -9,6 +9,7 @@
   },
   "runtime": {
     "architecture": "aarch64",
+    "npu_core_count": 2,
     "default_core_mode": "auto"
   },
   "media": {
