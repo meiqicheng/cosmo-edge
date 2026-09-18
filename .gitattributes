@@ -1,6 +1,21 @@
+# 默认策略：所有文本文件以 LF 进入构建/打包容器。
+# text=auto 会自动放行二进制（ELF/图片/归档等），因此是安全的兜底默认。
+# 这一步避免 Windows(core.autocrlf=true) 检出把以下"未显式列出的文本类型"
+# 变成 CRLF，从而破坏 Linux 构建、打包审计与 systemd unit 解析：
+#   .service / Dockerfile.* / *.ps1 / *.conf / *.in / *.patch / *.toml / *.inl /
+#   *.mts / *.jsonl / dotfile(.gitignore/.dockerignore/.clang-*/.gitkeep) / LICENSE / NOTICE 等
+# 下方 *.bat/*.cmd(eol=crlf) 与 binary 规则按需覆盖本默认。
+* text=auto eol=lf
+
 # 第三方源码中的 configure 等无扩展名脚本也必须以 LF 进入 Linux 构建容器。
 3rd/**  text=auto eol=lf
 .gitattributes text eol=lf
+
+# 无扩展名的许可证/声明文本同样必须以 LF 进入打包容器：
+# 包内容审计（scripts/verify_package_contents.py）按精确文本匹配校验，CRLF 会使其失败。
+LICENSE  text eol=lf
+NOTICE   text eol=lf
+licenses/** text eol=lf
 
 # 强制所有源代码文件使用 LF 换行符，防止 Windows 带入 CRLF
 *.cc    text eol=lf
