@@ -97,7 +97,7 @@ variables described by older guides. Diagnose GHCR pulls, npm-cache population, 
 
 | Variable / argument | Default | Description |
 | --- | --- | --- |
-| `COSMO_TARGET_CHIP` | `rk3576` | `rk3576` or `rv1126b`; Compose passes it to `--chip` |
+| `COSMO_TARGET_CHIP` | `rk3576` | `rk3576`, `rv1126b`, or `rk3588`; Compose passes it to `--chip` |
 | `COSMO_PACKAGE_MODELS` | `include` | `include` or `preserve`, which is only for code/structure validation |
 | `COSMO_BUILD_JOBS` | `4` | Cross-build parallelism |
 | `COSMO_ROCKCHIP_BUILDER_IMAGE` | Repository-pinned GHCR digest | Controlled builder-image override |
@@ -107,7 +107,10 @@ The builder also uses the npm cache/retry variables listed for Sophon. An RV1126
 and verifies `output/platform-artifacts/rv1126b/resource-overlay` from the selected artifact manifest;
 `preserve` validates only code and package structure and is not device acceptance. The repository default is
 an AGPL-3.0 community example bundle, not a commercial model deliverable. Commercial or proprietary models
-require an independent manifest and license record.
+require an independent manifest and license record. RK3588 currently ships no in-repo model bundle, so its
+`include` build fails at the staging step on the missing target model directory; RK3588 therefore produces
+`preserve` packages only, which validate code, toolchain, and package structure, and board acceptance needs
+model inputs supplied first.
 
 ## Resource Directories
 
