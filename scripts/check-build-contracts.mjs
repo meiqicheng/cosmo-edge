@@ -78,7 +78,12 @@ export function checkWorkflow(workflow, kind) {
     assert.equal(step.with['if-no-files-found'], 'error', 'missing artifact must fail')
   }
   if (kind === 'rockchip') {
-    assert.deepEqual(job.strategy.matrix.include.map(x => x.chip).sort(), ['rk3576', 'rv1126b'])
+    assert.deepEqual(job.strategy.matrix.include.map(x => x.chip).sort(), ['rk3576', 'rk3588', 'rv1126b'])
+    // rk3588 has no in-repo model bundle, so it must stay a code-only job; the other two
+    // regression platforms keep their model-carrying shape.
+    assert.deepEqual(
+      Object.fromEntries(job.strategy.matrix.include.map(x => [x.chip, x.models])),
+      { rk3576: 'include', rv1126b: 'include', rk3588: 'preserve' })
     assert.ok(uploads.some(s => s.with.path.includes('build_output/${{ matrix.chip }}/*.tar.gz') && s.with.path.includes('SHA256SUMS')))
     const build = job.steps.find(s => s.id === 'build_package' && s.run)
     assert.ok(job.steps.some(s => s.id === 'verify_artifacts' && s.run), 'artifact verification required')

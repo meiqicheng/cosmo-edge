@@ -19,7 +19,9 @@ const job = readWorkflow('rockchip').jobs.package
 const build = job.steps.find(s => s.id === 'build_package')
 const audit = job.steps.find(s => s.id === 'verify_artifacts')
 assert.ok(build?.run && audit?.run, 'build and artifact verification steps required')
-for (const chip of ['rk3576', 'rv1126b']) {
+// Drive the cases from the declared matrix so every job the workflow really runs is
+// exercised - including the code-only rk3588 job, whose models value is not "include".
+for (const { chip, models } of job.strategy.matrix.include) {
   const dir = mkdtempSync(join(tmpdir(), 'workflow execution '))
   try {
     const bin = join(dir, 'bin'); mkdirSync(bin)
@@ -30,14 +32,14 @@ sys.exit(int(os.getenv('BUILD_STATUS','0')))
 `, { mode: 0o755 })
     writeFileSync(join(bin, 'file'), '#!/bin/sh\necho "ELF 64-bit LSB pie executable, ARM aarch64"\n', { mode: 0o755 })
     // Resolve only this declared matrix contract, never arbitrary expressions.
-    const substitutions = { '${{ matrix.chip }}': chip, '${{ matrix.models }}': 'include' }
+    const substitutions = { '${{ matrix.chip }}': chip, '${{ matrix.models }}': models }
     const env = { ...process.env, ...Object.fromEntries(Object.entries(build.env).map(([k,v]) => [k, substitutions[v] || v])),
       CHIP: chip, PATH: `${bin}:${process.env.PATH}`, LOG: join(dir, 'calls.json'), GITHUB_STEP_SUMMARY: join(dir, 'summary.md') }
     const run = (script, extra = {}, forceSuccess = false) => execute(script, dir, { ...env, ...extra }, forceSuccess)
     const verifyBuild = (script, forceSuccess = false) => {
       const result = run(script)
       assert.equal(result.status, 0, result.stderr)
-      assert.deepEqual(JSON.parse(readFileSync(env.LOG, 'utf8')), { argv: ['compose', '-f', 'docker-compose.rockchip.yml', 'run', '--rm', 'cosmo-rockchip-package'], chip, models: 'include' })
+      assert.deepEqual(JSON.parse(readFileSync(env.LOG, 'utf8')), { argv: ['compose', '-f', 'docker-compose.rockchip.yml', 'run', '--rm', 'cosmo-rockchip-package'], chip, models })
       assert.notEqual(run(script, { BUILD_STATUS: '17' }, forceSuccess).status, 0, 'build failure must propagate')
     }
     verifyBuild(build.run)
