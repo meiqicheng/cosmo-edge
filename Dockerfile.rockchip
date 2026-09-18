@@ -2,10 +2,14 @@
 
 ARG ROCKCHIP_LEGACY_BASE=ghcr.io/cosmo-wander-ai/cosmo_edge-build-env_rk3576@sha256:0dbb35f5a4336777c311b5f881886cd9b284371d61ceffff55a8216c01d2b076
 
-FROM ${ROCKCHIP_LEGACY_BASE} AS rockchip-toolchain
-
+# Rockchip media source pins, declared exactly once. An ARG goes out of scope at every
+# FROM and is not inherited by a stage built `FROM <stage>`, so each consuming stage
+# re-declares it as a *bare* `ARG NAME` (no value) - that re-reads the default below and
+# still honours --build-arg. Repeating the literal per stage is what let the copies drift.
 ARG MPP_REVISION=c08762ebfadeb4e986d2fed993bc7a54862d3ebe
 ARG RGA_REVISION=2b32edcb97b601b25683e2941d888c8515da6d55
+
+FROM ${ROCKCHIP_LEGACY_BASE} AS rockchip-toolchain
 
 FROM rockchip-toolchain AS rockchip-common
 
@@ -27,10 +31,9 @@ RUN set -eux; \
 
 FROM rockchip-toolchain AS rv1126b-media-build
 
-# ARG scope is reset at each FROM; re-declare the pinned media revisions so the
-# build is self-contained (no reliance on --build-arg) and reproducible.
-ARG MPP_REVISION=c08762ebfadeb4e986d2fed993bc7a54862d3ebe
-ARG RGA_REVISION=2b32edcb97b601b25683e2941d888c8515da6d55
+# Re-enter scope for the media pins above (ARG resets at every FROM).
+ARG MPP_REVISION
+ARG RGA_REVISION
 
 RUN set -eux; \
     rm -rf /opt/rockchip-media; \
@@ -77,14 +80,17 @@ RUN set -eux; \
 
 FROM rv1126b-media-build AS rv1126b-media-sealed
 
-# Re-declare media revisions for this sealed stage (ARG scope resets at FROM).
-ARG MPP_REVISION=c08762ebfadeb4e986d2fed993bc7a54862d3ebe
-ARG RGA_REVISION=2b32edcb97b601b25683e2941d888c8515da6d55
+# Re-enter scope for the media pins above (ARG resets at every FROM).
+ARG MPP_REVISION
+ARG RGA_REVISION
 
 COPY config/rknn/platforms/ /opt/cosmo/config/rknn/platforms/
 COPY config/rockchip-media/ /opt/cosmo/config/rockchip-media/
 COPY tools/rknn/media_sysroot_lock.py /usr/local/bin/cosmo-rockchip-media-lock
 
+# Sealing needs the mpp checkout to survive (SOURCE_DATE_EPOCH comes from its HEAD
+# commit), which is why this stage descends from the build stage rather than from
+# rockchip-common. It also means a config-only change re-seals without recompiling.
 RUN set -eux; \
     SOURCE_DATE_EPOCH="$(git -C /opt/cosmo/rockchip-sources/mpp-1.1.0 show -s --format=%ct HEAD)"; \
     export SOURCE_DATE_EPOCH; \
@@ -99,14 +105,17 @@ RUN set -eux; \
 
 FROM rv1126b-media-sealed AS rk3588-media-sealed
 
-# Re-declare media revisions for this sealed stage (ARG scope resets at FROM).
-ARG MPP_REVISION=c08762ebfadeb4e986d2fed993bc7a54862d3ebe
-ARG RGA_REVISION=2b32edcb97b601b25683e2941d888c8515da6d55
+# Re-enter scope for the media pins above (ARG resets at every FROM).
+ARG MPP_REVISION
+ARG RGA_REVISION
 
-COPY config/rknn/platforms/ /opt/cosmo/config/rknn/platforms/
-COPY config/rockchip-media/ /opt/cosmo/config/rockchip-media/
-COPY tools/rknn/media_sysroot_lock.py /usr/local/bin/cosmo-rockchip-media-lock
-
+# RK3588 selects the same media runtime profile as RV1126B (MPP/RGA are SoC-generic on
+# aarch64 - only the NPU side differs), so its sysroot is byte-identical and is copied
+# rather than rebuilt. It still gets its own stage and its own chip-scoped root because
+# builder-lock.json maps every chip to /opt/rockchip-media/<chip>, and because a fresh
+# seal is what proves *this* root satisfies rk3588.json. The shared config and the lock
+# tool are already present from the parent stage; re-copying them would only add an
+# identical layer.
 RUN set -eux; \
     rm -rf /opt/rockchip-media/rk3588; \
     mkdir -p /opt/rockchip-media/rk3588; \
@@ -152,7 +161,7 @@ ENV RKNN_ROOT=/opt/rknn \
     COSMO_ROCKCHIP_BUILDER_LOCK=/opt/cosmo/rockchip-builder-lock.json
 
 LABEL org.opencontainers.image.title="CosmoEdge Rockchip build environment" \
-      org.opencontainers.image.description="Shared RKNN build environment with isolated RK3576 and RV1126B MPP/RGA profiles" \
+      org.opencontainers.image.description="Shared RKNN build environment with isolated RK3576, RV1126B and RK3588 MPP/RGA profiles" \
       org.opencontainers.image.source="https://github.com/cosmo-wander-ai/cosmo-edge" \
       org.opencontainers.image.version="v1" \
       org.opencontainers.image.rkllm.version="1.3.0" \
