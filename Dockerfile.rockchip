@@ -27,6 +27,11 @@ RUN set -eux; \
 
 FROM rockchip-toolchain AS rv1126b-media-build
 
+# ARG scope is reset at each FROM; re-declare the pinned media revisions so the
+# build is self-contained (no reliance on --build-arg) and reproducible.
+ARG MPP_REVISION=c08762ebfadeb4e986d2fed993bc7a54862d3ebe
+ARG RGA_REVISION=2b32edcb97b601b25683e2941d888c8515da6d55
+
 RUN set -eux; \
     rm -rf /opt/rockchip-media; \
     git clone --depth 1 --branch 1.1.0 \
@@ -72,6 +77,10 @@ RUN set -eux; \
 
 FROM rv1126b-media-build AS rv1126b-media-sealed
 
+# Re-declare media revisions for this sealed stage (ARG scope resets at FROM).
+ARG MPP_REVISION=c08762ebfadeb4e986d2fed993bc7a54862d3ebe
+ARG RGA_REVISION=2b32edcb97b601b25683e2941d888c8515da6d55
+
 COPY config/rknn/platforms/ /opt/cosmo/config/rknn/platforms/
 COPY config/rockchip-media/ /opt/cosmo/config/rockchip-media/
 COPY tools/rknn/media_sysroot_lock.py /usr/local/bin/cosmo-rockchip-media-lock
@@ -88,9 +97,36 @@ RUN set -eux; \
       --platform-profile /opt/cosmo/config/rknn/platforms/rv1126b.json \
       --root /opt/rockchip-media/rv1126b
 
+FROM rv1126b-media-sealed AS rk3588-media-sealed
+
+# Re-declare media revisions for this sealed stage (ARG scope resets at FROM).
+ARG MPP_REVISION=c08762ebfadeb4e986d2fed993bc7a54862d3ebe
+ARG RGA_REVISION=2b32edcb97b601b25683e2941d888c8515da6d55
+
+COPY config/rknn/platforms/ /opt/cosmo/config/rknn/platforms/
+COPY config/rockchip-media/ /opt/cosmo/config/rockchip-media/
+COPY tools/rknn/media_sysroot_lock.py /usr/local/bin/cosmo-rockchip-media-lock
+
+RUN set -eux; \
+    rm -rf /opt/rockchip-media/rk3588; \
+    mkdir -p /opt/rockchip-media/rk3588; \
+    cp -a /opt/rockchip-media/rv1126b/. /opt/rockchip-media/rk3588/; \
+    rm -f /opt/rockchip-media/rk3588/.cosmo-rockchip-media.json; \
+    SOURCE_DATE_EPOCH="$(git -C /opt/cosmo/rockchip-sources/mpp-1.1.0 show -s --format=%ct HEAD)"; \
+    export SOURCE_DATE_EPOCH; \
+    python3 /usr/local/bin/cosmo-rockchip-media-lock seal \
+      --platform-profile /opt/cosmo/config/rknn/platforms/rk3588.json \
+      --root /opt/rockchip-media/rk3588 \
+      --source "mpp=${MPP_REVISION}" \
+      --source "rga=${RGA_REVISION}"; \
+    python3 /usr/local/bin/cosmo-rockchip-media-lock verify \
+      --platform-profile /opt/cosmo/config/rknn/platforms/rk3588.json \
+      --root /opt/rockchip-media/rk3588
+
 FROM rockchip-common AS rockchip-builder
 
 COPY --from=rv1126b-media-sealed /opt/rockchip-media/rv1126b/ /opt/rockchip-media/rv1126b/
+COPY --from=rk3588-media-sealed /opt/rockchip-media/rk3588/ /opt/rockchip-media/rk3588/
 COPY scripts/install_rkllm_sdk.py /tmp/install_rkllm_sdk.py
 
 RUN set -eux; \
@@ -104,7 +140,10 @@ RUN set -eux; \
       --root /opt/rockchip-media/rk3576; \
     python3 /usr/local/bin/cosmo-rockchip-media-lock verify \
       --platform-profile /opt/cosmo/config/rknn/platforms/rv1126b.json \
-      --root /opt/rockchip-media/rv1126b
+      --root /opt/rockchip-media/rv1126b; \
+    python3 /usr/local/bin/cosmo-rockchip-media-lock verify \
+      --platform-profile /opt/cosmo/config/rknn/platforms/rk3588.json \
+      --root /opt/rockchip-media/rk3588
 
 ENV RKNN_ROOT=/opt/rknn \
     RKLLM_ROOT=/opt/rkllm \
@@ -118,7 +157,7 @@ LABEL org.opencontainers.image.title="CosmoEdge Rockchip build environment" \
       org.opencontainers.image.version="v1" \
       org.opencontainers.image.rkllm.version="1.3.0" \
       org.opencontainers.image.rkllm.revision="878f9361fd3afa7e167b7079918918f78d2c1c2a" \
-      io.cosmo.rockchip.targets="rk3576,rv1126b"
+      io.cosmo.rockchip.targets="rk3576,rv1126b,rk3588"
 
 WORKDIR /workspace
 CMD ["/bin/bash"]

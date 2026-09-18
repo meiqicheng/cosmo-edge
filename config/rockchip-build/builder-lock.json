@@ -37,6 +37,20 @@
         "lib/librkllmrt.so",
         "share/licenses/rkllm/LICENSE"
       ]
+    },
+    "rk3588": {
+      "media_runtime_profile": "mpp-1.1.0-rga-1.10.6-repro-v1",
+      "media_root": "/opt/rockchip-media/rk3588",
+      "rkllm_required": true,
+      "required_package_paths": [
+        "lib/librkllmrt.so",
+        "share/licenses/rkllm/LICENSE",
+        "share/cosmo/platform/rockchip-media-manifest.json",
+        "share/licenses/rockchip-media/mpp/Apache-2.0",
+        "share/licenses/rockchip-media/mpp/MIT",
+        "share/licenses/rockchip-media/librga/COPYING"
+      ],
+      "forbidden_package_paths": []
     }
   }
 }
