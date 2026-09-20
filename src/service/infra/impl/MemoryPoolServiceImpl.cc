@@ -2,6 +2,7 @@
 
 #include "service/infra/impl/MemoryPoolServiceImpl.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdlib>
 #include <mutex>
@@ -109,8 +110,6 @@ namespace {
         }
 
     private:
-        static constexpr size_t kMaxBlocksPerClass = 8;
-
         /// Maximum blocks per size class that may live on the dma32 heap. The
         /// thresholds mirror the pool size table in MemoryPoolMng.h and the
         /// frame flow: the I420 decode target (720p frames land in the
@@ -119,23 +118,32 @@ namespace {
         /// operations, so they get the largest allowances; the 4K BGR and
         /// snapshot classes never reach RGA2 at meaningful rates and stay on
         /// malloc.
+        ///
+        /// The allowances scale down with the number of live MPP decoders:
+        /// every concurrent channel competes for the same ~58 MB low-4G zone
+        /// alongside its external frame group, and a single-channel figure
+        /// would oversubscribe it at three channels (measured on the 8 GiB
+        /// Debian 12 board). A class whose allowance is spent degrades to
+        /// malloc blocks, which costs CPU conversions but never stalls the
+        /// pipeline.
         [[nodiscard]] static size_t ClassBlockLimit(size_t size) {
             constexpr size_t kFaceI420 = 98304;    // 256x256x1.5
             constexpr size_t kBodyI420 = 614400;   // 640x640x1.5
             constexpr size_t k720I420  = 2073600;  // decode copy-out target class
             constexpr size_t k1088I420 = 3133440;  // 1920x1088x1.5, also 720p BGR
             constexpr size_t k1088Bgr  = 6266880;  // 1920x1088x3
+            const size_t decoders      = std::max<size_t>(media::Dma32DecoderCount(), 1);
             if (size <= kFaceI420) {
                 return 4;
             }
             if (size <= kBodyI420) {
-                return 4;
+                return decoders <= 1 ? 4 : 2;
             }
             if (size <= k720I420) {
-                return kMaxBlocksPerClass;
+                return decoders <= 1 ? 8 : (decoders == 2 ? 7 : 5);
             }
             if (size <= k1088I420) {
-                return kMaxBlocksPerClass;
+                return decoders <= 1 ? 8 : (decoders == 2 ? 5 : 2);
             }
             if (size <= k1088Bgr) {
                 return 2;
@@ -144,8 +152,10 @@ namespace {
         }
 
         /// Accounting guard for one allocation. Returns false when the block's
-        /// size class has no dma32 allowance left, or when the global backstop
-        /// budget is exhausted.
+        /// size class has no dma32 allowance left. The process-wide budget is
+        /// enforced by the shared ledger inside DmaHeap32Buffer::Allocate, so
+        /// pools, MPP external frame groups and RKNN bound inputs all draw
+        /// from one reservation.
         [[nodiscard]] bool ReserveDma32(size_t size) {
             const size_t class_limit = ClassBlockLimit(size) * size;
             if (class_limit == 0) {
@@ -154,10 +164,6 @@ namespace {
             std::lock_guard<std::mutex> guard(owned_mutex_);
             const auto it = class_bytes_.find(size);
             if (it != class_bytes_.end() && it->second + size > class_limit) {
-                return false;
-            }
-            constexpr size_t kGlobalBudgetBytes = 64ULL * 1024ULL * 1024ULL;
-            if (dma32_bytes_.load(std::memory_order_relaxed) + size > kGlobalBudgetBytes) {
                 return false;
             }
             if (it != class_bytes_.end()) {
@@ -215,8 +221,9 @@ MemoryPoolServiceImpl::MemoryPoolServiceImpl() {
         allocator = std::make_unique<AllocatorDma32>(heap);
         LOG_INFO(
             "MemoryPoolServiceImpl: video-frame pool uses 32-bit-addressable heap={} "
-            "(keeps RGA2-only planar I420 operations on RGA)",
-            heap);
+            "(keeps RGA2-only planar I420 operations on RGA; global dma32 budget {} bytes, "
+            "{} live decoders registered)",
+            heap, media::Dma32GlobalBudgetBytes(), media::Dma32DecoderCount());
     }
 #endif
     pool_ = std::make_unique<cosmo::mem::MemoryPoolMng>(std::move(allocator));

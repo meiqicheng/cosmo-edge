@@ -28,12 +28,6 @@ namespace cosmo::media {
 namespace {
 
     constexpr RK_U32 kDecoderBufferCount = 24;
-    /// Buffer count for the externally supplied 32-bit-addressable frame group.
-    /// The dma32 heap on a >4 GiB board is a scarce resource (a few dozen MiB of
-    /// free low pages), so the group is deliberately smaller than the internal
-    /// limit; if the reservation fails the decoder falls back to the internal
-    /// group and keeps the previous CPU copy-out behavior.
-    constexpr size_t kDma32GroupBufferCount = 8;
     /// How long the CPU copy-out stays in force after repeated RGA
     /// materialization failures. A cooldown instead of a permanent disable lets
     /// a transient supply problem self-heal.
@@ -368,6 +362,9 @@ struct RockchipDecoderState {
         std::make_shared<std::atomic<int64_t>>(0)};
     std::shared_ptr<std::atomic<int32_t>> rga_copy_out_consecutive_failures{
         std::make_shared<std::atomic<int32_t>>(0)};
+    /// Registers this decoder in the low-4G consumer count while the MPP
+    /// context lives; the external frame group sizes itself from that count.
+    media::Dma32DecoderSeat decoder_seat;
     MppCtx context{nullptr};
     MppApi* api{nullptr};
     MppDecCfg config{nullptr};
@@ -643,14 +640,19 @@ bool VideoDecoderRockchip::CreateDma32FrameGroup(size_t buffer_size) {
         return false;
     }
 
+    // Concurrent decoders share one physically bounded low-4G zone, so each
+    // group shrinks as the registered decoder count grows. Decoders register
+    // when their MPP context is created and channels start together, so the
+    // count is already the steady-state channel figure here.
+    const size_t group_buffers = Dma32DecoderGroupBufferCount();
     std::vector<DmaHeap32Buffer> buffers;
-    buffers.reserve(kDma32GroupBufferCount);
+    buffers.reserve(group_buffers);
     std::string reason;
-    for (size_t i = 0; i < kDma32GroupBufferCount; ++i) {
+    for (size_t i = 0; i < group_buffers; ++i) {
         DmaHeap32Buffer buffer;
         if (!buffer.Allocate(buffer_size, reason)) {
             LOG_WARN("{} dma32 decoder frame-group reservation stopped at {}/{} buffers of {} bytes ({})",
-                     idx_name_, i, kDma32GroupBufferCount, buffer_size, reason);
+                     idx_name_, i, group_buffers, buffer_size, reason);
             // The vector unwinds here and releases everything already reserved.
             return false;
         }
@@ -705,8 +707,8 @@ bool VideoDecoderRockchip::ConfigureFrameGroup(size_t buffer_size) {
         // materialization run on RGA2. Fall back to the internal group when the
         // heap cannot serve the reservation.
         if (CreateDma32FrameGroup(buffer_size)) {
-            LOG_INFO("{} MPP decoder external frame group: {} dma32 buffers of {} bytes", idx_name_,
-                     kDma32GroupBufferCount, buffer_size);
+            LOG_INFO("{} MPP decoder external frame group: {} dma32 buffers of {} bytes ({} live decoders)",
+                     idx_name_, Dma32DecoderGroupBufferCount(), buffer_size, Dma32DecoderCount());
         } else {
             state_->frame_group_is_dma32 = false;
             ret                          = mpp_buffer_group_get_internal(

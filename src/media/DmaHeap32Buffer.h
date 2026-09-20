@@ -16,6 +16,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 
 namespace cosmo::media {
@@ -35,11 +36,57 @@ const std::string& Dma32HeapName();
 /// True when this board exposes a usable 32-bit-addressable dma-heap.
 bool Dma32HeapAvailable();
 
+/// Number of live Rockchip MPP decoders competing for the low-4G heap. Every
+/// concurrent decoder adds an external frame group, an I420 copy-out target
+/// and a bound input to the same, physically bounded ZONE_DMA supply, so the
+/// consumers size their reservations from this count instead of hard-coding
+/// single-channel figures.
+uint32_t Dma32DecoderCount();
+
+/// RAII seat in the decoder registry. Held by every Rockchip MPP decoder for
+/// its lifetime; the count is read at decoder initialization time, when all
+/// concurrently starting channels are already registered.
+class Dma32DecoderSeat {
+public:
+    Dma32DecoderSeat();
+    ~Dma32DecoderSeat();
+
+    Dma32DecoderSeat(const Dma32DecoderSeat&)            = delete;
+    Dma32DecoderSeat& operator=(const Dma32DecoderSeat&) = delete;
+};
+
+/// External frame-group buffers per decoder, scaled by the registered decoder
+/// count: 1 -> 8, 2 -> 7, 3 -> 6, 4 or more -> 5. A 720p H.264 group shrinks
+/// from ~14.7 MB (8 buffers) to ~11.1 MB (6), which is what lets three
+/// concurrent decoders fit into the roughly 58 MB the heap can actually
+/// serve, measured on the 8 GiB Debian 12 board after engine shutdown.
+size_t Dma32DecoderGroupBufferCount();
+
+/// Process-wide byte budget for every 32-bit-addressable allocation (frame
+/// pools, MPP external frame groups and RKNN bound inputs all draw from the
+/// same ledger). The low-4G zone on an 8 GiB board yields roughly 58 MB; the
+/// default leaves headroom for the kernel and other users of that zone.
+/// `COSMO_DMA32_BUDGET_MB` overrides the default.
+size_t Dma32GlobalBudgetBytes();
+
 /// A DMA-BUF allocated from a 32-bit-addressable dma-heap.
 ///
 /// The buffer is published both as an fd (consumer: `importbuffer_fd` for RGA
 /// and `rknn_create_mem_from_fd` for RKNPU2) and as a writable CPU mapping, so
 /// it can stand in for `rknn_create_mem()` while remaining low-address.
+///
+/// Every allocation is charged to the global budget in `Allocate` and released
+/// in `Release`, so all consumers share one reservation ledger and a burst of
+/// concurrent startup allocations cannot oversubscribe the heap: a consumer
+/// whose reservation is refused degrades to its previous, address-agnostic
+/// strategy instead of failing mid-burst.
+///
+/// A @p critical allocation (RKNN bound inputs) may also draw from a small
+/// reserved slice of the budget that non-critical consumers (frame pools,
+/// external frame groups) can never touch. The bound input is what unlocks
+/// the zero-copy RGA preprocessing path, and losing it costs a CPU resize on
+/// every inference frame, so it must not lose an allocation race against the
+/// pool's greedy async top-up.
 class DmaHeap32Buffer {
 public:
     DmaHeap32Buffer() = default;
@@ -52,8 +99,9 @@ public:
 
     /// Allocates at least @p bytes from the resolved heap, reusing an existing
     /// buffer that is already large enough. On failure @p reason names the heap
-    /// and the errno involved.
-    bool Allocate(size_t bytes, std::string& reason);
+    /// and the errno involved. A @p critical allocation may use the reserved
+    /// budget slice that ordinary consumers cannot touch.
+    bool Allocate(size_t bytes, std::string& reason, bool critical = false);
 
     /// Releases the mapping and the fd. Safe to call repeatedly or when the
     /// buffer was never allocated.

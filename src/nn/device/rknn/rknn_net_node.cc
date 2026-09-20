@@ -578,7 +578,10 @@ rknn_tensor_mem* RknnNetNode::CreateBoundInputMemory(uint32_t bytes, std::string
         return rknn_create_mem(context_, bytes);
     }
 
-    if (!bound_input_heap_buffer_.Allocate(bytes, reason)) {
+    // Critical: the bound input unlocks the zero-copy RGA preprocessing path,
+    // so it may draw from the reserved budget slice that the frame pools and
+    // external frame groups can never touch.
+    if (!bound_input_heap_buffer_.Allocate(bytes, reason, /*critical=*/true)) {
         // A low-address heap exists but could not serve this request. Keep the
         // binding working with RKNPU2's allocator instead of failing it: the RGA
         // target then simply cannot reach RGA2, which is where this path already
