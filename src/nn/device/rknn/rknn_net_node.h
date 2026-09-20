@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "media/DmaHeap32Buffer.h"
 #include "nn/device/rknn/rknn_yolov8_adapter.h"
 #include "nn/node/net_node.h"
 #include "rknn_api.h"
@@ -112,6 +113,7 @@ private:
     bool TryBindNativeInputMemory(const BlobDesc& desc, std::string& reason);
     bool TryBindRgaInputMemory(int height, int width, std::string& reason);
     bool AllocateAndBindInputMemory(rknn_tensor_attr attr, BoundInputMode mode, std::string& reason);
+    rknn_tensor_mem* CreateBoundInputMemory(uint32_t bytes, std::string& reason);
     void PublishRgaBoundInputTarget();
     void ClearRgaBoundInputTarget();
     void DestroyContext();
@@ -128,6 +130,9 @@ private:
     RknnOutputAdapterContract output_adapter_contract_;
     rknn_tensor_attr bound_input_attr_{};
     rknn_tensor_mem* bound_input_memory_{nullptr};
+    // Owns the model input DMA-BUF when it was taken from a 32-bit-addressable
+    // dma-heap instead of rknn_create_mem(); see AllocateAndBindInputMemory.
+    media::DmaHeap32Buffer bound_input_heap_buffer_;
     std::vector<unsigned char> model_data_;
     std::vector<float> input_nhwc_;
     std::vector<uint8_t> input_uint8_;

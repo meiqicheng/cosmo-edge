@@ -1,6 +1,7 @@
 # Common (backend-agnostic) source files
 set(MEDIA_COMMON_SRC
     Color.h
+    DmaHeap32Buffer.cc            DmaHeap32Buffer.h
     EncodedImageInfo.cc           EncodedImageInfo.h
     FileDemuxStrategy.cc         FileDemuxStrategy.h
     IDemuxStrategy.h

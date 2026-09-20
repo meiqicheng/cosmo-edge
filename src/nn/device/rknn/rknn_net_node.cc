@@ -537,6 +537,9 @@ void RknnNetNode::DestroyContext() {
         rknn_destroy(context_);
         context_ = 0;
     }
+    // rknn_destroy_mem() only releases the descriptor it allocated, and the
+    // context borrowed our fd -- so drop the DMA-BUF only once both are gone.
+    bound_input_heap_buffer_.Release();
     input_attrs_.clear();
     output_attrs_.clear();
     std::vector<rknn_output>().swap(runtime_outputs_);
@@ -561,6 +564,42 @@ void RknnNetNode::DestroyContext() {
     yolov8_point_count_       = 0;
 }
 
+rknn_tensor_mem* RknnNetNode::CreateBoundInputMemory(uint32_t bytes, std::string& reason) {
+    // RGA writes this buffer in place, and the only cores that can color-fill
+    // the letterbox padding -- along with the other RGA2-only cases the driver
+    // refuses on RGA3 -- are the RGA2 ones, whose RGA_MMU cannot address
+    // anything above 4 GiB. rknn_create_mem() allocates from /dev/dma_heap/system,
+    // which on a board with more than 4 GiB of RAM is free to hand out
+    // ZONE_NORMAL pages, so bind our own low-address DMA-BUF instead whenever
+    // the BSP exposes such a heap. Boards without one keep the previous
+    // allocation and let the RGA path fall back to the CPU exactly as before.
+    if (!media::Dma32HeapAvailable()) {
+        reason.clear();
+        return rknn_create_mem(context_, bytes);
+    }
+
+    if (!bound_input_heap_buffer_.Allocate(bytes, reason)) {
+        // A low-address heap exists but could not serve this request. Keep the
+        // binding working with RKNPU2's allocator instead of failing it: the RGA
+        // target then simply cannot reach RGA2, which is where this path already
+        // stood before the heap was introduced.
+        LOG_WARN("RKNN RGA bound input falling back to rknn_create_mem: {}", reason);
+        reason.clear();
+        return rknn_create_mem(context_, bytes);
+    }
+
+    const auto buffered = static_cast<uint32_t>(bound_input_heap_buffer_.bytes());
+    auto* memory        = rknn_create_mem_from_fd(context_, bound_input_heap_buffer_.fd(),
+                                                  bound_input_heap_buffer_.address(), buffered, 0);
+    if (memory == nullptr) {
+        reason = "rknn_create_mem_from_fd failed for the " + bound_input_heap_buffer_.heap_name() + " input";
+        bound_input_heap_buffer_.Release();
+        return nullptr;
+    }
+    reason.clear();
+    return memory;
+}
+
 bool RknnNetNode::AllocateAndBindInputMemory(rknn_tensor_attr attr, BoundInputMode mode,
                                              std::string& reason) {
     if (bound_input_memory_) {
@@ -568,16 +607,22 @@ bool RknnNetNode::AllocateAndBindInputMemory(rknn_tensor_attr attr, BoundInputMo
         return false;
     }
     const uint32_t bytes = attr.size_with_stride == 0 ? attr.size : attr.size_with_stride;
-    auto* memory         = rknn_create_mem(context_, bytes);
+    // Only the RGA-fed binding needs a low-address buffer; the host-fed one is
+    // never handed to a 2D engine, so keep RKNPU2's own allocator there.
+    auto* memory = mode == BoundInputMode::RgaNativeInt8 ? CreateBoundInputMemory(bytes, reason)
+                                                         : rknn_create_mem(context_, bytes);
     if (!memory || !memory->virt_addr || memory->size < bytes) {
         if (memory)
             rknn_destroy_mem(context_, memory);
-        reason = "rknn_create_mem failed for the bound input";
+        bound_input_heap_buffer_.Release();
+        if (reason.empty())
+            reason = "rknn_create_mem failed for the bound input";
         return false;
     }
     const int result = rknn_set_io_mem(context_, memory, &attr);
     if (result != RKNN_SUCC) {
         rknn_destroy_mem(context_, memory);
+        bound_input_heap_buffer_.Release();
         reason = "rknn_set_io_mem failed with RKNN code " + std::to_string(result);
         return false;
     }
@@ -682,11 +727,17 @@ bool RknnNetNode::EnsureRgaBoundInput(int height, int width, std::string& reason
         rga_bound_input_eligible_ = false;
         return false;
     }
+    // The heap field is the on-board evidence for whether the input buffer can
+    // be addressed by RGA2: "rknn-create-mem" means we fell back to RKNPU2's own
+    // /dev/dma_heap/system allocation, whose pages may sit above 4 GiB.
+    const std::string bound_input_heap = bound_input_heap_buffer_.valid()
+                                             ? bound_input_heap_buffer_.heap_name()
+                                             : std::string("rknn-create-mem");
     LOG_INFO(
         "RKNN RGA input bound: mode=native-int8+sign-bit-transform implementation={} bytes={} fd={} "
-        "width_stride={}",
+        "width_stride={} heap={}",
         RknnRgaBoundRequantizeImplementation(), bound_input_memory_->size, bound_input_memory_->fd,
-        bound_input_attr_.w_stride);
+        bound_input_attr_.w_stride, bound_input_heap);
     return true;
 }
 
