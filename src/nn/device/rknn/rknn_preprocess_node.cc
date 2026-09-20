@@ -33,6 +33,13 @@ namespace {
     // RGA2-class cores support at least 1/8..8 scaling. Keep the shared path
     // conservative so the same implementation is valid on both RGA2 and RGA3.
     constexpr int kConservativeRgaScaleLimit = 8;
+    // RGA3 refuses source windows below 68x2 (`input range 68x2 ~ 8176x8176` in
+    // /sys/kernel/debug/rkrga/hardware) and RGA2 is unusable on BSPs that expose
+    // no 32-bit addressable dma-heap, so a narrower crop has no core left to run
+    // on and falls back to CPU on every frame. Widen it to the RGA3 minimum so
+    // the hardware path stays available.
+    constexpr int kRga3MinSourceWidth  = 68;
+    constexpr int kRga3MinSourceHeight = 2;
 
     uint64_t ElapsedNanoseconds(MetricsClock::time_point started_at) {
         return static_cast<uint64_t>(
@@ -96,6 +103,14 @@ namespace {
             LOG_WARN(
                 "This librga header/runtime does not expose BT.2020 full-CSC modes; "
                 "using the matching BT.709 range for this source");
+        }
+    }
+
+    void LogRgaCropClampOnce(int clamped_width, int clamped_height, int original_width, int original_height) {
+        static std::atomic_flag logged = ATOMIC_FLAG_INIT;
+        if (!logged.test_and_set(std::memory_order_relaxed)) {
+            LOG_INFO("RKNN RGA crop clamped to RGA3 minimum input size {}x{} (original {}x{})", clamped_width,
+                     clamped_height, original_width, original_height);
         }
     }
 
@@ -168,6 +183,22 @@ namespace {
         if (bottom <= top)
             bottom = std::min(aligned_image_height, top + 2);
         return {left, top, right - left, bottom - top};
+    }
+
+    // Grow a crop window around its own centre until it reaches the smallest
+    // source RGA3 accepts, then pull it back inside the frame. Only the RGA
+    // window changes: the CPU fallback still receives the exact requested rect,
+    // so the two paths keep their existing semantics.
+    im_rect ClampCropToRga3Minimum(int x, int y, int width, int height, int image_width, int image_height,
+                                   bool& clamped) {
+        const int clamped_width  = std::min(image_width, std::max(width, kRga3MinSourceWidth));
+        const int clamped_height = std::min(image_height, std::max(height, kRga3MinSourceHeight));
+        clamped                  = clamped_width != width || clamped_height != height;
+        if (!clamped)
+            return {x, y, width, height};
+        x = std::max(0, std::min(x - (clamped_width - width) / 2, image_width - clamped_width));
+        y = std::max(0, std::min(y - (clamped_height - height) / 2, image_height - clamped_height));
+        return {x, y, clamped_width, clamped_height};
     }
 
     int NextRgaScaleDimension(int current, int target) {
@@ -841,12 +872,23 @@ bool RknnCropResizeNode::ForwardWithRga(std::vector<std::shared_ptr<Blob>>& imag
 
         const int rect_count = rect_blobs[image_index]->GetBlobDesc().dims[0];
         for (int rect_index = 0; rect_index < rect_count; ++rect_index) {
-            const int crop_x      = calculated_rects[4 * rect_index];
-            const int crop_y      = calculated_rects[4 * rect_index + 1];
-            const int crop_width  = calculated_rects[4 * rect_index + 2];
-            const int crop_height = calculated_rects[4 * rect_index + 3];
+            int crop_x      = calculated_rects[4 * rect_index];
+            int crop_y      = calculated_rects[4 * rect_index + 1];
+            int crop_width  = calculated_rects[4 * rect_index + 2];
+            int crop_height = calculated_rects[4 * rect_index + 3];
             if (crop_width <= 0 || crop_height <= 0)
                 return false;
+
+            bool clamped               = false;
+            const im_rect clamped_crop = ClampCropToRga3Minimum(crop_x, crop_y, crop_width, crop_height,
+                                                                source_width, source_height, clamped);
+            if (clamped) {
+                LogRgaCropClampOnce(clamped_crop.width, clamped_crop.height, crop_width, crop_height);
+                crop_x      = clamped_crop.x;
+                crop_y      = clamped_crop.y;
+                crop_width  = clamped_crop.width;
+                crop_height = clamped_crop.height;
+            }
 
             media::ScopedRgaBufferHandle host_target_handle;
             uint32_t target_handle = bound_target ? bound_handle : 0;
