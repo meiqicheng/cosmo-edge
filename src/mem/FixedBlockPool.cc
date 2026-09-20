@@ -4,6 +4,8 @@
 
 #include <syscall.h>
 
+#include <algorithm>
+
 #include "util/Log.h"
 #include "util/TimeUtil.h"
 #include "util/UuidUtil.h"
@@ -102,8 +104,17 @@ Block* FixedBlockPool::AcquireIdleBlock() {
         return nullptr;
     }
 
-    auto block = std::move(idle_blocks_.front());
-    idle_blocks_.pop_front();
+    // Serve 4G-addressable blocks first: the RGA2-only planar operations fail
+    // hard on blocks whose pages may sit above the boundary, so a FIFO pick
+    // would turn every mixed malloc/dma32 pool into a lottery. Blocks from the
+    // malloc fallback only serve once every low-address block is in flight.
+    auto it = std::find_if(idle_blocks_.begin(), idle_blocks_.end(),
+                           [](const Block* b) { return b != nullptr && b->low_4g; });
+    if (it == idle_blocks_.end()) {
+        it = idle_blocks_.begin();
+    }
+    auto block = *it;
+    idle_blocks_.erase(it);
 
     block->status.malloc_timepoint = util::GetMilliseconds();
     block->status.thread_id        = static_cast<pid_t>(syscall(__NR_gettid));
@@ -157,8 +168,15 @@ Block* FixedBlockPool::DeleteBlock() {
         return nullptr;
     }
 
-    auto block = std::move(idle_blocks_.front());
-    idle_blocks_.pop_front();
+    // Shrink from the malloc fallback first: the low-address blocks are the
+    // scarce resource the RGA2 paths depend on, so they are released last.
+    auto it = std::find_if(idle_blocks_.begin(), idle_blocks_.end(),
+                           [](const Block* b) { return b != nullptr && !b->low_4g; });
+    if (it == idle_blocks_.end()) {
+        it = idle_blocks_.begin();
+    }
+    auto block = *it;
+    idle_blocks_.erase(it);
 
     return block;
 }

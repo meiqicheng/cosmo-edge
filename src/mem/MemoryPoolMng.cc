@@ -209,6 +209,20 @@ Block* MemoryPoolMng::Acquire(size_t size) {
     }
 
     auto block = pool->AcquireIdleBlock();
+    if (!block) {
+        // The asynchronous top-up rides the block queue and lands a few frames
+        // later, which makes the first frames of every channel fail outright.
+        // Fill the first missing block synchronously (bounded by the same
+        // limits RealMalloc honors) and leave further growth to the queue.
+        const size_t max_limit = pool->GetMaxLimit();
+        if (max_limit == 0 || pool->TotalBlockCount() < max_limit) {
+            auto* extra = allocator_->Allocate(pool->BlockSize());
+            if (extra) {
+                pool->AddBlock(extra);
+                block = pool->AcquireIdleBlock();
+            }
+        }
+    }
 
     // After acquire, check if idle count is below threshold and request more
     if (pool->IdleCount() <= pool->GetMallocThres()) {

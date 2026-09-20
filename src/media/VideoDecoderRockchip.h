@@ -35,6 +35,7 @@ public:
 private:
     bool OpenMpp();
     bool ConfigureFrameGroup(size_t buffer_size);
+    bool CreateDma32FrameGroup(size_t buffer_size);
     DecodedVideoFrame ReceiveMppFrame(bool& made_progress);
     void CleanMpp();
 

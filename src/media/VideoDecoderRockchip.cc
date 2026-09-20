@@ -9,6 +9,7 @@
 #include <deque>
 #include <limits>
 #include <thread>
+#include <vector>
 
 #define MODULE_TAG "cosmo_mpp_decoder"
 #include <rockchip/mpp_buffer.h>
@@ -17,6 +18,7 @@
 #include <rockchip/rk_mpi.h>
 #include <rockchip/rk_vdec_cfg.h>
 
+#include "media/DmaHeap32Buffer.h"
 #include "media/PreviewPipelineMetrics.h"
 #include "media/RockchipRgaBuffer.h"
 #include "media/VideoDecoderCpu.h"
@@ -26,9 +28,22 @@ namespace cosmo::media {
 namespace {
 
     constexpr RK_U32 kDecoderBufferCount = 24;
-    constexpr int kPacketSubmitAttempts  = 30;
-    constexpr auto kPacketSubmitWait     = std::chrono::milliseconds(1);
-    constexpr size_t kMaxPendingTimings  = 256;
+    /// Buffer count for the externally supplied 32-bit-addressable frame group.
+    /// The dma32 heap on a >4 GiB board is a scarce resource (a few dozen MiB of
+    /// free low pages), so the group is deliberately smaller than the internal
+    /// limit; if the reservation fails the decoder falls back to the internal
+    /// group and keeps the previous CPU copy-out behavior.
+    constexpr size_t kDma32GroupBufferCount = 8;
+    /// How long the CPU copy-out stays in force after repeated RGA
+    /// materialization failures. A cooldown instead of a permanent disable lets
+    /// a transient supply problem self-heal.
+    constexpr int64_t kRgaRetryCooldownNs = 10'000'000'000;
+    /// Consecutive failures that arm the cooldown above; isolated failures (a
+    /// frame that landed on a malloc-backed pool block) only cost one submit.
+    constexpr int32_t kRgaCooldownAfterFailures = 4;
+    constexpr int kPacketSubmitAttempts         = 30;
+    constexpr auto kPacketSubmitWait            = std::chrono::milliseconds(1);
+    constexpr size_t kMaxPendingTimings         = 256;
 
     struct MppFrameHolder {
         explicit MppFrameHolder(MppFrame value) : frame(value) {}
@@ -249,11 +264,13 @@ namespace {
     }
 
     VideoFramePtr MaterializeMppFrame(const std::string& decoder_name, MppFrame frame,
-                                      std::atomic<bool>& rga_available) {
+                                      std::atomic<int64_t>& rga_retry_after_ns,
+                                      std::atomic<int32_t>& rga_consecutive_failures) {
+        const auto now_ns = std::chrono::steady_clock::now().time_since_epoch().count();
         if (!frame) {
             return nullptr;
         }
-        if (!rga_available.load(std::memory_order_relaxed)) {
+        if (rga_retry_after_ns.load(std::memory_order_relaxed) > now_ns) {
             GetPreviewPipelineMetrics().RecordMppCpuCopyOutFallback();
             return CopyMppFrameCpu(decoder_name, frame);
         }
@@ -313,18 +330,25 @@ namespace {
         GetPreviewPipelineMetrics().RecordRgaOperation(rga_success, ElapsedNanoseconds(rga_started));
         GetPreviewPipelineMetrics().RecordMppRgaCopyOut(rga_success);
         if (rga_success) {
+            rga_consecutive_failures.store(0, std::memory_order_relaxed);
             return output;
         }
 
         // Failure can originate in the kernel import, before our own logger.
-        // Stop submitting the same failing operation on every selected frame.
-        rga_available.store(false, std::memory_order_relaxed);
+        // Isolated failures only cost one submit; a run of consecutive failures
+        // arms a cooldown instead of disabling copy-out for the decoder's
+        // lifetime, so a drained dma32 heap self-heals.
+        const auto failures = rga_consecutive_failures.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (failures >= kRgaCooldownAfterFailures) {
+            rga_retry_after_ns.store(now_ns + kRgaRetryCooldownNs, std::memory_order_relaxed);
+        }
         static std::atomic_flag fallback_logged = ATOMIC_FLAG_INIT;
-        if (!fallback_logged.test_and_set(std::memory_order_relaxed)) {
+        if (failures >= kRgaCooldownAfterFailures &&
+            !fallback_logged.test_and_set(std::memory_order_relaxed)) {
             LOG_WARN(
-                "{} RGA DMA-BUF materialization failed with status {} ({}); disabling RGA copy-out for this "
-                "decoder",
-                decoder_name, status, imStrError_t(status));
+                "{} RGA DMA-BUF materialization failed {} times in a row (last status {} ({})); pausing RGA "
+                "copy-out for {} s",
+                decoder_name, failures, status, imStrError_t(status), kRgaRetryCooldownNs / 1'000'000'000);
         }
         GetPreviewPipelineMetrics().RecordMppCpuCopyOutFallback();
         return CopyMppFrameCpu(decoder_name, frame);
@@ -338,12 +362,21 @@ struct PendingDecodeTiming {
 
 struct RockchipDecoderState {
     // Lazy frames can outlive the decoder state. Capture shared state, never a
-    // pointer back to the decoder, and retry only when a new decoder is opened.
-    std::shared_ptr<std::atomic<bool>> rga_copy_out_available{std::make_shared<std::atomic<bool>>(true)};
+    // pointer back to the decoder, and retry only when a new decoder is opened
+    // or the RGA cooldown expires.
+    std::shared_ptr<std::atomic<int64_t>> rga_copy_out_retry_after_ns{
+        std::make_shared<std::atomic<int64_t>>(0)};
+    std::shared_ptr<std::atomic<int32_t>> rga_copy_out_consecutive_failures{
+        std::make_shared<std::atomic<int32_t>>(0)};
     MppCtx context{nullptr};
     MppApi* api{nullptr};
     MppDecCfg config{nullptr};
     MppBufferGroup frame_group{nullptr};
+    /// True when frame_group was created from externally supplied dma32 buffers.
+    bool frame_group_is_dma32{false};
+    /// The dma32 buffers backing an external frame group; they must outlive the
+    /// group and are released after mpp_buffer_group_put() in CleanMpp().
+    std::vector<DmaHeap32Buffer> dma32_group_buffers;
     size_t frame_group_buffer_size{0};
     bool frame_group_reuse_logged{false};
     MppCodingType coding{MPP_VIDEO_CodingUnused};
@@ -605,6 +638,53 @@ bool VideoDecoderRockchip::SendPacket(const uint8_t* pkt, size_t len, int64_t fr
     return true;
 }
 
+bool VideoDecoderRockchip::CreateDma32FrameGroup(size_t buffer_size) {
+    if (!state_ || buffer_size == 0 || !Dma32HeapAvailable()) {
+        return false;
+    }
+
+    std::vector<DmaHeap32Buffer> buffers;
+    buffers.reserve(kDma32GroupBufferCount);
+    std::string reason;
+    for (size_t i = 0; i < kDma32GroupBufferCount; ++i) {
+        DmaHeap32Buffer buffer;
+        if (!buffer.Allocate(buffer_size, reason)) {
+            LOG_WARN("{} dma32 decoder frame-group reservation stopped at {}/{} buffers of {} bytes ({})",
+                     idx_name_, i, kDma32GroupBufferCount, buffer_size, reason);
+            // The vector unwinds here and releases everything already reserved.
+            return false;
+        }
+        buffers.push_back(std::move(buffer));
+    }
+
+    MppBufferGroup group = nullptr;
+    MPP_RET ret          = mpp_buffer_group_get_external(&group, MPP_BUFFER_TYPE_EXT_DMA);
+    if (ret != MPP_OK || !group) {
+        LOG_WARN("{} MPP decoder external frame-group creation failed: {}", idx_name_, ret);
+        return false;
+    }
+    for (auto& buffer : buffers) {
+        // fd only: with ptr set, MPP's ext_dma import treats the commit as a
+        // userptr request and rejects it ("ext_dma is not used for userptr");
+        // MPP maps the dma-buf itself when a CPU view is requested.
+        MppBufferInfo info{};
+        info.type = MPP_BUFFER_TYPE_EXT_DMA;
+        info.size = buffer_size;
+        info.fd   = buffer.fd();
+        ret       = mpp_buffer_commit(group, &info);
+        if (ret != MPP_OK) {
+            LOG_WARN("{} MPP decoder external frame-group commit failed: {}", idx_name_, ret);
+            mpp_buffer_group_put(group);
+            return false;
+        }
+    }
+
+    state_->frame_group          = group;
+    state_->frame_group_is_dma32 = true;
+    state_->dma32_group_buffers  = std::move(buffers);
+    return true;
+}
+
 bool VideoDecoderRockchip::ConfigureFrameGroup(size_t buffer_size) {
     if (!state_ || !state_->context || !state_->api || buffer_size == 0) {
         return false;
@@ -612,22 +692,35 @@ bool VideoDecoderRockchip::ConfigureFrameGroup(size_t buffer_size) {
 
     MPP_RET ret                     = MPP_OK;
     const bool reuse_existing_group = state_->frame_group && state_->frame_group_buffer_size == buffer_size;
+    if (!reuse_existing_group && state_->frame_group) {
+        // Resolution change with a live group: hand the group back and rebuild.
+        mpp_buffer_group_put(state_->frame_group);
+        state_->frame_group          = nullptr;
+        state_->frame_group_is_dma32 = false;
+        state_->dma32_group_buffers.clear();
+    }
     if (!state_->frame_group) {
-        ret = mpp_buffer_group_get_internal(
-            &state_->frame_group,
-            static_cast<MppBufferType>(MPP_BUFFER_TYPE_DRM | MPP_BUFFER_FLAGS_CACHABLE));
-    } else if (!reuse_existing_group) {
-        ret = mpp_buffer_group_clear(state_->frame_group);
-    }
-    if (ret != MPP_OK || !state_->frame_group) {
-        LOG_WARN("{} MPP decoder frame-group allocation/reset failed: {}", idx_name_, ret);
-        return false;
-    }
-    if (!reuse_existing_group) {
-        ret = mpp_buffer_group_limit_config(state_->frame_group, buffer_size, kDecoderBufferCount);
-        if (ret != MPP_OK) {
-            LOG_WARN("{} MPP decoder frame-group limit failed: {}", idx_name_, ret);
-            return false;
+        // The externally supplied dma32 group keeps the decoded DMA-BUFs below
+        // the 4 GiB boundary, which is what lets the RGA2-only NV12->I420
+        // materialization run on RGA2. Fall back to the internal group when the
+        // heap cannot serve the reservation.
+        if (CreateDma32FrameGroup(buffer_size)) {
+            LOG_INFO("{} MPP decoder external frame group: {} dma32 buffers of {} bytes", idx_name_,
+                     kDma32GroupBufferCount, buffer_size);
+        } else {
+            state_->frame_group_is_dma32 = false;
+            ret                          = mpp_buffer_group_get_internal(
+                &state_->frame_group,
+                static_cast<MppBufferType>(MPP_BUFFER_TYPE_DRM | MPP_BUFFER_FLAGS_CACHABLE));
+            if (ret != MPP_OK || !state_->frame_group) {
+                LOG_WARN("{} MPP decoder frame-group allocation/reset failed: {}", idx_name_, ret);
+                return false;
+            }
+            ret = mpp_buffer_group_limit_config(state_->frame_group, buffer_size, kDecoderBufferCount);
+            if (ret != MPP_OK) {
+                LOG_WARN("{} MPP decoder frame-group limit failed: {}", idx_name_, ret);
+                return false;
+            }
         }
         ret = state_->api->control(state_->context, MPP_DEC_SET_EXT_BUF_GROUP, state_->frame_group);
         if (ret != MPP_OK) {
@@ -717,14 +810,15 @@ DecodedVideoFrame VideoDecoderRockchip::ReceiveMppFrame(bool& made_progress) {
     if (timing != state_->pending.end()) {
         state_->pending.erase(timing);
     }
-    const size_t frame_width          = mpp_frame_get_width(frame);
-    const size_t frame_height         = mpp_frame_get_height(frame);
-    width_                            = frame_width;
-    height_                           = frame_height;
-    auto holder                       = std::make_shared<MppFrameHolder>(frame);
-    frame                             = nullptr;
-    const auto decoder_name           = idx_name_;
-    const auto rga_copy_out_available = state_->rga_copy_out_available;
+    const size_t frame_width            = mpp_frame_get_width(frame);
+    const size_t frame_height           = mpp_frame_get_height(frame);
+    width_                              = frame_width;
+    height_                             = frame_height;
+    auto holder                         = std::make_shared<MppFrameHolder>(frame);
+    frame                               = nullptr;
+    const auto decoder_name             = idx_name_;
+    const auto rga_copy_out_retry_after = state_->rga_copy_out_retry_after_ns;
+    const auto rga_copy_out_fail_streak = state_->rga_copy_out_consecutive_failures;
 
     // This counter measures a valid MPP output becoming available. Host
     // allocation and copying are measured separately by RecordMppCopyOut.
@@ -732,9 +826,10 @@ DecodedVideoFrame VideoDecoderRockchip::ReceiveMppFrame(bool& made_progress) {
     return DecodedVideoFrame(
         static_cast<uint64_t>(std::max<int64_t>(0, resolved_pts)), frame_width, frame_height,
         PixelFormat::PIXEL_I420,
-        [holder, decoder_name, resolved_pts, rga_copy_out_available]() {
+        [holder, decoder_name, resolved_pts, rga_copy_out_retry_after, rga_copy_out_fail_streak]() {
             const auto copy_started = std::chrono::steady_clock::now();
-            auto output = MaterializeMppFrame(decoder_name, holder->frame, *rga_copy_out_available);
+            auto output = MaterializeMppFrame(decoder_name, holder->frame, *rga_copy_out_retry_after,
+                                              *rga_copy_out_fail_streak);
             if (output) {
                 output->SetFrameIndex(static_cast<uint64_t>(std::max<int64_t>(0, resolved_pts)));
             }
@@ -785,6 +880,10 @@ void VideoDecoderRockchip::CleanMpp() {
         mpp_buffer_group_put(state_->frame_group);
         state_->frame_group = nullptr;
     }
+    // Release the dma32 buffers only after the group is gone: the decoder may
+    // still hold MppBuffer references into them until the reset above.
+    state_->dma32_group_buffers.clear();
+    state_->frame_group_is_dma32 = false;
     if (state_->config) {
         mpp_dec_cfg_deinit(state_->config);
         state_->config = nullptr;
