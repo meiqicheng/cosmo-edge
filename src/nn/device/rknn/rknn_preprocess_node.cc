@@ -28,8 +28,7 @@ namespace {
 
     using MetricsClock = std::chrono::steady_clock;
 
-    constexpr int kDetectorInputSize = 640;
-    constexpr float kNormalizeScale  = 0.00392157f;
+    constexpr float kNormalizeScale = 0.00392157f;
     // RGA2-class cores support at least 1/8..8 scaling. Keep the shared path
     // conservative so the same implementation is valid on both RGA2 and RGA3.
     constexpr int kConservativeRgaScaleLimit = 8;
@@ -323,9 +322,10 @@ bool RknnForceMppDmaBufFailure() {
 
 bool IsRknnDetectorResizeContract(int out_height, int out_width, int gravity,
                                   const std::vector<int>& padding_color) {
-    return out_height == kDetectorInputSize && out_width == kDetectorInputSize && gravity == 1 &&
-           padding_color.size() >= 3 && padding_color[0] == 114 && padding_color[1] == 114 &&
-           padding_color[2] == 114;
+    // Rectangle-capable detector contract: width stays at 640 while the height
+    // accepts every stride-32 candidate (640x640 baseline included).
+    return IsRknnDetectorInputSize(out_height, out_width) && gravity == 1 && padding_color.size() >= 3 &&
+           padding_color[0] == 114 && padding_color[1] == 114 && padding_color[2] == 114;
 }
 
 bool IsRknnNativeNormalizeContract(const std::vector<float>& mean, const std::vector<float>& std_dev,
@@ -1070,7 +1070,8 @@ Status RknnNormalizeNode::InferTopShapesWithBottoms(std::vector<DimsVector> dims
                                                     std::vector<DataType> types) {
     if (dims.size() != 1 || types.size() != 1 || dims[0].size() != 4)
         return Status(COSMO_NN_ERR_INVALID_INPUT, "RKNN normalize input shape is invalid");
-    detector_sized_ = dims[0][1] == kDetectorInputSize && dims[0][2] == kDetectorInputSize && dims[0][3] == 3;
+    detector_sized_ = dims[0][1] > 0 && dims[0][2] > 0 && dims[0][3] == 3 &&
+                      IsRknnDetectorInputSize(dims[0][1], dims[0][2]);
     native_contract_ = types[0] == DATA_TYPE_UINT8 &&
                        IsRknnNativeNormalizeContract(mean_, std_dev_, uniform_scale_, dims[0]);
     if (shared_resource)

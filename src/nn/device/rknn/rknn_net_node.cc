@@ -268,6 +268,15 @@ const char* RknnCoreModeName(RknnCoreMode mode) {
     }
 }
 
+bool IsRknnDetectorInputHeight(int height) {
+    return height >= kRknnDetectorInputMinHeight && height <= kRknnDetectorInputWidth &&
+           height % kRknnDetectorInputAlignment == 0;
+}
+
+bool IsRknnDetectorInputSize(int height, int width) {
+    return width == kRknnDetectorInputWidth && IsRknnDetectorInputHeight(height);
+}
+
 bool IsRknnRgbUint8InputContract(const std::string& contract) {
     return contract == kRknnRgbUint8InputContract;
 }
@@ -820,9 +829,10 @@ Status RknnNetNode::QueryTensorAttributes() {
         LOG_INFO("RKNN YOLOv8 native INT8 output disabled: {}", native_output_reason);
     }
     const auto& input = input_attrs_.front();
-    detector_model_   = yolov8_heads_ && input.n_dims == 4 && input.fmt == RKNN_TENSOR_NHWC &&
-                      input.dims[0] == 1 && input.dims[1] == 640 && input.dims[2] == 640 &&
-                      input.dims[3] == 3;
+    detector_model_ =
+        yolov8_heads_ && input.n_dims == 4 && input.fmt == RKNN_TENSOR_NHWC && input.dims[0] == 1 &&
+        input.dims[3] == 3 &&
+        IsRknnDetectorInputSize(static_cast<int>(input.dims[1]), static_cast<int>(input.dims[2]));
     return COSMO_NN_OK;
 }
 
