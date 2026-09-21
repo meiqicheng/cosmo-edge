@@ -54,6 +54,7 @@ set(MEDIA_CPU_SRC
 set(MEDIA_ROCKCHIP_SRC
     RockchipMppCompat.h
     RockchipRgaBuffer.h
+    NativeVideoMaterializeRockchip.cc
     VideoDecoderCpu.cc           VideoDecoderCpu.h
     VideoDecoderCreateRockchip.cc
     VideoDecoderRockchip.cc      VideoDecoderRockchip.h

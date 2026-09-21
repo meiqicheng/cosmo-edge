@@ -14,6 +14,8 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <cerrno>
+#include <cstdlib>
 #include <exception>
 #include <filesystem>
 #include <nlohmann/json.hpp>
@@ -253,6 +255,18 @@ namespace {
 // ============================================================
 
 CameraServiceImpl::CameraServiceImpl() {
+    // The channel cap is a deployment parameter, not a silent header constant:
+    // hosts with a raised fd quota (LimitNOFILE) can declare more channels via
+    // COSMO_MAX_CAMERA_COUNT. Keep 32 when unset to preserve current behavior.
+    if (const char* raw = std::getenv("COSMO_MAX_CAMERA_COUNT")) {
+        const auto parsed = static_cast<size_t>(std::strtoul(raw, nullptr, 10));
+        if (parsed > 0) {
+            max_camera_count_ = parsed;
+            LOG_INFO("Camera channel cap set from COSMO_MAX_CAMERA_COUNT: {}", parsed);
+        } else {
+            LOG_WARN("Ignoring invalid COSMO_MAX_CAMERA_COUNT value: {}", raw);
+        }
+    }
     LOG_INFO("{}", "CameraServiceImpl created (deferred init)");
 }
 

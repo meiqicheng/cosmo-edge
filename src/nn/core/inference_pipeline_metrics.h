@@ -106,6 +106,12 @@ struct InferencePipelineMetricsSnapshot {
     uint64_t rknn_mpp_dmabuf_frames{0};
     uint64_t rknn_mpp_dmabuf_fallbacks{0};
     uint64_t rknn_mpp_dmabuf_source_bytes{0};
+    uint64_t rknn_rga_source_import_calls{0};
+    uint64_t rknn_rga_source_import_nanoseconds{0};
+    uint64_t rknn_rga_source_import_failures{0};
+    uint64_t rknn_rga_source_cache_hits{0};
+    uint64_t rknn_rga_lock_wait_calls{0};
+    uint64_t rknn_rga_lock_wait_nanoseconds{0};
     uint64_t rknn_native_int8_outputs{0};
     uint64_t rknn_float_outputs{0};
     uint64_t rknn_output_compatibility_fallbacks{0};
@@ -167,6 +173,13 @@ public:
     void RecordRknnMppDmaBufImport(uint64_t nanoseconds, bool success);
     void RecordRknnMppDmaBufFrame(uint64_t source_bytes);
     void RecordRknnMppDmaBufFallback();
+    // Native source handle acquisition via the per-node RGA fd handle cache.
+    // `cache_hit` distinguishes cached reuse from a real importbuffer_fd call;
+    // benchmarks gate on the hit rate (target >= 99%).
+    void RecordRknnRgaSourceImport(uint64_t nanoseconds, bool success, bool cache_hit);
+    // Time spent acquiring RgaGlobalLock in the preprocess hot paths — the
+    // queueing proxy for the RGA serialization point (P0-2 acceptance gate).
+    void RecordRknnRgaLockWait(uint64_t nanoseconds);
     void RecordRknnOutputFormat(bool native_int8, uint64_t bytes, bool compatibility_fallback = false);
     void RecordRknnYolov8Transform(uint64_t dfl_nanoseconds, uint64_t class_nanoseconds);
     void RecordRknnYolov8DirectCandidates(bool success, uint64_t points_scanned, uint64_t points_decoded,
@@ -276,6 +289,12 @@ private:
     std::atomic<uint64_t> rknn_mpp_dmabuf_frames_{0};
     std::atomic<uint64_t> rknn_mpp_dmabuf_fallbacks_{0};
     std::atomic<uint64_t> rknn_mpp_dmabuf_source_bytes_{0};
+    std::atomic<uint64_t> rknn_rga_source_import_calls_{0};
+    std::atomic<uint64_t> rknn_rga_source_import_nanoseconds_{0};
+    std::atomic<uint64_t> rknn_rga_source_import_failures_{0};
+    std::atomic<uint64_t> rknn_rga_source_cache_hits_{0};
+    std::atomic<uint64_t> rknn_rga_lock_wait_calls_{0};
+    std::atomic<uint64_t> rknn_rga_lock_wait_nanoseconds_{0};
     std::atomic<uint64_t> rknn_native_int8_outputs_{0};
     std::atomic<uint64_t> rknn_float_outputs_{0};
     std::atomic<uint64_t> rknn_output_compatibility_fallbacks_{0};

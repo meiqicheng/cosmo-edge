@@ -4,6 +4,7 @@
 
 #include <malloc.h>
 #include <pthread.h>
+#include <sys/resource.h>
 
 #include <atomic>
 #include <cerrno>
@@ -132,6 +133,29 @@ namespace {
         apply(M_MMAP_THRESHOLD, "MALLOC_MMAP_THRESHOLD_", 131072);
         apply(M_TOP_PAD, "MALLOC_TOP_PAD_", 0);
     }
+
+    // Raise the soft fd limit to the hard limit as a deployment safety net.
+    // The historical cosmo.service shipped without LimitNOFILE and ran with a
+    // 1024 soft quota; ~25 concurrent channels (~30-40 fds each) exhausted it
+    // and took nginx/srs/engine down together. The unit template now fixes the
+    // quota, but this keeps an unpatched host from silently degrading.
+    void RaiseFileDescriptorLimit() {
+        rlimit limits{};
+        if (getrlimit(RLIMIT_NOFILE, &limits) != 0) {
+            return;
+        }
+        const rlim_t hard = limits.rlim_max == RLIM_INFINITY ? 524288 : limits.rlim_max;
+        if (limits.rlim_cur >= hard) {
+            return;
+        }
+        limits.rlim_cur = hard;
+        if (setrlimit(RLIMIT_NOFILE, &limits) == 0) {
+            LOG_INFO("Raised RLIMIT_NOFILE soft limit to {}", static_cast<long long>(hard));
+        } else {
+            LOG_WARN("Could not raise RLIMIT_NOFILE soft limit to {} (errno:{})",
+                     static_cast<long long>(hard), errno);
+        }
+    }
 }  // namespace
 
 void LogInit(const std::string& name, const std::string& basedir, const std::string& version) {
@@ -179,6 +203,10 @@ int Application::run(const char* base_dir) {
         // Tune glibc malloc before any inference allocation to prevent
         // per-thread arena fragmentation (see ConfigureAllocator comment).
         ConfigureAllocator();
+
+        // Deployment safety net: lift the soft fd quota before any subsystem
+        // opens sockets/DMA-BUFs (see RaiseFileDescriptorLimit comment).
+        RaiseFileDescriptorLimit();
 
         SwDevicePreInit();
 

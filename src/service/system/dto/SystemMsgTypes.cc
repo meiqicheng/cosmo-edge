@@ -195,6 +195,12 @@ void from_json(const nlohmann::json& j, MsgGpuInfo& v) {
     JSON_OPT(j, v, rknnMppDmaBufFrames);
     JSON_OPT(j, v, rknnMppDmaBufFallbacks);
     JSON_OPT(j, v, rknnMppDmaBufSourceBytes);
+    JSON_OPT(j, v, rknnRgaSourceImportCalls);
+    JSON_OPT(j, v, rknnRgaSourceImportMs);
+    JSON_OPT(j, v, rknnRgaSourceImportFailures);
+    JSON_OPT(j, v, rknnRgaSourceCacheHits);
+    JSON_OPT(j, v, rknnRgaLockWaitCalls);
+    JSON_OPT(j, v, rknnRgaLockWaitMs);
     JSON_OPT(j, v, rknnNativeInt8Outputs);
     JSON_OPT(j, v, rknnFloatOutputs);
     JSON_OPT(j, v, rknnOutputCompatibilityFallbacks);
@@ -364,6 +370,12 @@ void to_json(nlohmann::json& j, const MsgGpuInfo& v) {
     j["rknnMppDmaBufFrames"]                = v.rknnMppDmaBufFrames;
     j["rknnMppDmaBufFallbacks"]             = v.rknnMppDmaBufFallbacks;
     j["rknnMppDmaBufSourceBytes"]           = v.rknnMppDmaBufSourceBytes;
+    j["rknnRgaSourceImportCalls"]           = v.rknnRgaSourceImportCalls;
+    j["rknnRgaSourceImportMs"]              = v.rknnRgaSourceImportMs;
+    j["rknnRgaSourceImportFailures"]        = v.rknnRgaSourceImportFailures;
+    j["rknnRgaSourceCacheHits"]             = v.rknnRgaSourceCacheHits;
+    j["rknnRgaLockWaitCalls"]               = v.rknnRgaLockWaitCalls;
+    j["rknnRgaLockWaitMs"]                  = v.rknnRgaLockWaitMs;
     j["rknnNativeInt8Outputs"]              = v.rknnNativeInt8Outputs;
     j["rknnFloatOutputs"]                   = v.rknnFloatOutputs;
     j["rknnOutputCompatibilityFallbacks"]   = v.rknnOutputCompatibilityFallbacks;

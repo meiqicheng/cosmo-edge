@@ -220,8 +220,14 @@ void TaskAlarm::HandFrame(AlgDataPtr algData) {
         return;
     }
 
-    m_width  = algData->chanDataDec.frame ? algData->chanDataDec.frame->GetWidth() : m_width;
-    m_height = algData->chanDataDec.frame ? algData->chanDataDec.frame->GetHeight() : m_height;
+    // Resolve dimensions through the unified frame-identity resolver so the
+    // native-only (DMA-BUF) path — where chanDataDec.frame is null but meta is
+    // valid — still carries correct picture-space geometry.
+    const auto resolved = ResolveAlgFrameInfo(algData->chanDataDec);
+    if (resolved.width > 0 && resolved.height > 0) {
+        m_width  = resolved.width;
+        m_height = resolved.height;
+    }
 
     AlarmDataCombine(algData);
 

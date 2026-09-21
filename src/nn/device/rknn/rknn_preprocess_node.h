@@ -43,6 +43,12 @@ private:
     void ReleaseRgaBoundTarget();
     void ResizeWithCpu(const Blob& bottom, Blob& top, bool output_rgb) const;
     Status ResizeNativeWithCpu(const Blob& bottom, Blob& top) const;
+    // Letterbox padding is constant for a fixed detector contract, so the
+    // full-target memset only runs when the fill fingerprint (target pointer,
+    // byte size, padding color, bound-input generation) changes instead of on
+    // every frame; RGA overwrites the center window each frame anyway.
+    void FillLetterboxIfNeeded(void* target_va, size_t target_bytes, uint8_t fill_color,
+                               uint64_t generation);
 
     int out_height_{0};
     int out_width_{0};
@@ -62,6 +68,22 @@ private:
     // only mutated inside ResizeWithRga().
     media::Dma32Buffer rga_host_src_buf_;
     media::Dma32Buffer rga_host_dst_buf_;
+    // Imported handles for native MPP source DMA-BUFs, keyed by (fd, bytes).
+    // The decoder recycles a fixed buffer pool, so a small LRU removes the
+    // per-frame importbuffer_fd/releasebuffer_handle pair that serializes all
+    // channels behind RgaGlobalLock. Capacity covers the decoder pool plus a
+    // margin (see VideoDecoderRockchip kDecoderBufferCount). Single-threaded;
+    // only touched inside ResizeWithRga().
+    media::RgaFdHandleCache native_source_handles_{26};
+    // Decoder buffer-group epoch the cache was filled under; a mismatch
+    // clears the cache before any lookup (fd numbers can be reused by a
+    // reconnecting decoder's new group).
+    uint64_t native_source_epoch_{0};
+    // Letterbox fill fingerprint for FillLetterboxIfNeeded.
+    void* letterbox_fill_va_{nullptr};
+    size_t letterbox_fill_bytes_{0};
+    int letterbox_fill_color_{-1};
+    uint64_t letterbox_fill_generation_{0};
 };
 
 class RknnCropResizeNode final : public CpuCropResizeNode {
@@ -89,6 +111,10 @@ private:
     uint64_t rga_bound_target_generation_{0};
     bool rga_bound_target_unavailable_{false};
     bool rga_bound_guard_logged_{false};
+    // Imported handles for native MPP source DMA-BUFs (see RknnResizeNode).
+    // Single-threaded; only touched inside ForwardWithRga().
+    media::RgaFdHandleCache native_source_handles_{26};
+    uint64_t native_source_epoch_{0};
 };
 
 class RknnNormalizeNode final : public Node {
