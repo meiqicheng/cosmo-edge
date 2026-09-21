@@ -713,10 +713,10 @@ Status RknnNetNode::QueryTensorAttributes() {
         LOG_INFO("RKNN YOLOv8 native INT8 output disabled: {}", native_output_reason);
     }
     const auto& input = input_attrs_.front();
-    detector_model_   = yolov8_heads_ && input.n_dims == 4 && input.fmt == RKNN_TENSOR_NHWC &&
-                      input.dims[0] == 1 && input.dims[3] == 3 &&
-                      IsRknnDetectorInputSize(static_cast<int>(input.dims[1]),
-                                              static_cast<int>(input.dims[2]));
+    detector_model_ =
+        yolov8_heads_ && input.n_dims == 4 && input.fmt == RKNN_TENSOR_NHWC && input.dims[0] == 1 &&
+        input.dims[3] == 3 &&
+        IsRknnDetectorInputSize(static_cast<int>(input.dims[1]), static_cast<int>(input.dims[2]));
     return COSMO_NN_OK;
 }
 

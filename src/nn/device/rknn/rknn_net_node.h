@@ -20,9 +20,9 @@ inline constexpr char kRknnRgbUint8InputContract[] = "cosmo.rknn.input.rgb_u8_nh
 // A multiple of 32 satisfies the YOLOv8 P5 stride-32 grid constraint and the
 // RKNPU2 8/16-byte alignment rules at the same time; the lower bound follows the
 // 640x352 candidate documented in the detector-input rectangularization analysis.
-inline constexpr int kRknnDetectorInputWidth      = 640;
-inline constexpr int kRknnDetectorInputMinHeight  = 352;
-inline constexpr int kRknnDetectorInputAlignment  = 32;
+inline constexpr int kRknnDetectorInputWidth     = 640;
+inline constexpr int kRknnDetectorInputMinHeight = 352;
+inline constexpr int kRknnDetectorInputAlignment = 32;
 
 bool IsRknnDetectorInputHeight(int height);
 bool IsRknnDetectorInputSize(int height, int width);

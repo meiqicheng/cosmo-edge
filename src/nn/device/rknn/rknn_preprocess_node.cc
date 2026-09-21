@@ -28,7 +28,7 @@ namespace {
 
     using MetricsClock = std::chrono::steady_clock;
 
-    constexpr float kNormalizeScale  = 0.00392157f;
+    constexpr float kNormalizeScale = 0.00392157f;
     // RGA2-class cores support at least 1/8..8 scaling. Keep the shared path
     // conservative so the same implementation is valid on both RGA2 and RGA3.
     constexpr int kConservativeRgaScaleLimit = 8;
@@ -284,9 +284,8 @@ bool IsRknnDetectorResizeContract(int out_height, int out_width, int gravity,
                                   const std::vector<int>& padding_color) {
     // Rectangle-capable detector contract: width stays at 640 while the height
     // accepts every stride-32 candidate (640x640 baseline included).
-    return IsRknnDetectorInputSize(out_height, out_width) && gravity == 1 &&
-           padding_color.size() >= 3 && padding_color[0] == 114 && padding_color[1] == 114 &&
-           padding_color[2] == 114;
+    return IsRknnDetectorInputSize(out_height, out_width) && gravity == 1 && padding_color.size() >= 3 &&
+           padding_color[0] == 114 && padding_color[1] == 114 && padding_color[2] == 114;
 }
 
 bool IsRknnNativeNormalizeContract(const std::vector<float>& mean, const std::vector<float>& std_dev,
