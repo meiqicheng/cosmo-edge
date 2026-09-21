@@ -334,6 +334,11 @@ rm -f -- "${active_root}/scripts/install.sh"
 
 # Always replace the unit. Existing main installations may still point to the
 # former /appfs/minivision/mv_data tree, while a deleted unit must be recreated.
+# LimitNOFILE: 25+ concurrent channels exhaust a 1024 soft fd quota (each
+# channel holds ~30-40 fds: MPP DMA-BUF pool, RKNPU context, demux sockets,
+# queues), which cascaded into nginx 502s and an engine abort. Raise soft==hard
+# so the engine, nginx and srs in this unit share a quota sized for the
+# 32-channel cap plus headroom.
 mkdir -p -- "$systemd_root"
 service_file="${systemd_root}/cosmo.service"
 service_temp="${service_file}.tmp.$$"
@@ -348,6 +353,7 @@ umask 022
         '[Service]' \
         'Type=simple' \
         'User=root' \
+        'LimitNOFILE=524288:524288' \
         'EnvironmentFile=-/appfs/cosmo_wander/cwai_data/share/cosmo/runtime-paths.env' \
         'ExecStart=/appfs/cosmo_wander/cwai_data/scripts/inte_run_start.sh' \
         'Restart=on-failure' \

@@ -288,7 +288,8 @@ class PackageProfileTests(unittest.TestCase):
         )
         verifier.verify_package(package, "public-runtime")
 
-        invalid = json.dumps(
+        # Templates migrated to structured values are serialized on load.
+        valid_structured = json.dumps(
             {
                 "algorithmId": "7463",
                 "algorithmMetadata": {},
@@ -298,11 +299,25 @@ class PackageProfileTests(unittest.TestCase):
         ).encode()
         package = self.make_package(
             "public-runtime",
+            algorithm_resources={"resource/algorithm/valid_structured.json": valid_structured},
+        )
+        verifier.verify_package(package, "public-runtime")
+
+        invalid = json.dumps(
+            {
+                "algorithmId": "7463",
+                "algorithmMetadata": 7463,
+                "algorithmProcessdata": "[]",
+                "atomicList": "[]",
+            }
+        ).encode()
+        package = self.make_package(
+            "public-runtime",
             algorithm_resources={"resource/algorithm/invalid.json": invalid},
         )
         with self.assertRaisesRegex(
             verifier.PackageAuditError,
-            "algorithmMetadata must be a JSON string",
+            "algorithmMetadata must be a JSON string, object, or array",
         ):
             verifier.verify_package(package, "public-runtime")
 

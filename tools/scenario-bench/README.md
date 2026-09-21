@@ -418,6 +418,18 @@ VLM 模式还执行有效性校验：缺少直接 VLM 节点遥测时，不会�
 
 工具会对平台导出的模板做必要的 payload 归一化，例如将 `algorithmCategory`、`algorithmUsage` 转为字符串，以适配后端 DTO。
 
+导入前会校验模板自身的一致性：`algorithmId`/`algorithmCode` 必须与 `scenario.yml` 中的 `algorithmId` 一致，
+`algorithmName` 不能为空，`configVersionList[*].id` 只能是当前 `confVersionId` 或本算法的 `default-<code>`，
+流程节点的 `preFlowActionId` 必须指向同一模板内存在的 `flowActionId`。从其它算法复制模板后只改 `algorithmId`
+会留下源算法的配置版本 id，这类模板会被直接拒绝，避免导入时把两个算法的名称与配置写到一起。
+
+`algorithm/layout/save` 的请求体目前不包含 `algorithmName`（板端 DTO 尚无该字段），因此该接口不会修正设备上的
+算法名称。工具会在导入前后各读一次 `/Algorithm/Page`，如果某个算法的名称在导入后变为空或发生变化，会在日志中
+给出告警；空名称会让板端回退到文件名，在 Web 界面表现为 `{code}_{时间戳}` 这样的时间戳名称。
+
+发送 payload 时会带上模板的 `configVersionName`（缺省时取 `configVersionList` 中当前版本的名称）。板端
+`AlgorithmLayoutMng::LayoutSave` 会无条件写回该字段，不带会把设备上的版本名清空。
+
 仅当确认设备上已经存在对应算法编排时，才建议使用 `--skip-import`。如果跳过导入但设备上没有对应编排，任务绑定可能失败，采样会缺失有效数据。
 
 ## 使用建议

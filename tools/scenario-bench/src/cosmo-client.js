@@ -196,6 +196,11 @@ export class CosmoClient {
     return this._post('/algorithm/layout/save', payload);
   }
 
+  /** Update algorithm display metadata after a layout save. */
+  async algorithmUpdate(payload) {
+    return this._post('/algorithm/update', payload);
+  }
+
   /**
    * Upload one chunk of a file via multipart/form-data to the temp store.
    * Mirrors the frontend uploadVideoByChunk (src/web/src/views/gam/taskManager/index.vue).

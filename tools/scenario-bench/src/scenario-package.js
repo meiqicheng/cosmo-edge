@@ -281,6 +281,7 @@ export class ScenarioPackage {
       if (normalizeTaskType(task.type) === 'vlm' && task.targetFps == null) {
         throw new Error(`scenario.yml: VLM task "${task.id}" must define targetFps, for example targetFps: 0.2`);
       }
+      assertTemplateConsistency(task.template, { taskId: task.id, algorithmId: task.algorithmId });
     }
 
     const taskIds = new Set(this.tasks.map((t) => t.id));
@@ -290,6 +291,93 @@ export class ScenarioPackage {
       }
     }
   }
+}
+
+/**
+ * Reject templates whose identity is internally inconsistent.
+ *
+ * This guards the failure seen on rk3588-v29-run: a template copied from another
+ * algorithm kept the source `default-<code>` config-version id, so the name and
+ * config of two different algorithms were written onto each other. It also keeps
+ * `algorithmId`, `algorithmCode` and the scenario's `algorithmId` aligned, since
+ * layout/save derives its target from the template while task binding uses the
+ * scenario value.
+ *
+ * @param {object} template parsed algorithm template JSON
+ * @param {{ taskId?: string, algorithmId?: string }} [context]
+ * @returns {{ algorithmId: string, algorithmName: string, processNodes: number }}
+ */
+export function assertTemplateConsistency(template, { taskId = 'task', algorithmId } = {}) {
+  const source = `task "${taskId}" template`;
+  if (template == null || typeof template !== 'object' || Array.isArray(template)) {
+    throw new Error(`${source}: must be a JSON object`);
+  }
+
+  const expectedId = algorithmId == null ? '' : String(algorithmId).trim();
+  for (const field of ['algorithmId', 'algorithmCode']) {
+    const value = template[field];
+    if (value == null || String(value).trim() === '') continue;
+    if (expectedId && String(value).trim() !== expectedId) {
+      throw new Error(
+        `${source}: ${field} "${value}" does not match scenario.yml algorithmId "${expectedId}"`,
+      );
+    }
+  }
+
+  const code = String(template.algorithmId ?? template.algorithmCode ?? template.id ?? '').trim();
+  if (!code) throw new Error(`${source}: missing algorithmId/algorithmCode`);
+  if (expectedId && code !== expectedId) {
+    throw new Error(`${source}: algorithmId "${code}" does not match scenario.yml algorithmId "${expectedId}"`);
+  }
+
+  const name = template.algorithmName;
+  if (name == null || String(name).trim() === '') {
+    throw new Error(`${source}: algorithmName must be a non-empty string`);
+  }
+
+  const versions = template.configVersionList;
+  if (versions != null) {
+    if (!Array.isArray(versions)) throw new Error(`${source}: configVersionList must be an array`);
+    const confVersionId = template.confVersionId == null ? '' : String(template.confVersionId);
+    const seen = new Set();
+    for (const [index, version] of versions.entries()) {
+      const id = version?.id == null ? '' : String(version.id).trim();
+      if (!id) throw new Error(`${source}: configVersionList[${index}].id is required`);
+      if (seen.has(id)) throw new Error(`${source}: configVersionList has duplicate id "${id}"`);
+      seen.add(id);
+      if (id !== confVersionId && id !== `default-${code}`) {
+        throw new Error(
+          `${source}: configVersionList[${index}].id "${id}" is neither the active confVersionId `
+          + `"${confVersionId}" nor "default-${code}" (leftover from another algorithm?)`,
+        );
+      }
+    }
+  }
+
+  const nodes = parseProcessData(template);
+  const flowActionIds = new Set();
+  for (const [index, node] of nodes.entries()) {
+    const actionId = node?.actionId == null ? '' : String(node.actionId).trim();
+    if (!actionId) throw new Error(`${source}: algorithmProcessdata[${index}].actionId is required`);
+    const flowActionId = node?.flowActionId == null ? '' : String(node.flowActionId).trim();
+    if (!flowActionId) continue;
+    if (flowActionIds.has(flowActionId)) {
+      throw new Error(`${source}: duplicate flowActionId "${flowActionId}"`);
+    }
+    flowActionIds.add(flowActionId);
+  }
+  const knownRoots = new Set([...flowActionIds, '-1']);
+  for (const [index, node] of nodes.entries()) {
+    const preFlowActionId = node?.preFlowActionId == null ? '' : String(node.preFlowActionId).trim();
+    if (preFlowActionId && !knownRoots.has(preFlowActionId)) {
+      throw new Error(
+        `${source}: algorithmProcessdata[${index}].preFlowActionId "${preFlowActionId}" `
+        + 'does not reference any flowActionId in the same template',
+      );
+    }
+  }
+
+  return { algorithmId: code, algorithmName: String(name).trim(), processNodes: nodes.length };
 }
 
 function buildTaskConfig(
@@ -388,7 +476,11 @@ function buildLayoutSavePayload(template, targetFpsOverride = null) {
   return {
     confVersionId: template.confVersionId,
     algorithmId,
-    configVersionName: str(template.configVersionName ?? template.confVersionName),
+    // The board DTO (MsgLayoutSaveRecv) has no algorithmName field yet, so this
+    // key is documentation until the board honors it. assertTemplateConsistency
+    // still guarantees the template carries a real name.
+    algorithmName: str(template.algorithmName),
+    configVersionName: str(resolveConfigVersionName(template)),
     algorithmCategory: str(template.algorithmCategory),
     algorithmUsage: str(template.algorithmUsage),
     remark: str(template.remark),
@@ -397,6 +489,25 @@ function buildLayoutSavePayload(template, targetFpsOverride = null) {
     algorithmMetadata: str(template.algorithmMetadata),
     filePath: str(template.filePath),
   };
+}
+
+/**
+ * Resolve the display name of the config version referenced by confVersionId.
+ * AlgorithmLayoutMng::LayoutSave assigns `version["name"] = req.configVersionName`
+ * unconditionally, so omitting the field blanks the board-side version name.
+ */
+function resolveConfigVersionName(template) {
+  const explicit = template.configVersionName ?? template.confVersionName;
+  if (explicit != null && String(explicit) !== '') return explicit;
+
+  const versions = template.configVersionList;
+  if (!Array.isArray(versions) || !versions.length) return undefined;
+  const confVersionId = template.confVersionId;
+  const match = confVersionId == null
+    ? versions[0]
+    : versions.find((version) => version && String(version.id) === String(confVersionId));
+  const name = match?.name;
+  return name == null || String(name) === '' ? undefined : name;
 }
 
 function overrideProcessTargetFps(raw, targetFps) {

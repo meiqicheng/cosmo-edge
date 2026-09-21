@@ -547,12 +547,14 @@ async function runBenchmark(args) {
     if (args['skip-import']) {
       log.info('Skipping layout save (--skip-import).');
     } else {
+      const namesBefore = await readAlgorithmNames(client, log);
       for (const item of pkg.layoutSavePayloads) {
         log.info(`Saving orchestration template for task "${item.taskId}" via /algorithm/layout/save...`);
         await client.layoutSave(item.payload);
         throwIfAborted(signal);
       }
       log.info(`Layout saved for ${pkg.layoutSavePayloads.length} task(s).`);
+      await reconcileAlgorithmNames(client, pkg, namesBefore, log);
     }
 
     channelMgr = new ChannelManager(client, {
@@ -882,6 +884,92 @@ async function runCheckpoint(args) {
   if (result.failures.length) console.log(`  failed: ${result.failures.join(', ')}`);
   if (result.pending.length) console.log(`  pending: ${result.pending.join(', ')}`);
   process.exitCode = result.verdict === 'PASS' ? 0 : (result.verdict === 'IN_PROGRESS' ? 3 : 1);
+}
+
+/**
+ * Snapshot algorithmId -> algorithmName from the same /Algorithm/Page endpoint
+ * the Web UI renders.
+ * @returns {Promise<Map<string,string>|null>} null when the read failed.
+ */
+async function readAlgorithmNames(client, log) {
+  try {
+    const page = await client.algorithmPage({ pageNum: 1, pageSize: 500 });
+    const names = new Map();
+    for (const row of page?.rows ?? []) {
+      const id = String(row?.algorithmId ?? row?.id ?? '').trim();
+      if (id) names.set(id, String(row?.algorithmName ?? ''));
+    }
+    return names;
+  } catch (err) {
+    log.warn(`Could not read algorithm names: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * /algorithm/layout/save carries no algorithmName, so the board can blank the
+ * name or keep a stale one. Repair the display metadata through the public
+ * /algorithm/update route, then verify the value read back by the Web UI.
+ */
+async function reconcileAlgorithmNames(client, pkg, namesBefore, log) {
+  let namesAfter = await readAlgorithmNames(client, log);
+  if (!namesAfter) return;
+
+  const repaired = [];
+  for (const item of pkg.layoutSavePayloads) {
+    const id = String(item.algorithmId);
+    const desired = String(item.payload.algorithmName ?? '').trim();
+    const after = namesAfter.get(id);
+    if (after == null) {
+      log.warn(`Algorithm "${id}" is absent from /Algorithm/Page after layout save.`);
+      continue;
+    }
+    if (after === desired) {
+      const before = namesBefore?.get(id);
+      if (before && before !== after) {
+        log.warn(`Algorithm "${id}" name changed during layout/save: "${before}" -> "${after}".`);
+      } else {
+        log.info(`Algorithm "${id}" name "${after}" kept across layout/save.`);
+      }
+      continue;
+    }
+
+    const category = Number(item.payload.algorithmCategory);
+    if (!desired || !Number.isInteger(category)) {
+      log.warn(
+        `Algorithm "${id}" name after layout/save is "${after}" instead of "${desired}", `
+        + 'but the template does not contain enough metadata to repair it.',
+      );
+      continue;
+    }
+
+    log.warn(
+      `Algorithm "${id}" name after layout/save is "${after || '(empty)'}" instead of `
+      + `"${desired}"; repairing via /algorithm/update.`,
+    );
+    await client.algorithmUpdate({
+      algorithmId: id,
+      algorithmName: desired,
+      algorithmCategory: category,
+      remark: String(item.payload.remark ?? ''),
+    });
+    repaired.push({ id, desired });
+  }
+
+  if (!repaired.length) return;
+  namesAfter = await readAlgorithmNames(client, log);
+  if (!namesAfter) {
+    throw new Error('algorithm name repair could not be verified through /Algorithm/Page');
+  }
+  for (const { id, desired } of repaired) {
+    const actual = namesAfter.get(id);
+    if (actual !== desired) {
+      throw new Error(
+        `algorithm "${id}" name repair failed: expected "${desired}", got "${actual ?? '(missing)'}"`,
+      );
+    }
+    log.info(`Algorithm "${id}" name repaired to "${desired}".`);
+  }
 }
 
 async function main() {

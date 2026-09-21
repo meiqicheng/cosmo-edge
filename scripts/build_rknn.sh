@@ -180,8 +180,9 @@ cmake -S "${PROJECT_ROOT_PATH}" -B "${BUILD_DIR}" \
     -DRESOURCE_MODELS_DIR="${RESOURCE_MODELS_DIR}"
 
 ln -sf "${BUILD_DIR}/compile_commands.json" "${PROJECT_ROOT_PATH}/compile_commands.json" 2>/dev/null || true
-cmake --build "${BUILD_DIR}" --target install -j1
+echo "Parallel build jobs: ${BUILD_JOBS}"
+cmake --build "${BUILD_DIR}" --target install -j"${BUILD_JOBS}"
 if [ "${BUILD_TESTS_FLAG}" = "ON" ]; then
-    cmake --build "${BUILD_DIR}" --target cosmo-tests -j1
+    cmake --build "${BUILD_DIR}" --target cosmo-tests -j"${BUILD_JOBS}"
 fi
-cmake --build "${BUILD_DIR}" --target package_all
+cmake --build "${BUILD_DIR}" --target package_all -j"${BUILD_JOBS}"
