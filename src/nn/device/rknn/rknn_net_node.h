@@ -15,6 +15,18 @@ namespace cosmo::nn {
 
 inline constexpr char kRknnRgbUint8InputContract[] = "cosmo.rknn.input.rgb_u8_nhwc_0_255_to_0_1.v1";
 
+// Detector input rectangle contract: width is fixed at 640 and height must be a
+// multiple of 32 inside [352, 640] (e.g. 640x640, 640x480, 640x416, 640x384).
+// A multiple of 32 satisfies the YOLOv8 P5 stride-32 grid constraint and the
+// RKNPU2 8/16-byte alignment rules at the same time; the lower bound follows the
+// 640x352 candidate documented in the detector-input rectangularization analysis.
+inline constexpr int kRknnDetectorInputWidth      = 640;
+inline constexpr int kRknnDetectorInputMinHeight  = 352;
+inline constexpr int kRknnDetectorInputAlignment  = 32;
+
+bool IsRknnDetectorInputHeight(int height);
+bool IsRknnDetectorInputSize(int height, int width);
+
 bool IsRknnRgbUint8InputContract(const std::string& contract);
 bool IsRknnNativeInt8InputCompatible(const rknn_tensor_attr& attr, const BlobDesc& desc);
 bool IsRknnNativeYolov8OutputCompatible(const std::vector<rknn_tensor_attr>& attrs,

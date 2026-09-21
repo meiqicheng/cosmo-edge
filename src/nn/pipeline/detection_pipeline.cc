@@ -120,12 +120,15 @@ Status YoloV5DetPipeline::Init(const PipelineConfig& config, const std::string& 
         int top_k         = pipeline_utils::ReadInt(p, "top_k", 1000);
         bool use_npu_post = pipeline_utils::ReadBool(p, "use_npu_postprocess", false);
 
-        // Extract input size for coordinate denormalization
+        // Extract input size for coordinate denormalization.
+        // "input_size" follows the [height, width] convention shared with
+        // Resize::dsize so rectangular inputs (e.g. [384, 640]) stay consistent
+        // between preprocessing and postprocessing.
         int v5_input_w = 640, v5_input_h = 640;
         std::vector<int> input_size = pipeline_utils::ReadIntArray(p, "input_size", {}, 2);
         if (input_size.size() >= 2) {
-            v5_input_w = input_size[0];
-            v5_input_h = input_size[1];
+            v5_input_h = input_size[0];
+            v5_input_w = input_size[1];
         }
 
         for (size_t i = 0; i < mc.outputs.size(); i++) {
@@ -212,12 +215,12 @@ Status YoloV8DetPipeline::Init(const PipelineConfig& config, const std::string& 
         float conf_thresh = pipeline_utils::ReadFloat(p, "confidence_threshold", 0.25f);
         int top_k         = pipeline_utils::ReadInt(p, "top_k", 300);
 
-        // Extract input size for coordinate denormalization
+        // Extract input size for coordinate denormalization ([height, width]).
         int post_input_w = 640, post_input_h = 640;
         std::vector<int> input_size = pipeline_utils::ReadIntArray(p, "input_size", {}, 2);
         if (input_size.size() >= 2) {
-            post_input_w = input_size[0];
-            post_input_h = input_size[1];
+            post_input_h = input_size[0];
+            post_input_w = input_size[1];
         }
 
         for (size_t i = 0; i < mc.outputs.size(); i++) {
@@ -290,12 +293,12 @@ Status Yolo26DetPipeline::Init(const PipelineConfig& config, const std::string& 
         float conf_thresh = pipeline_utils::ReadFloat(p, "confidence_threshold", 0.25f);
         int top_k         = pipeline_utils::ReadInt(p, "top_k", 300);
 
-        // Extract input size for coordinate denormalization
+        // Extract input size for coordinate denormalization ([height, width]).
         int e2e_input_w = 640, e2e_input_h = 640;
         std::vector<int> input_size = pipeline_utils::ReadIntArray(p, "input_size", {}, 2);
         if (input_size.size() >= 2) {
-            e2e_input_w = input_size[0];
-            e2e_input_h = input_size[1];
+            e2e_input_h = input_size[0];
+            e2e_input_w = input_size[1];
         }
 
         for (size_t i = 0; i < mc.outputs.size(); i++) {
@@ -377,12 +380,12 @@ Status GenericDetectorPipeline::Init(const PipelineConfig& config, const std::st
             output.data_type = out_def.data_type;
 
             if (i == 0) {
-                // Extract input size for coordinate denormalization
+                // Extract input size for coordinate denormalization ([height, width]).
                 int gd_input_w = 640, gd_input_h = 640;
                 std::vector<int> input_size = pipeline_utils::ReadIntArray(p, "input_size", {}, 2);
                 if (input_size.size() >= 2) {
-                    gd_input_w = input_size[0];
-                    gd_input_h = input_size[1];
+                    gd_input_h = input_size[0];
+                    gd_input_w = input_size[1];
                 }
                 if (post_type == "yolov8") {
                     output.op = pipeline_utils::MakeYoloV8PostOp(nms_thresh, conf_thresh, top_k, gd_input_w,
