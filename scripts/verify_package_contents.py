@@ -447,9 +447,11 @@ def verify_algorithm_resources(contents: dict[str, bytes]) -> None:
         for field in ("algorithmMetadata", "algorithmProcessdata", "atomicList"):
             if field not in payload:
                 continue
-            if not isinstance(payload[field], str):
+            # Runtime packets carry these as JSON strings; templates migrated to
+            # structured values are serialized to strings on load.
+            if not isinstance(payload[field], (str, dict, list)):
                 raise PackageAuditError(
-                    f"algorithm resource {field} must be a JSON string: {relative}"
+                    f"algorithm resource {field} must be a JSON string, object, or array: {relative}"
                 )
 
 
