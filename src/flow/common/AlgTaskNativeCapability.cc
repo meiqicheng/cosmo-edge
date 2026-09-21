@@ -29,6 +29,37 @@ AlgTaskNativeCapability ResolveAlgTaskNativeCapability(std::string_view actionId
     if (actionId == AADetect_Code || actionId == AATrack_Code || actionId == BAFilter_Code) {
         return ResolveBoxOnlyAtomic();
     }
+    // Sensitivity variants score detection geometry (boxes, track ids, frame
+    // identity) only; their HandFrame reads are null-safe on the native-only
+    // path (measured 2026-09-20, Sensitivity.cc / PosSaveSensitivityCalc.cc).
+    if (actionId == BASensitivity_Code || actionId == BAFixCountSensitivity_Code) {
+        return ResolveBoxOnlyAtomic();
+    }
+    // TaskAlarm's per-frame HandFrame reads only frame width/height (null-safe
+    // fallback) and combines alarm geometry. Its media generation runs at
+    // alarm-event time; native-only frames are materialized on demand through
+    // the P1-2 alarm-materialization gate (MaterializeNativeBuffer).
+    if (actionId == BATaskAlarm_Code) {
+        return ResolveBoxOnlyAtomic();
+    }
+    // Atomic classification (helmet two-stage) consumes pixels only through
+    // the native DMA-BUF blob path (ConvertImagesToBlobs + RKNN preprocess
+    // RGA crop); it never requires a host frame. AcceptClassifyNativeData in
+    // AiClassifier gates the action-side frame check.
+    if (actionId == AAClassify_Code) {
+        return ResolveBoxOnlyAtomic();
+    }
+    // Logical judgment combines classify/track geometry via the calc engine —
+    // no pixel access (LogicalJudgment::HandFrame).
+    if (actionId == BALogicalJudgment_Code) {
+        return ResolveBoxOnlyAtomic();
+    }
+    // BAPositiveSaveSensitivity retains frame references (idData.frame) for
+    // deferred picture generation; enabled together with the P1-2 on-demand
+    // materialization helper (materialize at alarm-candidate time only).
+    if (actionId == BAPositiveSaveSensitivity_Code) {
+        return ResolveBoxOnlyAtomic();
+    }
     return kFailClosed;
 }
 

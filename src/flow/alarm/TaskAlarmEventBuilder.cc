@@ -128,9 +128,15 @@ CMsgOnEventsReq TaskAlarm::BuildBaseEventData(const AlgDataPtr& algData, const D
 // ---------------------------------------------------------------------------
 void TaskAlarm::AttachAlarmMedia(CMsgOnEventsReq& eventData, const AlgDataPtr& algData,
                                  DataAlarmUnit& alarmUnit) {
-    if (!algData->chanDataDec.frame) {
-        LOG_ERRO("{}[{}] AttachAlarmMedia: null decoded frame, alarm media skipped", kTag,
-                 alarmUnit.trackId);
+    // Frame identity resolves from the host frame when present, otherwise
+    // from the decode-stage metadata carried by native-only (DMA-BUF) frames.
+    // Media recording needs only stream/frame identity, not host pixels, so
+    // native-only frames keep full alarm-video behavior.
+    const auto resolved = ResolveAlgFrameInfo(algData->chanDataDec);
+    const bool has_frame_identity =
+        (algData->chanDataDec.frame && algData->chanDataDec.frame->Active()) || algData->chanDataDec.meta.valid;
+    if (!has_frame_identity) {
+        LOG_ERRO("{}[{}] AttachAlarmMedia: no frame identity, alarm media skipped", kTag, alarmUnit.trackId);
         return;
     }
 
@@ -139,9 +145,9 @@ void TaskAlarm::AttachAlarmMedia(CMsgOnEventsReq& eventData, const AlgDataPtr& a
         ((OnEventsReportType::Trigger == alarmUnit.reportType) && (m_param.triggerEventRecordType)) ||
         ((OnEventsReportType::Realtime == alarmUnit.reportType) && (m_param.realtimeEventRecordType))) {
         auto jsonFile          = RecordVideoJson(eventData);
-        int64_t frameSeq       = algData->chanDataDec.frame->GetFrameIndex();
-        int64_t streamIndex    = algData->chanDataDec.frame->GetStreamIndex();
-        int64_t frameTimestamp = algData->chanDataDec.frame->GetTimestamp();
+        int64_t frameSeq       = resolved.frameIndex;
+        int64_t streamIndex    = resolved.streamIndex;
+        int64_t frameTimestamp = resolved.timestamp;
 
         if (service::ServiceRegistry::Instance()
                 .Get<service::IConfigReadService>()

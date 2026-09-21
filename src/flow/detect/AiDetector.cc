@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <sstream>
 #include <unordered_map>
 
@@ -152,7 +153,11 @@ AiDetector::~AiDetector() {
 AiDetector::AiDetector(ActionNode& action)
     : AlgActionBase(AlgActionType::AlgActionAiDetect, action, "", "", action.atomicCode + " AiDetector") {
     action_status = util::ErrorEnum::ActionReady;
-    data_queue->SetMaxSize(30);
+    // Shallow queue: under overload the backlog must show up early as bounded,
+    // controlled drops instead of deep-queue seconds of latency (which the
+    // fuse reads as "fps ok but critical path blown"). Depth sized to cover
+    // ~2 full batches at the 4-frame drain batch plus scheduling slack.
+    data_queue->SetMaxSize(16);
     alg_code_ = action.atomicCode;
     name_     = action.atomicCode;
     uuid      = util::GenerateUUID();
@@ -163,7 +168,9 @@ AiDetector::AiDetector(ActionNode& action)
     max_reuse_count_     = LookupMaxReuseCount(alg_code_);
     instance_fps_budget_ = LookupInstanceFpsBudget(alg_code_);
     reuse_profile_       = LookupReuseProfile(alg_code_);
-    data_queue->SetMaxSize(48);
+    // Shallow queue (see constructor comment): bounded early drops instead of
+    // deep-queue seconds of latency under overload.
+    data_queue->SetMaxSize(16);
 
     LOG_INFO("{}[{} {}] Init MaxReuse:{} BatchCount:{} FpsBudget:{} ReuseProfile:{}", kTag, name_, uuid,
              max_reuse_count_, batch_count_, instance_fps_budget_, ReuseProfileToString(reuse_profile_));
@@ -440,9 +447,19 @@ AlgDataPtr AiDetector::ConfidenceFilter(AlgDataPtr data_ptr, const std::string& 
 // SetProcQueSize — moved to AiDetectorTask.cc
 
 void AiDetector::run() {
-    int index = 0;
+    // Bounded-latency drain: a partial batch must not sit in the queue for a
+    // full second waiting for more frames (the old index>=100 polling fallback
+    // waited ~1 s, which surfaced directly as critical-path P99 latency and
+    // triggered the discard-based quick fuse under load). Drain any partial
+    // batch after kBatchDrainMaxWaitMs instead.
+    constexpr int kBatchDrainMaxWaitMs = 150;
+    auto last_drain                    = std::chrono::steady_clock::now();
     while (running) {
-        if ((data_queue->RestSize() >= batch_count_) || ((index >= 100) && (data_queue->RestSize() > 0))) {
+        const auto idle_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 std::chrono::steady_clock::now() - last_drain)
+                                 .count();
+        if ((data_queue->RestSize() >= batch_count_) ||
+            (data_queue->RestSize() > 0 && idle_ms >= kBatchDrainMaxWaitMs)) {
             size_t detnum     = data_queue->RestSize();
             auto inputFpsCalc = input_fps_calc.FpsWithFrame();
             handle_frame_cnt  = inputFpsCalc.first;
@@ -464,10 +481,9 @@ void AiDetector::run() {
                     duration_stat.EndSample();
                 }
             }
-            index = 0;
+            last_drain = std::chrono::steady_clock::now();
         } else {
             data_queue->WaitForData(10);
-            index += 1;
         }
     }
     // Release model on thread exit to free VRAM (AiSdkInit will reload on next start)

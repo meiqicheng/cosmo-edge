@@ -311,9 +311,21 @@ namespace {
 
         const auto rga_started = std::chrono::steady_clock::now();
         const int source_fd = mpp_buffer_get_fd(buffer);
-        Dma32Buffer target_dma;
+        // Reuse a per-thread staging buffer instead of allocating a fresh
+        // dma32 buffer for every frame. A per-frame Allocate costs
+        // open + DMA_HEAP_IOCTL_ALLOC + mmap/munmap + close churn that adds
+        // fd pressure and allocator jitter to the copy-out path. Materialize
+        // can run on different consumer threads, so the buffer is
+        // thread_local rather than shared across threads.
+        static thread_local media::Dma32Buffer target_dma;
+        if (target_dma.Size() != output->GetSize()) {
+            target_dma.Release();
+            if (!target_dma.Allocate(output->GetSize())) {
+                target_dma.Release();
+            }
+        }
         IM_STATUS status = IM_STATUS_OUT_OF_MEMORY;
-        if (source_fd >= 0 && target_dma.Allocate(output->GetSize())) {
+        if (source_fd >= 0 && target_dma.Size() == output->GetSize()) {
             // Pass the decoder-owned dma-buf directly so librga retains the
             // MPP plane/stride metadata on RK3588.
             const auto source = wrapbuffer_fd_t(source_fd, static_cast<int>(width),
@@ -647,6 +659,11 @@ bool VideoDecoderRockchip::ConfigureFrameGroup(size_t buffer_size) {
         return false;
     }
     if (!reuse_existing_group) {
+        // The buffer group's dma-bufs are all replaced here (creation or
+        // mpp_buffer_group_clear): bump the epoch so RGA fd-handle caches in
+        // the inference nodes drop handles for the old dma-bufs before reused
+        // fd numbers can resolve to a wrong buffer.
+        media::BumpRockchipDecoderEpoch();
         ret = mpp_buffer_group_limit_config(state_->frame_group, buffer_size, kDecoderBufferCount);
         if (ret != MPP_OK) {
             LOG_WARN("{} MPP decoder frame-group limit failed: {}", idx_name_, ret);
@@ -814,6 +831,9 @@ void VideoDecoderRockchip::CleanMpp() {
         state_->api     = nullptr;
     }
     if (state_->frame_group) {
+        // Frame flow has stopped: invalidate stale RGA handles for this
+        // group's dma-bufs process-wide (see BumpRockchipDecoderEpoch).
+        media::BumpRockchipDecoderEpoch();
         mpp_buffer_group_put(state_->frame_group);
         state_->frame_group = nullptr;
     }

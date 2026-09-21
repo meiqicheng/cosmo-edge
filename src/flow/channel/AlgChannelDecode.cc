@@ -381,6 +381,17 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
         native_inference_buffer && native_inference_buffer->Valid() && task_plan.SupportsNativeInference();
     const bool skip_materialize = all_tasks_native && viewer_plan.empty() &&
                                   !NeedsHostFrame(output_stream_index) && !RequiresHostFrame();
+    // One-shot diagnostic: a native descriptor was exported for this frame yet
+    // the host materialization still runs. Log the exact disabling condition
+    // once per process so the materialization-gate regression is visible.
+    static std::atomic<bool> skip_materialize_reason_logged{false};
+    if (native_inference_buffer && !skip_materialize && !skip_materialize_reason_logged.exchange(true)) {
+        LOG_WARN(
+            "Native-only materialize-skip disabled: deferred={} task_plan_empty={} native_all={} "
+            "viewer_plan_empty={} needs_host_frame={} requires_host_frame={} stream_index={}",
+            decoded_frame.IsDeferred(), task_plan.Empty(), all_tasks_native, viewer_plan.empty(),
+            NeedsHostFrame(output_stream_index), RequiresHostFrame(), output_stream_index);
+    }
 
     frame_index_ = video_frame->index;
     decode_count_++;

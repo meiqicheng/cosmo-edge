@@ -180,6 +180,12 @@ struct MsgGpuInfo {
     uint64_t rknnMppDmaBufFrames{0};
     uint64_t rknnMppDmaBufFallbacks{0};
     uint64_t rknnMppDmaBufSourceBytes{0};
+    uint64_t rknnRgaSourceImportCalls{0};
+    double rknnRgaSourceImportMs{0.0};
+    uint64_t rknnRgaSourceImportFailures{0};
+    uint64_t rknnRgaSourceCacheHits{0};
+    uint64_t rknnRgaLockWaitCalls{0};
+    double rknnRgaLockWaitMs{0.0};
     uint64_t rknnNativeInt8Outputs{0};
     uint64_t rknnFloatOutputs{0};
     uint64_t rknnOutputCompatibilityFallbacks{0};

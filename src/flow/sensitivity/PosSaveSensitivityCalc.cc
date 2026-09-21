@@ -3,6 +3,9 @@
 #include "flow/common/AlgDataRecord.h"
 #include "flow/sensitivity/PosSaveSensitivity.h"
 #include "flow/sensitivity/PosSaveSensitivityTypes.h"
+#ifdef COSMO_MEDIA_USE_ROCKCHIP_BACKEND
+#include "media/NativeVideoMaterialize.h"
+#endif
 #include "util/Log.h"
 #include "util/TimeUtil.h"
 #include "util/UuidUtil.h"
@@ -81,15 +84,26 @@ void PosSaveSensitivity::CalcSensitity(AlgDataPtr algData) {
         } else {
             // Frame information
             if ((idData.logic_count_can_be_alarm) && (!idData.target.bFilter)) {
-                if ((nullptr == idData.frame) && dec_frame_) {
-                    LOG_INFO("{}DEBUG [{}] TrackId:{} Frame:{} DataFrame:{} srcFrame:{} [{}.{} {}x{}]", kTag,
-                             task_id, idData.track_id, frame_index_,
-                             algData->chanDataDec.frame->GetFrameIndex(), dec_frame_->GetFrameIndex(),
-                             idData.target.box.x, idData.target.box.y, idData.target.box.width,
-                             idData.target.box.height);
-                    idData.frame                            = dec_frame_;
-                    idData.target_confidence_info.targetPos = idData.target.targetPos;
-                    idData.target_confidence_info.box       = idData.target.box;
+                if (nullptr == idData.frame) {
+                    // Best-candidate retention. Host frames are retained by
+                    // reference; native-only (DMA-BUF) frames materialize on
+                    // demand at candidate time (P1-2 gate) — bounded by the
+                    // candidate rate, not the full frame rate.
+                    VideoFramePtr candidate = dec_frame_;
+#ifdef COSMO_MEDIA_USE_ROCKCHIP_BACKEND
+                    if (!candidate && algData->chanDataDec.native_buffer &&
+                        algData->chanDataDec.native_buffer->Valid()) {
+                        candidate = media::MaterializeNativeBuffer(*algData->chanDataDec.native_buffer);
+                    }
+#endif
+                    if (candidate) {
+                        LOG_INFO("{}DEBUG [{}] TrackId:{} Frame:{} DataFrame:{} [{}.{} {}x{}]", kTag, task_id,
+                                 idData.track_id, frame_index_, candidate->GetFrameIndex(), idData.target.box.x,
+                                 idData.target.box.y, idData.target.box.width, idData.target.box.height);
+                        idData.frame                            = candidate;
+                        idData.target_confidence_info.targetPos = idData.target.targetPos;
+                        idData.target_confidence_info.box       = idData.target.box;
+                    }
                 }
             }
         }

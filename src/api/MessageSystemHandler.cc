@@ -264,6 +264,12 @@ System::MsgQueryHardwareResourceSend MessageSystemHandler::Handle(
     accelerator.rknnMppDmaBufFrames                = inference.rknn_mpp_dmabuf_frames;
     accelerator.rknnMppDmaBufFallbacks             = inference.rknn_mpp_dmabuf_fallbacks;
     accelerator.rknnMppDmaBufSourceBytes           = inference.rknn_mpp_dmabuf_source_bytes;
+    accelerator.rknnRgaSourceImportCalls           = inference.rknn_rga_source_import_calls;
+    accelerator.rknnRgaSourceImportMs              = inference.rknn_rga_source_import_nanoseconds / 1000000.0;
+    accelerator.rknnRgaSourceImportFailures        = inference.rknn_rga_source_import_failures;
+    accelerator.rknnRgaSourceCacheHits             = inference.rknn_rga_source_cache_hits;
+    accelerator.rknnRgaLockWaitCalls               = inference.rknn_rga_lock_wait_calls;
+    accelerator.rknnRgaLockWaitMs                  = inference.rknn_rga_lock_wait_nanoseconds / 1000000.0;
     accelerator.rknnNativeInt8Outputs              = inference.rknn_native_int8_outputs;
     accelerator.rknnFloatOutputs                   = inference.rknn_float_outputs;
     accelerator.rknnOutputCompatibilityFallbacks   = inference.rknn_output_compatibility_fallbacks;

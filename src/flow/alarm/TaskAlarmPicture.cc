@@ -7,6 +7,7 @@
 #include "flow/alarm/TaskAlarmInternalTypes.h"
 #include "flow/common/AreaLineUtil.h"
 #include "media/Color.h"
+#include "media/NativeVideoMaterialize.h"
 #include "media/VideoFrame.h"
 #include "service/detail/ServiceRegistry.h"
 #include "service/media/IVideoFrameCodec.h"
@@ -98,9 +99,32 @@ void TaskAlarm::HandPicture(CMsgOnEventsReq& msg, AlgDataPtr algData, DataAlarmU
 #ifdef DURATION_LOG
     auto timpointCopyFrame = std::chrono::high_resolution_clock::now();
 #endif
-    // Original photo
-    auto origImg = service::ServiceRegistry::Instance().Get<service::IVideoFrameOSD>().CopyJpegSrcFrame(
-        algData->chanDataDec.frame);
+    // Original photo. Native-only (DMA-BUF) frames carry no host pixels:
+    // materialize on demand at alarm time (P1-2 gate) instead of failing.
+    VideoFramePtr origImg;
+#ifdef COSMO_MEDIA_USE_ROCKCHIP_BACKEND
+    if (!algData->chanDataDec.frame && algData->chanDataDec.native_buffer &&
+        algData->chanDataDec.native_buffer->Valid()) {
+        origImg = media::MaterializeNativeBuffer(*algData->chanDataDec.native_buffer);
+        if (!origImg) {
+            LOG_WARN("{}[{}] AlarmPicture native materialization failed "
+                     "(alarm event still delivered)",
+                     kTag, task_id);
+            return;
+        }
+    }
+#else
+    if (!algData->chanDataDec.frame && algData->chanDataDec.native_buffer) {
+        LOG_WARN("{}[{}] AlarmPicture skipped: native-only frame carries no host data "
+                 "(alarm event still delivered)",
+                 kTag, task_id);
+        return;
+    }
+#endif
+    if (!origImg) {
+        origImg = service::ServiceRegistry::Instance().Get<service::IVideoFrameOSD>().CopyJpegSrcFrame(
+            algData->chanDataDec.frame);
+    }
     if (!VideoFrameValid(origImg)) {
         LOG_WARN("{}", "CopyFrame Failed");
         return;
