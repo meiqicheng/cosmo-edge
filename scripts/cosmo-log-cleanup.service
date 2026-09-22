@@ -1,0 +1,15 @@
+[Unit]
+Description=Recover root disk space from oversized system logs at boot
+After=local-fs.target systemd-journal-flush.service rsyslog.service
+Before=cosmo.service
+RequiresMountsFor=/var/log /appfs/cosmo_wander/cwai_data/scripts
+
+[Service]
+Type=oneshot
+ExecStart=-/bin/bash /appfs/cosmo_wander/cwai_data/scripts/system-log-cleanup.sh
+RemainAfterExit=yes
+TimeoutStartSec=30
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

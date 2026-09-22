@@ -255,6 +255,17 @@ class PackageProfileTests(unittest.TestCase):
     def test_open_accepts_plain_model(self) -> None:
         verifier.verify_package(self.make_package("public-runtime"), "public-runtime")
 
+    def test_boot_log_cleanup_files_are_mandatory(self) -> None:
+        for required in (
+            "scripts/system-log-cleanup.sh",
+            "scripts/system-log-retention.py",
+            "scripts/cosmo-log-cleanup.service",
+        ):
+            with self.subTest(required=required):
+                package = self.make_package("public-runtime", omit_required_file=required)
+                with self.assertRaisesRegex(verifier.PackageAuditError, "required .*missing"):
+                    verifier.verify_package(package, "public-runtime")
+
     def test_distribution_license_bundle_is_mandatory(self) -> None:
         for required in (
             "LICENSE",
