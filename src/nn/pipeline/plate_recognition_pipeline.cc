@@ -55,6 +55,19 @@ namespace {
         return values;
     }
 
+    std::vector<int> ResolveImageInputSizeHw(const PipelineModelConfig& model_config,
+                                             const std::vector<int>& fallback_size) {
+        for (const auto& input : model_config.inputs) {
+            if (input.shape.size() == 4 && input.shape[1] == 3 && input.shape[2] > 0 && input.shape[3] > 0) {
+                return {input.shape[2], input.shape[3]};
+            }
+        }
+
+        if (fallback_size.size() >= 2 && fallback_size[0] > 0 && fallback_size[1] > 0)
+            return {fallback_size[1], fallback_size[0]};
+        return {};
+    }
+
     std::string FindOutputRole(const nlohmann::json& json, const char* role) {
         auto roles = json.find("output_roles");
         if (roles == json.end() || !roles->is_object())
@@ -189,9 +202,12 @@ Status PlateRecognitionPipeline::Init(const PipelineConfig& config, const std::s
     max_batch_      = model_config.max_batch;
 
     const std::vector<int> input_size = pipeline_utils::ReadIntArray(params, "input_size", {168, 48}, 2);
-    const std::vector<float> mean     = ReadScalarOrFloatArray(params, "normalize_mean", 0.0F, 3);
-    const std::vector<float> std_dev  = ReadScalarOrFloatArray(params, "normalize_std", 1.0F, 3);
-    const bool is_bgr                 = pipeline_utils::ReadBool(params, "is_bgr", true);
+    const std::vector<int> input_hw   = ResolveImageInputSizeHw(model_config, input_size);
+    if (input_hw.size() != 2 || input_hw[0] <= 0 || input_hw[1] <= 0)
+        return Status(COSMO_NN_ERR_PARAM, "plate_rec_color input size is invalid");
+    const std::vector<float> mean    = ReadScalarOrFloatArray(params, "normalize_mean", 0.0F, 3);
+    const std::vector<float> std_dev = ReadScalarOrFloatArray(params, "normalize_std", 1.0F, 3);
+    const bool is_bgr                = pipeline_utils::ReadBool(params, "is_bgr", true);
 
     std::vector<float> pixel_mean(3, 0.0F);
     std::vector<float> pixel_std(3, 1.0F);
@@ -203,8 +219,9 @@ Status PlateRecognitionPipeline::Init(const PipelineConfig& config, const std::s
     }
 
     std::vector<std::unique_ptr<Op>> preprocess;
-    // Model templates describe input_size as width,height; Resize expects height,width.
-    preprocess.push_back(pipeline_utils::MakeResizeOp({input_size[1], input_size[0]}, 0, {0, 0, 0}));
+    // Prefer the ONNX-declared NCHW shape so imported runtime configs with a
+    // different input_size ordering (for example [48,168]) stay compatible.
+    preprocess.push_back(pipeline_utils::MakeResizeOp(input_hw, 0, {0, 0, 0}));
     preprocess.push_back(pipeline_utils::MakeNormalizeOp(pixel_mean, 1.0F, is_bgr, pixel_std));
 
     for (const auto& input_def : model_config.inputs) {
