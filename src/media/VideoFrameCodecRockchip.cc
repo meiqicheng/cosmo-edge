@@ -567,9 +567,10 @@ namespace {
     /// engine fail here while the byte-identical probe8 step passed
     /// (mpp_jpeg_enc_probe9 variants A vs B/C).
     ///
-    /// This deliberately does NOT go through ConvertWithRga: that path latches
-    /// rga_unavailable_ on failure, which would switch off RGA for the whole
-    /// frame processor because of one encode-side hiccup.
+    /// This deliberately does NOT go through ConvertWithRga: that path counts
+    /// consecutive failures and arms the rga_retry_after_ns_ cooldown, and one
+    /// encode-side hiccup should never contribute to pausing RGA for the whole
+    /// frame processor.
     bool ConvertPackedIntoSemiPlanar(RockchipJpegCodecState& state, VideoFrame& source, int rga_format) {
         const int width  = static_cast<int>(source.GetWidth());
         const int height = static_cast<int>(source.GetHeight());
