@@ -3,6 +3,7 @@
 #include "nn/device/rknn/rknn_net_node.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <chrono>
 #include <cmath>
@@ -262,6 +263,85 @@ bool ShouldConfigureRknnCoreMask(RknnCoreMode mode) {
     // Single-core RKNPU2 devices reject even RKNN_NPU_CORE_AUTO, while
     // multi-core targets still accept the explicit core/split modes below.
     return mode != RknnCoreMode::Auto;
+}
+
+namespace {
+
+struct RknnSplitCostLedger {
+    std::mutex mutex;
+    // RK3588 exposes at most 3 NPU cores; COSMO_RKNN_TARGET_CORE_COUNT gates
+    // how many entries participate.
+    std::array<uint64_t, 3> core_cost{};
+};
+
+RknnSplitCostLedger& SplitCostLedger() {
+    static RknnSplitCostLedger ledger;
+    return ledger;
+}
+
+std::string LowercaseCopy(const char* raw) {
+    std::string value(raw);
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
+}  // namespace
+
+RknnSplitPolicy ConfiguredRknnSplitPolicy() {
+    // Default stays "sequence": the model byte-size proxy does not track the
+    // real NPU cost ratio closely enough, and the greedy ledger measured WORSE
+    // steady-state FPS than sequence at 6 channels (20.2 vs 24.05 fps on
+    // no-safety-helmet-24fps, RK3588 2026-09-21). Weighted remains available
+    // as an opt-in experiment via COSMO_RKNN_SPLIT_POLICY=weighted.
+    const char* raw = std::getenv("COSMO_RKNN_SPLIT_POLICY");
+    if (!raw || !*raw)
+        return RknnSplitPolicy::Sequence;
+    const auto value = LowercaseCopy(raw);
+    if (value == "sequence")
+        return RknnSplitPolicy::Sequence;
+    if (value == "weighted")
+        return RknnSplitPolicy::Weighted;
+    LOG_WARN("Invalid COSMO_RKNN_SPLIT_POLICY value:{}, fallback:sequence", raw);
+    return RknnSplitPolicy::Sequence;
+}
+
+const char* RknnSplitPolicyName(RknnSplitPolicy policy) {
+    switch (policy) {
+        case RknnSplitPolicy::Sequence:
+            return "sequence";
+        case RknnSplitPolicy::Weighted:
+        default:
+            return "weighted";
+    }
+}
+
+rknn_core_mask ResolveRknnSplitCoreMaskWeighted(uint64_t context_sequence, size_t model_bytes) {
+    (void)context_sequence;
+    auto& ledger = SplitCostLedger();
+    std::lock_guard<std::mutex> lock(ledger.mutex);
+    const uint32_t core_count = std::min<uint32_t>(RknnTargetCoreCount(), 3);
+    size_t best = 0;
+    for (uint32_t i = 1; i < core_count; ++i) {
+        if (ledger.core_cost[i] < ledger.core_cost[best])
+            best = i;
+    }
+    const uint64_t cost = model_bytes > 0 ? static_cast<uint64_t>(model_bytes) : 1;
+    ledger.core_cost[best] += cost;
+    switch (best) {
+        case 1:
+            return RKNN_NPU_CORE_1;
+        case 2:
+            return RKNN_NPU_CORE_2;
+        default:
+            return RKNN_NPU_CORE_0;
+    }
+}
+
+void ResetRknnSplitCostStateForTest() {
+    auto& ledger = SplitCostLedger();
+    std::lock_guard<std::mutex> lock(ledger.mutex);
+    ledger.core_cost.fill(0);
 }
 
 const char* RknnCoreModeName(RknnCoreMode mode) {
@@ -828,8 +908,23 @@ Status RknnNetNode::InitializeLoadedContext(uint64_t context_sequence, uint64_t 
     // happen to share one model fingerprint. The two-CV workload commonly
     // loads separate detector and classifier models, so per-model counters
     // would send both model families to Core0/Core1 and leave Core2 idle.
-    const auto core_mode           = ConfiguredRknnCoreMode();
-    const auto core_mask           = ResolveRknnCoreMask(core_mode, context_sequence);
+    const auto core_mode = ConfiguredRknnCoreMode();
+    rknn_core_mask core_mask{};
+    RknnSplitPolicy split_policy = RknnSplitPolicy::Sequence;
+    if (core_mode == RknnCoreMode::Split) {
+        split_policy = ConfiguredRknnSplitPolicy();
+        if (split_policy == RknnSplitPolicy::Weighted) {
+            // Balance accumulated model cost per core instead of raw context
+            // counts: with an odd channel count the sequence policy leaves one
+            // core carrying strictly more detector work and idles another,
+            // which surfaced as the 6->7 channel FPS collapse at ~88% NPU.
+            core_mask = ResolveRknnSplitCoreMaskWeighted(context_sequence, model_data_.size());
+        } else {
+            core_mask = ResolveRknnCoreMask(core_mode, context_sequence);
+        }
+    } else {
+        core_mask = ResolveRknnCoreMask(core_mode, context_sequence);
+    }
     const bool configure_core_mask = ShouldConfigureRknnCoreMask(core_mode);
     if (configure_core_mask) {
         result = rknn_set_core_mask(context_, core_mask);
@@ -869,13 +964,14 @@ Status RknnNetNode::InitializeLoadedContext(uint64_t context_sequence, uint64_t 
 
     LOG_INFO(
         "RKNN model loaded: api={} driver={} inputs={} runtime_outputs={} logical_outputs={} "
-        "output_adapter={} native_int8_output={} rgb_uint8_input_contract={} core_mode={} core_mask={} "
-        "core_mask_applied={} target_cores={} context_sequence={} model_fingerprint={}",
+        "output_adapter={} native_int8_output={} rgb_uint8_input_contract={} core_mode={} split_policy={} "
+        "core_mask={} core_mask_applied={} target_cores={} context_sequence={} model_bytes={} "
+        "model_fingerprint={}",
         version.api_version, version.drv_version, io_count_.n_input, io_count_.n_output, logical_outputs,
         RknnOutputAdapterName(output_adapter_contract_.kind), native_yolov8_outputs_,
         IsRknnRgbUint8InputContract(input_contract_), RknnCoreModeName(core_mode),
-        static_cast<int>(core_mask), configure_core_mask, RknnTargetCoreCount(), context_sequence,
-        model_fingerprint);
+        RknnSplitPolicyName(split_policy), static_cast<int>(core_mask), configure_core_mask,
+        RknnTargetCoreCount(), context_sequence, model_data_.size(), model_fingerprint);
     return COSMO_NN_OK;
 }
 

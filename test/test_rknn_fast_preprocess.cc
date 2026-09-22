@@ -363,6 +363,70 @@ TEST_CASE("RKNN core scheduling maps explicit and split modes deterministically"
     CHECK(std::string(RknnCoreModeName(RknnCoreMode::Core012)) == "core0_1_2");
 }
 
+TEST_CASE("RKNN weighted split policy balances per-core model cost", "[nn][rknn][split-policy]") {
+    using namespace cosmo::nn;
+    ScopedEnvironment policy("COSMO_RKNN_SPLIT_POLICY", "weighted");
+    CHECK(ConfiguredRknnSplitPolicy() == RknnSplitPolicy::Weighted);
+
+    {
+        ScopedEnvironment sequence("COSMO_RKNN_SPLIT_POLICY", "sequence");
+        CHECK(ConfiguredRknnSplitPolicy() == RknnSplitPolicy::Sequence);
+    }
+    {
+        ScopedEnvironment invalid("COSMO_RKNN_SPLIT_POLICY", "bogus");
+        CHECK(ConfiguredRknnSplitPolicy() == RknnSplitPolicy::Weighted);
+    }
+    CHECK(std::string(RknnSplitPolicyName(RknnSplitPolicy::Sequence)) == "sequence");
+    CHECK(std::string(RknnSplitPolicyName(RknnSplitPolicy::Weighted)) == "weighted");
+
+    // Simulate the two-CV workload: alternating detector (heavy) and
+    // classifier (light) contexts. Weighted assignment must keep the
+    // per-core accumulated cost within one max-context weight of balanced.
+    ResetRknnSplitCostStateForTest();
+    const size_t detector_bytes = 30u;
+    const size_t classifier_bytes = 10u;
+    const int channels = 7;
+    std::array<uint64_t, 3> per_core_cost{};
+    const uint32_t core_count = std::min<uint32_t>(RknnTargetCoreCount(), 3);
+    for (int i = 0; i < channels; ++i) {
+        for (int stage = 0; stage < 2; ++stage) {
+            const size_t model_bytes = stage == 0 ? detector_bytes : classifier_bytes;
+            const auto mask = ResolveRknnSplitCoreMaskWeighted(i * 2 + stage, model_bytes);
+            uint32_t core = 0;
+            if (mask == RKNN_NPU_CORE_1)
+                core = 1;
+            else if (mask == RKNN_NPU_CORE_2)
+                core = 2;
+            REQUIRE(core < core_count);
+            per_core_cost[core] += model_bytes;
+        }
+    }
+    const uint64_t max_cost = *std::max_element(per_core_cost.begin(), per_core_cost.begin() + core_count);
+    const uint64_t min_cost = *std::min_element(per_core_cost.begin(), per_core_cost.begin() + core_count);
+    // Greedy list scheduling keeps every core within one heaviest context of
+    // the optimal balance; the legacy sequence policy can exceed that on odd
+    // channel counts (the 6->7 channel FPS collapse).
+    REQUIRE(max_cost - min_cost <= detector_bytes);
+
+    // With equal-size models the policy must degenerate to a perfect spread.
+    ResetRknnSplitCostStateForTest();
+    std::array<int, 3> per_core_count{};
+    for (int i = 0; i < 6; ++i) {
+        const auto mask = ResolveRknnSplitCoreMaskWeighted(i, 100u);
+        uint32_t core = 0;
+        if (mask == RKNN_NPU_CORE_1)
+            core = 1;
+        else if (mask == RKNN_NPU_CORE_2)
+            core = 2;
+        REQUIRE(core < core_count);
+        per_core_count[core] += 1;
+    }
+    const int max_count = *std::max_element(per_core_count.begin(), per_core_count.begin() + core_count);
+    const int min_count = *std::min_element(per_core_count.begin(), per_core_count.begin() + core_count);
+    REQUIRE(max_count - min_count <= 1);
+    ResetRknnSplitCostStateForTest();
+}
+
 TEST_CASE("RKNN MPP DMA-BUF switch defaults on and supports explicit rollback", "[nn][rknn][mpp-dmabuf]") {
     using namespace cosmo::nn;
     {

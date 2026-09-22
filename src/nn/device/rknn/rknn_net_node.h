@@ -54,6 +54,18 @@ RknnCoreMode ConfiguredRknnCoreMode();
 uint32_t RknnTargetCoreCount();
 uint64_t NextRknnContextSequence();
 rknn_core_mask ResolveRknnCoreMask(RknnCoreMode mode, uint64_t context_sequence);
+
+enum class RknnSplitPolicy : uint8_t {
+    Sequence = 0,  // legacy: bind by load sequence modulo core count
+    Weighted,      // greedy cost-weighted assignment (model byte size proxy)
+};
+
+RknnSplitPolicy ConfiguredRknnSplitPolicy();
+const char* RknnSplitPolicyName(RknnSplitPolicy policy);
+// Greedy min-cost core assignment across Split mode. Keeps a per-core ledger of
+// accumulated model costs and binds each new context to the cheapest core.
+rknn_core_mask ResolveRknnSplitCoreMaskWeighted(uint64_t context_sequence, size_t model_bytes);
+void ResetRknnSplitCostStateForTest();
 bool IsRknnCoreModeSupported(RknnCoreMode mode);
 bool ShouldConfigureRknnCoreMask(RknnCoreMode mode);
 const char* RknnCoreModeName(RknnCoreMode mode);
