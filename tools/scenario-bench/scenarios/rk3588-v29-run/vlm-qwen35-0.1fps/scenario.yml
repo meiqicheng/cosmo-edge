@@ -1,0 +1,57 @@
+name: rk3588-capacity-vlm-qwen35-0.1fps
+displayName: RK3588 单任务容量矩阵 VLM Qwen3.5 0.1FPS
+sampleIntervalSec: 3
+
+channels:
+  mode: local
+  repeatCount: 0
+  sources:
+    - name: vlm-01
+      file: ../LX0000000007.mp4
+
+tasks:
+  - id: qwen35-vlm
+    displayName: Qwen3.5 VLM 分析
+    type: vlm
+    algorithmId: "7463006"
+    scheduleId: "e89c6c6385e5454b35cde0d1653vg"
+    template: ../algorithm-template-7463006.json
+    targetFps: 0.1
+
+bindings:
+  - task: qwen35-vlm
+    channels: all
+
+loadProfile:
+  - channels: 1
+    holdSec: 60
+  - channels: 2
+    holdSec: 60
+  - channels: 3
+    holdSec: 60
+  - channels: 4
+    holdSec: 60
+  - channels: 5
+    holdSec: 60
+  - channels: 6
+    holdSec: 60
+  - channels: 7
+    holdSec: 60
+  - channels: 8
+    holdSec: 60
+
+thresholds:
+  pass:
+    avgDiscardRate: 0.05
+    maxPacketDiscardRate: 0.01
+    maxDiskUsedPercent: 99
+  taskTypes:
+    vlm:
+      minFpsRatio: 0.8
+      maxMissingRate: 0
+      avgDiscardRate: 0.05
+
+# Before each hold window, the newly added route must advance its task-local
+# completion counter and expose direct Qwen latency. The 80% FPS threshold is
+# an executed gate; the last passing level and adjacent first failure define
+# the short-run capacity boundary.
