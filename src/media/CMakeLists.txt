@@ -5,6 +5,7 @@ set(MEDIA_COMMON_SRC
     EncodedImageInfo.cc           EncodedImageInfo.h
     FileDemuxStrategy.cc         FileDemuxStrategy.h
     IDemuxStrategy.h
+    NetworkDemuxStrategy.cc      NetworkDemuxStrategy.h
     IOsdTextRenderer.h
     IVideoFrameProc.h
     OsdTextRenderer.cc           OsdTextRenderer.h
