@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <map>
@@ -119,9 +120,18 @@ namespace {
                 REQUIRE(state->allocated == 0);
                 state->fail = false;
             }
-            REQUIRE(pool.Acquire(100) == nullptr);
+            // Acquire fills the first missing block synchronously, so a caller no
+            // longer observes a failure while the queued top-up is still in flight.
+            auto* first = pool.Acquire(100);
+            if (first) {
+                borrowed.blocks.push_back(first);
+            }
+            REQUIRE(first != nullptr);
+            REQUIRE(first->size == 1024);
             REQUIRE(state->WaitForCalls(1024, 21));
-            REQUIRE(WaitForIdle(pool, 1024, 20));
+            // The queued top-up lands either before or after the synchronous fill,
+            // so only the lower bound of the idle count is stable here.
+            REQUIRE(WaitForIdle(pool, 1024, 19));
             auto* block = pool.Acquire(100);
             if (block) {
                 borrowed.blocks.push_back(block);
@@ -129,17 +139,20 @@ namespace {
             REQUIRE(block != nullptr);
             REQUIRE(block->size == 1024);
             const auto in_use = pool.Status();
-            REQUIRE(in_use[0].used_cnt == 1);
-            REQUIRE(in_use[0].idle_cnt == 19);
-            REQUIRE(in_use[0].used_nodes_status.size() == 1);
+            REQUIRE(in_use[0].used_cnt == 2);
+            REQUIRE(in_use[0].idle_cnt >= 18);
+            REQUIRE(in_use[0].used_nodes_status.size() == 2);
             REQUIRE_FALSE(pool.OutputMallocBuf().empty());
             pool.Recycle(block);
-            borrowed.blocks.clear();
-            REQUIRE(pool.Status()[0].idle_cnt == 20);
-            REQUIRE(pool.Status()[0].used_cnt == 0);
+            borrowed.blocks.erase(std::find(borrowed.blocks.begin(), borrowed.blocks.end(), block));
+            REQUIRE(pool.Status()[0].idle_cnt >= 19);
+            REQUIRE(pool.Status()[0].used_cnt == 1);
             REQUIRE_NOTHROW(pool.Recycle(nullptr));
         }
-        REQUIRE(state->allocated == 20);
+        // 20 blocks from the queued top-up, plus the synchronous one when that fill
+        // wins the race against the queue.
+        REQUIRE(state->allocated >= 20);
+        REQUIRE(state->allocated <= 21);
         REQUIRE(state->freed == state->allocated);
         REQUIRE(state->unknown_frees == 0);
         REQUIRE(state->live.empty());
@@ -151,7 +164,14 @@ namespace {
         {
             MemoryPoolMng pool(std::make_unique<ControlledAllocator>(state), {1024, 2048});
             BorrowedBlocks borrowed(pool);
-            REQUIRE(pool.Acquire(1024) == nullptr);
+            // Acquire fills the first missing block synchronously, so the caller is
+            // served immediately instead of waiting for the queued top-up to land.
+            auto* seed = pool.Acquire(1024);
+            if (seed) {
+                borrowed.blocks.push_back(seed);
+            }
+            REQUIRE(seed != nullptr);
+            REQUIRE(seed->size == 1024);
             REQUIRE(state->WaitForCalls(1024, 20));
             REQUIRE(WaitForIdle(pool, 1024, 20));
             for (size_t index = 0; index < 80; ++index) {
@@ -183,13 +203,14 @@ namespace {
             REQUIRE(marker_started);
             {
                 std::lock_guard<std::mutex> lock(state->mutex);
-                REQUIRE(state->calls[1024] == 80);
+                // 80 queued top-up blocks plus the synchronous seed block.
+                REQUIRE(state->calls[1024] == 81);
             }
             const auto full = pool.Status();
             REQUIRE(full[0].pool_size == 1024);
-            REQUIRE(full[0].used_cnt == 80);
+            REQUIRE(full[0].used_cnt == 81);
             REQUIRE(full[0].idle_cnt == 0);
-            REQUIRE(full[0].used_nodes_status.size() == 80);
+            REQUIRE(full[0].used_nodes_status.size() == 81);
 
             auto* returned = borrowed.blocks.front();
             pool.Recycle(returned);
