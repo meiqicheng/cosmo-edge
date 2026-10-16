@@ -333,6 +333,23 @@ TEST_CASE("RKNN core scheduling maps explicit and split modes deterministically"
     CHECK(valid);
     CHECK(ParseRknnCoreMode("all", &valid) == RknnCoreMode::All);
     CHECK(valid);
+    // Bare count tokens: tools/rknn/rknn_runtime_probe.cc accepts these in its usage
+    // line, so the engine must accept them too or a bench-verified mode degrades to
+    // auto at runtime.
+    CHECK(ParseRknnCoreMode("0", &valid) == RknnCoreMode::Core0);
+    CHECK(valid);
+    CHECK(ParseRknnCoreMode("1", &valid) == RknnCoreMode::Core1);
+    CHECK(valid);
+    CHECK(ParseRknnCoreMode("2", &valid) == RknnCoreMode::Core2);
+    CHECK(valid);
+    CHECK(ParseRknnCoreMode("01", &valid) == RknnCoreMode::Core01);
+    CHECK(valid);
+    CHECK(ParseRknnCoreMode("012", &valid) == RknnCoreMode::Core012);
+    CHECK(valid);
+    CHECK(ParseRknnCoreMode("0_1_2", &valid) == RknnCoreMode::Core012);
+    CHECK(valid);
+    CHECK(ParseRknnCoreMode("max", &valid) == RknnCoreMode::All);
+    CHECK(valid);
     CHECK(ParseRknnCoreMode("unsupported", &valid) == RknnCoreMode::Auto);
     CHECK_FALSE(valid);
 
@@ -353,6 +370,9 @@ TEST_CASE("RKNN core scheduling maps explicit and split modes deterministically"
     }
     CHECK(IsRknnCoreModeSupported(RknnCoreMode::Auto));
     CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core0));
+    // All is count-agnostic by definition; it must never be rejected, or
+    // COSMO_RKNN_CORE_MODE=all falls back to the default mode with only a warning.
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::All));
     CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core1) == (cosmo::util::kRknnNpuCoreCount >= 2));
     CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core2) == (cosmo::util::kRknnNpuCoreCount >= 3));
     CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core01) == (cosmo::util::kRknnNpuCoreCount >= 2));

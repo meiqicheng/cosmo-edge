@@ -165,12 +165,15 @@ RknnCoreMode ParseRknnCoreMode(const std::string& value, bool* valid) {
         return RknnCoreMode::Core1;
     if (normalized == "core2" || normalized == "core_2" || normalized == "2")
         return RknnCoreMode::Core2;
+    // "01" / "012" are the bare tokens tools/rknn/rknn_runtime_probe.cc accepts and
+    // prints in its usage line. Without them a mode validated on the bench parses as
+    // invalid here and silently falls back to auto inside the engine.
     if (normalized == "core01" || normalized == "core0_1" || normalized == "core_0_1" ||
-        normalized == "dual") {
+        normalized == "01" || normalized == "0_1" || normalized == "dual") {
         return RknnCoreMode::Core01;
     }
     if (normalized == "core012" || normalized == "core0_1_2" || normalized == "core_0_1_2" ||
-        normalized == "tri" || normalized == "triple") {
+        normalized == "012" || normalized == "0_1_2" || normalized == "tri" || normalized == "triple") {
         return RknnCoreMode::Core012;
     }
     if (normalized == "all" || normalized == "max")
@@ -225,6 +228,12 @@ bool IsRknnCoreModeSupported(RknnCoreMode mode) {
     const int core_count = cosmo::util::kRknnNpuCoreCount;
     switch (mode) {
         case RknnCoreMode::Auto:
+            return true;
+        case RknnCoreMode::All:
+            // "Every core this part has" is satisfiable at any count: the resolver
+            // widens the mask to the parts that exist and skips rknn_set_core_mask
+            // entirely on a single-core RPU. Falling through to default here would
+            // make COSMO_RKNN_CORE_MODE=all silently degrade to the default mode.
             return true;
         case RknnCoreMode::Core0:
             return true;
