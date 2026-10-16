@@ -6,6 +6,7 @@
 .claude
 /.codex/
 /.agents/skills/
+/.workbuddy/
 
 # Local Codex-generated artifacts
 /.codex-tmp/

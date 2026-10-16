@@ -22,6 +22,7 @@
 #include "nn/device/rknn/rknn_net_node.h"
 #include "nn/device/rknn/rknn_preprocess_node.h"
 #include "nn/utils/op.h"
+#include "util/NnBackendConstants.h"
 
 namespace {
 
@@ -343,7 +344,7 @@ TEST_CASE("RKNN core scheduling maps explicit and split modes deterministically"
     CHECK(ResolveRknnCoreMask(RknnCoreMode::Core012, 7) == RKNN_NPU_CORE_0_1_2);
     CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 0) == RKNN_NPU_CORE_0);
     CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 1) == RKNN_NPU_CORE_1);
-    if (RknnTargetCoreCount() >= 3) {
+    if (cosmo::util::kRknnNpuCoreCount >= 3) {
         CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 2) == RKNN_NPU_CORE_2);
         CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 3) == RKNN_NPU_CORE_0);
     } else {
@@ -352,11 +353,11 @@ TEST_CASE("RKNN core scheduling maps explicit and split modes deterministically"
     }
     CHECK(IsRknnCoreModeSupported(RknnCoreMode::Auto));
     CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core0));
-    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core1) == (RknnTargetCoreCount() >= 2));
-    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core2) == (RknnTargetCoreCount() >= 3));
-    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core01) == (RknnTargetCoreCount() >= 2));
-    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core012) == (RknnTargetCoreCount() >= 3));
-    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Split) == (RknnTargetCoreCount() >= 2));
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core1) == (cosmo::util::kRknnNpuCoreCount >= 2));
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core2) == (cosmo::util::kRknnNpuCoreCount >= 3));
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core01) == (cosmo::util::kRknnNpuCoreCount >= 2));
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core012) == (cosmo::util::kRknnNpuCoreCount >= 3));
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Split) == (cosmo::util::kRknnNpuCoreCount >= 2));
     CHECK_FALSE(ShouldConfigureRknnCoreMask(RknnCoreMode::Auto));
     CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core0));
     CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core1));

@@ -89,10 +89,10 @@ rknn_core_mask ResolveRknnCoreMask(RknnCoreMode mode, uint64_t context_sequence,
 bool ShouldConfigureRknnCoreMask(RknnCoreMode mode, int npu_core_count);
 
 RknnCoreMode ConfiguredRknnCoreMode();
-uint32_t RknnTargetCoreCount();
 uint64_t NextRknnContextSequence();
-// Overload that resolves against the packaged core count; it forwards to the
-// count-aware overload above so both spellings agree.
+// Overload that resolves against the packaged core count
+// (cosmo::util::kRknnNpuCoreCount); it forwards to the count-aware overload above
+// so a caller that only knows the packaged profile gets the same answer.
 rknn_core_mask ResolveRknnCoreMask(RknnCoreMode mode, uint64_t context_sequence);
 
 enum class RknnSplitPolicy : uint8_t {

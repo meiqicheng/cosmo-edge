@@ -169,10 +169,10 @@ if(COSMO_NN_USE_RKNN_BACKEND)
     if(NOT EXISTS "${COSMO_PLATFORM_PROFILE}")
         message(FATAL_ERROR "RKNN platform profile not found: ${COSMO_PLATFORM_PROFILE}")
     endif()
-    # Both spellings are exported from one parse: COSMO_RKNN_NPU_CORE_COUNT is
-    # required by src/util/NnBackendConstants.h, while COSMO_RKNN_TARGET_CORE_COUNT
-    # is the macro the rknn_net_node core-mask code consumes. Keeping them in sync
-    # here is what stops a rename from silently idling the third RK3588 core.
+    # One spelling only. COSMO_RKNN_NPU_CORE_COUNT is parsed here and frozen into
+    # cosmo::util::kRknnNpuCoreCount by src/util/NnBackendConstants.h, which hard-fails
+    # the build when it is absent; the core-mask scheduler reads that same constant.
+    # A second macro could only drift and silently idle the third RK3588 core.
     file(READ "${COSMO_PLATFORM_PROFILE}" COSMO_PLATFORM_PROFILE_JSON)
     string(REGEX MATCH "\"npu_core_count\"[ \\t\\r\\n]*:[ \\t\\r\\n]*([0-9]+)"
         _cosmo_npu_core_match "${COSMO_PLATFORM_PROFILE_JSON}")
@@ -182,7 +182,6 @@ if(COSMO_NN_USE_RKNN_BACKEND)
             "Platform profile must declare runtime.npu_core_count in 1..3: "
             "${COSMO_PLATFORM_PROFILE}")
     endif()
-    set(COSMO_RKNN_TARGET_CORE_COUNT "${COSMO_RKNN_NPU_CORE_COUNT}")
     string(REGEX MATCH "\"default_core_mode\"[ \\t\\r\\n]*:[ \\t\\r\\n]*\"([A-Za-z0-9_]+)\""
         _cosmo_core_mode_match "${COSMO_PLATFORM_PROFILE_JSON}")
     set(COSMO_RKNN_DEFAULT_CORE_MODE "${CMAKE_MATCH_1}")
@@ -195,7 +194,6 @@ if(COSMO_NN_USE_RKNN_BACKEND)
         COSMO_RKNN_TARGET_CHIP="${COSMO_TARGET_CHIP_NORMALIZED}"
         COSMO_RKNN_TARGET_CHIP_LABEL="${COSMO_TARGET_CHIP_LABEL}"
         COSMO_RKNN_NPU_CORE_COUNT=${COSMO_RKNN_NPU_CORE_COUNT}
-        COSMO_RKNN_TARGET_CORE_COUNT=${COSMO_RKNN_TARGET_CORE_COUNT}
         COSMO_RKNN_DEFAULT_CORE_MODE="${COSMO_RKNN_DEFAULT_CORE_MODE}")
     message(STATUS
         "RKNN platform profile: ${COSMO_TARGET_CHIP_NORMALIZED} (npu cores=${COSMO_RKNN_NPU_CORE_COUNT}, "

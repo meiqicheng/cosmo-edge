@@ -24,11 +24,12 @@
 #include "util/Log.h"
 #include "util/NnBackendConstants.h"
 
+// Core mode is only a scheduling hint, so a packaged build that omits it degrades to
+// "auto". The core count is deliberately NOT defaulted here: a silent fallback would
+// pin an RK3588 to one core, so src/util/NnBackendConstants.h fails the build instead
+// and cosmo::util::kRknnNpuCoreCount is the single runtime spelling.
 #ifndef COSMO_RKNN_DEFAULT_CORE_MODE
 #define COSMO_RKNN_DEFAULT_CORE_MODE "auto"
-#endif
-#ifndef COSMO_RKNN_TARGET_CORE_COUNT
-#define COSMO_RKNN_TARGET_CORE_COUNT 1
 #endif
 
 namespace cosmo::nn {
@@ -196,15 +197,11 @@ RknnCoreMode ConfiguredRknnCoreMode() {
     }
     if (!IsRknnCoreModeSupported(core_mode)) {
         LOG_WARN("COSMO_RKNN_CORE_MODE={} is unsupported on {} with {} NPU core(s), fallback:{}",
-                 RknnCoreModeName(core_mode), cosmo::util::kTargetChip, RknnTargetCoreCount(),
+                 RknnCoreModeName(core_mode), cosmo::util::kTargetChip, cosmo::util::kRknnNpuCoreCount,
                  RknnCoreModeName(DefaultRknnCoreMode()));
         return DefaultRknnCoreMode();
     }
     return core_mode;
-}
-
-uint32_t RknnTargetCoreCount() {
-    return COSMO_RKNN_TARGET_CORE_COUNT;
 }
 
 uint64_t NextRknnContextSequence() {
@@ -223,7 +220,9 @@ int NormalizeRknnNpuCoreCount(int npu_core_count) {
 }
 
 bool IsRknnCoreModeSupported(RknnCoreMode mode) {
-    const auto core_count = RknnTargetCoreCount();
+    // Silicon capability, not a runtime override: the env override produces a
+    // separate effective count that callers pass explicitly.
+    const int core_count = cosmo::util::kRknnNpuCoreCount;
     switch (mode) {
         case RknnCoreMode::Auto:
             return true;
@@ -312,9 +311,10 @@ rknn_core_mask ResolveRknnCoreMask(RknnCoreMode mode, uint64_t context_sequence,
 }
 
 // Overload for callers that only know the packaged core count: it forwards to the
-// count-aware resolution so both spellings of the query stay in agreement.
+// count-aware resolution so the packaged query and the runtime-override query
+// cannot diverge.
 rknn_core_mask ResolveRknnCoreMask(RknnCoreMode mode, uint64_t context_sequence) {
-    return ResolveRknnCoreMask(mode, context_sequence, static_cast<int>(RknnTargetCoreCount()));
+    return ResolveRknnCoreMask(mode, context_sequence, cosmo::util::kRknnNpuCoreCount);
 }
 
 bool ShouldConfigureRknnCoreMask(RknnCoreMode mode, int npu_core_count) {
@@ -323,14 +323,14 @@ bool ShouldConfigureRknnCoreMask(RknnCoreMode mode, int npu_core_count) {
 }
 
 bool ShouldConfigureRknnCoreMask(RknnCoreMode mode) {
-    return ShouldConfigureRknnCoreMask(mode, static_cast<int>(RknnTargetCoreCount()));
+    return ShouldConfigureRknnCoreMask(mode, cosmo::util::kRknnNpuCoreCount);
 }
 
 namespace {
 
 struct RknnSplitCostLedger {
     std::mutex mutex;
-    // RK3588 exposes at most 3 NPU cores; COSMO_RKNN_TARGET_CORE_COUNT gates
+    // RK3588 exposes at most 3 NPU cores; cosmo::util::kRknnNpuCoreCount gates
     // how many entries participate.
     std::array<uint64_t, 3> core_cost{};
 };
@@ -381,7 +381,8 @@ rknn_core_mask ResolveRknnSplitCoreMaskWeighted(uint64_t context_sequence, size_
     (void)context_sequence;
     auto& ledger = SplitCostLedger();
     std::lock_guard<std::mutex> lock(ledger.mutex);
-    const uint32_t core_count = std::min<uint32_t>(RknnTargetCoreCount(), 3);
+    const uint32_t core_count =
+        std::min<uint32_t>(static_cast<uint32_t>(cosmo::util::kRknnNpuCoreCount), 3);
     size_t best = 0;
     for (uint32_t i = 1; i < core_count; ++i) {
         if (ledger.core_cost[i] < ledger.core_cost[best])
@@ -1121,13 +1122,13 @@ Status RknnNetNode::InitializeLoadedContext(uint64_t context_sequence, uint64_t 
     LOG_INFO(
         "RKNN model loaded: api={} driver={} inputs={} runtime_outputs={} logical_outputs={} "
         "output_adapter={} native_int8_output={} rgb_uint8_input_contract={} core_mode={} split_policy={} "
-        "core_mask={} core_mask_applied={} npu_cores={} target_cores={} context_sequence={} model_bytes={} "
+        "core_mask={} core_mask_applied={} npu_cores={} packaged_cores={} context_sequence={} model_bytes={} "
         "model_fingerprint={}",
         version.api_version, version.drv_version, io_count_.n_input, io_count_.n_output, logical_outputs,
         RknnOutputAdapterName(output_adapter_contract_.kind), native_yolov8_outputs_,
         IsRknnRgbUint8InputContract(input_contract_), RknnCoreModeName(core_mode),
         RknnSplitPolicyName(split_policy), static_cast<int>(core_mask), configure_core_mask,
-        npu_core_count, RknnTargetCoreCount(), context_sequence, model_data_.size(), model_fingerprint);
+        npu_core_count, cosmo::util::kRknnNpuCoreCount, context_sequence, model_data_.size(), model_fingerprint);
     return COSMO_NN_OK;
 }
 
