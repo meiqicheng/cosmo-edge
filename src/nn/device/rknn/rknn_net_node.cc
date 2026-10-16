@@ -223,7 +223,13 @@ int NormalizeRknnNpuCoreCount(int npu_core_count) {
 }
 
 bool IsRknnCoreModeSupported(RknnCoreMode mode) {
-    // Silicon capability, not a runtime override: the env override produces a
+    // Policy gate, not a capability query: it answers "is this mode acceptable on the
+    // part we were packaged for", using the packaged count. ResolveRknnCoreSelection
+    // below is the capability query and will happily degrade an over-wide mode, but the
+    // engine consults this gate first, so an explicit Core2/Core012 request on a
+    // two-core part is rejected and falls back to default_core_mode instead of being
+    // quietly shrunk. See the Core012 branch there for why the two must stay separate.
+    // The count is silicon, not a runtime override: the env override produces a
     // separate effective count that callers pass explicitly.
     const int core_count = cosmo::util::kRknnNpuCoreCount;
     switch (mode) {
@@ -281,6 +287,15 @@ RknnCoreSelection ResolveRknnCoreSelection(RknnCoreMode mode, uint64_t context_s
             selection.mask = RKNN_NPU_CORE_0_1;
             break;
         case RknnCoreMode::Core012:
+            // Degradation here is part of this function's contract, not dead code:
+            // ResolveRknnCoreSelection is a pure count-aware query that answers "what is
+            // achievable on N cores", and callers that pass N directly (the VLM backend,
+            // the probe, test_rknn_fast_preprocess.cc's RK3576 regression baseline) rely
+            // on it. The engine's own startup path never reaches these branches because
+            // IsRknnCoreModeSupported rejects an over-wide mode first; that rejection is
+            // deliberate — silently shrinking an explicit request is what makes capacity
+            // numbers unexplainable. Keep the two layers distinct and do not "clean up"
+            // either one into the other.
             if (cores >= 3) {
                 selection.mask = RKNN_NPU_CORE_0_1_2;
             } else {
