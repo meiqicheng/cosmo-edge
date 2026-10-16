@@ -3,6 +3,7 @@
 #include "nn/device/rknn/rknn_net_node.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <chrono>
 #include <cmath>
@@ -12,7 +13,6 @@
 #include <limits>
 #include <mutex>
 #include <numeric>
-#include <unordered_map>
 
 #if defined(__ARM_NEON) || defined(__ARM_NEON__)
 #include <arm_neon.h>
@@ -23,6 +23,13 @@
 #include "nn/node/node_type_utils.h"
 #include "util/Log.h"
 #include "util/NnBackendConstants.h"
+
+#ifndef COSMO_RKNN_DEFAULT_CORE_MODE
+#define COSMO_RKNN_DEFAULT_CORE_MODE "auto"
+#endif
+#ifndef COSMO_RKNN_TARGET_CORE_COUNT
+#define COSMO_RKNN_TARGET_CORE_COUNT 1
+#endif
 
 namespace cosmo::nn {
 namespace {
@@ -137,12 +144,10 @@ namespace {
         return fingerprint;
     }
 
-    uint64_t NextModelContextSequence(uint64_t fingerprint) {
-        static std::mutex sequence_mutex;
-        static std::unordered_map<uint64_t, uint64_t> model_sequences;
-        std::lock_guard<std::mutex> lock(sequence_mutex);
-        auto& sequence = model_sequences[fingerprint];
-        return sequence++;
+    RknnCoreMode DefaultRknnCoreMode() {
+        bool valid      = false;
+        const auto mode = ParseRknnCoreMode(COSMO_RKNN_DEFAULT_CORE_MODE, &valid);
+        return valid && IsRknnCoreModeSupported(mode) ? mode : RknnCoreMode::Auto;
     }
 
 }  // namespace
@@ -157,6 +162,8 @@ RknnCoreMode ParseRknnCoreMode(const std::string& value, bool* valid) {
         return RknnCoreMode::Core0;
     if (normalized == "core1" || normalized == "core_1" || normalized == "1")
         return RknnCoreMode::Core1;
+    if (normalized == "core2" || normalized == "core_2" || normalized == "2")
+        return RknnCoreMode::Core2;
     if (normalized == "core01" || normalized == "core0_1" || normalized == "core_0_1" ||
         normalized == "dual") {
         return RknnCoreMode::Core01;
@@ -174,12 +181,64 @@ RknnCoreMode ParseRknnCoreMode(const std::string& value, bool* valid) {
     return RknnCoreMode::Auto;
 }
 
+RknnCoreMode ConfiguredRknnCoreMode() {
+    const char* core_mode_env = std::getenv("COSMO_RKNN_CORE_MODE");
+    if (!core_mode_env || !*core_mode_env) {
+        return DefaultRknnCoreMode();
+    }
+
+    bool core_mode_valid = true;
+    const auto core_mode = ParseRknnCoreMode(core_mode_env, &core_mode_valid);
+    if (!core_mode_valid) {
+        LOG_WARN("Invalid COSMO_RKNN_CORE_MODE value:{}, fallback:{}", core_mode_env,
+                 RknnCoreModeName(DefaultRknnCoreMode()));
+        return DefaultRknnCoreMode();
+    }
+    if (!IsRknnCoreModeSupported(core_mode)) {
+        LOG_WARN("COSMO_RKNN_CORE_MODE={} is unsupported on {} with {} NPU core(s), fallback:{}",
+                 RknnCoreModeName(core_mode), cosmo::util::kTargetChip, RknnTargetCoreCount(),
+                 RknnCoreModeName(DefaultRknnCoreMode()));
+        return DefaultRknnCoreMode();
+    }
+    return core_mode;
+}
+
+uint32_t RknnTargetCoreCount() {
+    return COSMO_RKNN_TARGET_CORE_COUNT;
+}
+
+uint64_t NextRknnContextSequence() {
+    static std::mutex sequence_mutex;
+    static uint64_t sequence = 0;
+    std::lock_guard<std::mutex> lock(sequence_mutex);
+    return sequence++;
+}
+
 int NormalizeRknnNpuCoreCount(int npu_core_count) {
     if (npu_core_count < kRknnMinNpuCoreCount)
         return kRknnMinNpuCoreCount;
     if (npu_core_count > kRknnMaxNpuCoreCount)
         return kRknnMaxNpuCoreCount;
     return npu_core_count;
+}
+
+bool IsRknnCoreModeSupported(RknnCoreMode mode) {
+    const auto core_count = RknnTargetCoreCount();
+    switch (mode) {
+        case RknnCoreMode::Auto:
+            return true;
+        case RknnCoreMode::Core0:
+            return true;
+        case RknnCoreMode::Core1:
+        case RknnCoreMode::Core01:
+        case RknnCoreMode::Split:
+            return core_count >= 2;
+        case RknnCoreMode::Core2:
+        case RknnCoreMode::Core012:
+            return core_count >= 3;
+        default:
+            return false;
+    }
 }
 
 RknnCoreSelection ResolveRknnCoreSelection(RknnCoreMode mode, uint64_t context_sequence, int npu_core_count) {
@@ -200,6 +259,15 @@ RknnCoreSelection ResolveRknnCoreSelection(RknnCoreMode mode, uint64_t context_s
             break;
         case RknnCoreMode::Core1:
             selection.mask = RKNN_NPU_CORE_1;
+            break;
+        case RknnCoreMode::Core2:
+            // A lone second core binding only exists on parts with three cores.
+            if (cores >= 3) {
+                selection.mask = RKNN_NPU_CORE_2;
+            } else {
+                selection.mask     = RKNN_NPU_CORE_1;
+                selection.degraded = true;
+            }
             break;
         case RknnCoreMode::Core01:
             selection.mask = RKNN_NPU_CORE_0_1;
@@ -243,9 +311,98 @@ rknn_core_mask ResolveRknnCoreMask(RknnCoreMode mode, uint64_t context_sequence,
     return ResolveRknnCoreSelection(mode, context_sequence, npu_core_count).mask;
 }
 
+// Overload for callers that only know the packaged core count: it forwards to the
+// count-aware resolution so both spellings of the query stay in agreement.
+rknn_core_mask ResolveRknnCoreMask(RknnCoreMode mode, uint64_t context_sequence) {
+    return ResolveRknnCoreMask(mode, context_sequence, static_cast<int>(RknnTargetCoreCount()));
+}
+
 bool ShouldConfigureRknnCoreMask(RknnCoreMode mode, int npu_core_count) {
     // Split's decision does not depend on the sequence, so any sequence resolves alike.
     return ResolveRknnCoreSelection(mode, 0, npu_core_count).apply;
+}
+
+bool ShouldConfigureRknnCoreMask(RknnCoreMode mode) {
+    return ShouldConfigureRknnCoreMask(mode, static_cast<int>(RknnTargetCoreCount()));
+}
+
+namespace {
+
+struct RknnSplitCostLedger {
+    std::mutex mutex;
+    // RK3588 exposes at most 3 NPU cores; COSMO_RKNN_TARGET_CORE_COUNT gates
+    // how many entries participate.
+    std::array<uint64_t, 3> core_cost{};
+};
+
+RknnSplitCostLedger& SplitCostLedger() {
+    static RknnSplitCostLedger ledger;
+    return ledger;
+}
+
+std::string LowercaseCopy(const char* raw) {
+    std::string value(raw);
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
+}  // namespace
+
+RknnSplitPolicy ConfiguredRknnSplitPolicy() {
+    // Default stays "sequence": the model byte-size proxy does not track the
+    // real NPU cost ratio closely enough, and the greedy ledger measured WORSE
+    // steady-state FPS than sequence at 6 channels (20.2 vs 24.05 fps on
+    // no-safety-helmet-24fps, RK3588 2026-09-21). Weighted remains available
+    // as an opt-in experiment via COSMO_RKNN_SPLIT_POLICY=weighted.
+    const char* raw = std::getenv("COSMO_RKNN_SPLIT_POLICY");
+    if (!raw || !*raw)
+        return RknnSplitPolicy::Sequence;
+    const auto value = LowercaseCopy(raw);
+    if (value == "sequence")
+        return RknnSplitPolicy::Sequence;
+    if (value == "weighted")
+        return RknnSplitPolicy::Weighted;
+    LOG_WARN("Invalid COSMO_RKNN_SPLIT_POLICY value:{}, fallback:sequence", raw);
+    return RknnSplitPolicy::Sequence;
+}
+
+const char* RknnSplitPolicyName(RknnSplitPolicy policy) {
+    switch (policy) {
+        case RknnSplitPolicy::Sequence:
+            return "sequence";
+        case RknnSplitPolicy::Weighted:
+        default:
+            return "weighted";
+    }
+}
+
+rknn_core_mask ResolveRknnSplitCoreMaskWeighted(uint64_t context_sequence, size_t model_bytes) {
+    (void)context_sequence;
+    auto& ledger = SplitCostLedger();
+    std::lock_guard<std::mutex> lock(ledger.mutex);
+    const uint32_t core_count = std::min<uint32_t>(RknnTargetCoreCount(), 3);
+    size_t best = 0;
+    for (uint32_t i = 1; i < core_count; ++i) {
+        if (ledger.core_cost[i] < ledger.core_cost[best])
+            best = i;
+    }
+    const uint64_t cost = model_bytes > 0 ? static_cast<uint64_t>(model_bytes) : 1;
+    ledger.core_cost[best] += cost;
+    switch (best) {
+        case 1:
+            return RKNN_NPU_CORE_1;
+        case 2:
+            return RKNN_NPU_CORE_2;
+        default:
+            return RKNN_NPU_CORE_0;
+    }
+}
+
+void ResetRknnSplitCostStateForTest() {
+    auto& ledger = SplitCostLedger();
+    std::lock_guard<std::mutex> lock(ledger.mutex);
+    ledger.core_cost.fill(0);
 }
 
 const char* RknnCoreModeName(RknnCoreMode mode) {
@@ -254,6 +411,8 @@ const char* RknnCoreModeName(RknnCoreMode mode) {
             return "core0";
         case RknnCoreMode::Core1:
             return "core1";
+        case RknnCoreMode::Core2:
+            return "core2";
         case RknnCoreMode::Core01:
             return "core0_1";
         case RknnCoreMode::Core012:
@@ -697,7 +856,7 @@ void RknnNetNode::PublishRgaBoundInputTarget() {
     target.width_stride    = static_cast<int>(bound_input_attr_.w_stride == 0 ? bound_input_attr_.dims[2]
                                                                               : bound_input_attr_.w_stride);
     target.generation      = ++bound_input_generation_;
-    target.frame_ready     = false;
+    target.frame_ready.store(false, std::memory_order_release);
 }
 
 void RknnNetNode::ClearRgaBoundInputTarget() {
@@ -857,7 +1016,7 @@ Status RknnNetNode::LoadWeight(const char* data, size_t size) {
         DestroyContext();
         return RknnError("rknn_init", result);
     }
-    return InitializeLoadedContext(NextModelContextSequence(ModelFingerprint(model_data_)));
+    return InitializeLoadedContext(NextRknnContextSequence(), ModelFingerprint(model_data_));
 }
 
 Status RknnNetNode::AttachOwnedContext(rknn_context context, uint64_t model_fingerprint) {
@@ -867,10 +1026,10 @@ Status RknnNetNode::AttachOwnedContext(rknn_context context, uint64_t model_fing
     DestroyContext();
     context_ = context;
     model_data_.clear();
-    return InitializeLoadedContext(NextModelContextSequence(model_fingerprint));
+    return InitializeLoadedContext(NextRknnContextSequence(), model_fingerprint);
 }
 
-Status RknnNetNode::InitializeLoadedContext(uint64_t context_sequence) {
+Status RknnNetNode::InitializeLoadedContext(uint64_t context_sequence, uint64_t model_fingerprint) {
     int result = RKNN_SUCC;
     // Resolution order: operator override (env) > packaged platform default > built-in
     // automatic. Both packaged values were frozen from config/rknn/platforms/<chip>.json
@@ -897,13 +1056,32 @@ Status RknnNetNode::InitializeLoadedContext(uint64_t context_sequence) {
                      cosmo::util::kRknnNpuCoreCount);
         }
     }
-    const auto selection           = ResolveRknnCoreSelection(core_mode, context_sequence, npu_core_count);
-    const auto core_mask           = selection.mask;
-    const bool configure_core_mask = selection.apply;
-    if (selection.degraded) {
-        LOG_WARN("RKNN core mode:{} is unavailable on {} NPU core(s); using mask:{}",
-                 RknnCoreModeName(core_mode), npu_core_count, static_cast<int>(core_mask));
+    // Split mode must distribute all loaded contexts, not only contexts that
+    // happen to share one model fingerprint. The two-CV workload commonly
+    // loads separate detector and classifier models, so per-model counters
+    // would send both model families to Core0/Core1 and leave Core2 idle.
+    rknn_core_mask core_mask{};
+    RknnSplitPolicy split_policy = RknnSplitPolicy::Sequence;
+    if (core_mode == RknnCoreMode::Split) {
+        split_policy = ConfiguredRknnSplitPolicy();
+        if (split_policy == RknnSplitPolicy::Weighted) {
+            // Balance accumulated model cost per core instead of raw context
+            // counts: with an odd channel count the sequence policy leaves one
+            // core carrying strictly more detector work and idles another,
+            // which surfaced as the 6->7 channel FPS collapse at ~88% NPU.
+            core_mask = ResolveRknnSplitCoreMaskWeighted(context_sequence, model_data_.size());
+        } else {
+            core_mask = ResolveRknnCoreMask(core_mode, context_sequence, npu_core_count);
+        }
+    } else {
+        const auto selection = ResolveRknnCoreSelection(core_mode, context_sequence, npu_core_count);
+        core_mask            = selection.mask;
+        if (selection.degraded) {
+            LOG_WARN("RKNN core mode:{} is unavailable on {} NPU core(s); using mask:{}",
+                     RknnCoreModeName(core_mode), npu_core_count, static_cast<int>(core_mask));
+        }
     }
+    const bool configure_core_mask = ShouldConfigureRknnCoreMask(core_mode, npu_core_count);
     if (configure_core_mask) {
         result = rknn_set_core_mask(context_, core_mask);
         if (result != RKNN_SUCC) {
@@ -942,12 +1120,14 @@ Status RknnNetNode::InitializeLoadedContext(uint64_t context_sequence) {
 
     LOG_INFO(
         "RKNN model loaded: api={} driver={} inputs={} runtime_outputs={} logical_outputs={} "
-        "output_adapter={} native_int8_output={} rgb_uint8_input_contract={} npu_cores={} core_mode={} "
-        "core_mask={} core_mask_applied={} context_sequence={}",
+        "output_adapter={} native_int8_output={} rgb_uint8_input_contract={} core_mode={} split_policy={} "
+        "core_mask={} core_mask_applied={} npu_cores={} target_cores={} context_sequence={} model_bytes={} "
+        "model_fingerprint={}",
         version.api_version, version.drv_version, io_count_.n_input, io_count_.n_output, logical_outputs,
         RknnOutputAdapterName(output_adapter_contract_.kind), native_yolov8_outputs_,
-        IsRknnRgbUint8InputContract(input_contract_), npu_core_count, RknnCoreModeName(core_mode),
-        static_cast<int>(core_mask), configure_core_mask, context_sequence);
+        IsRknnRgbUint8InputContract(input_contract_), RknnCoreModeName(core_mode),
+        RknnSplitPolicyName(split_policy), static_cast<int>(core_mask), configure_core_mask,
+        npu_core_count, RknnTargetCoreCount(), context_sequence, model_data_.size(), model_fingerprint);
     return COSMO_NN_OK;
 }
 
@@ -1087,10 +1267,11 @@ Status RknnNetNode::Forward(std::vector<std::shared_ptr<Blob>>& bottom_blobs,
     const auto prepare_started = MetricsClock::now();
     const auto input_desc      = bottom_blobs[0]->GetBlobDesc();
     bool rga_bound_frame       = false;
-    if (shared_resource && shared_resource->rknn_bound_input_target.frame_ready &&
+    if (shared_resource &&
+        shared_resource->rknn_bound_input_target.frame_ready.load(std::memory_order_acquire) &&
         shared_resource->rknn_bound_input_target.owner == this) {
-        auto& target              = shared_resource->rknn_bound_input_target;
-        target.frame_ready        = false;
+        auto& target = shared_resource->rknn_bound_input_target;
+        target.frame_ready.store(false, std::memory_order_release);
         const bool rga_bound_mode = bound_input_mode_ == BoundInputMode::RgaNativeInt8;
         const bool blob_matches   = input_desc.data_type == DATA_TYPE_INT8 &&
                                   input_desc.data_format == DATA_FORMAT_NHWC &&

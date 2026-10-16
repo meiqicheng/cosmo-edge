@@ -260,6 +260,19 @@ namespace {
         return default_val;
     }
 
+    // Helper: algorithmMetadata/algorithmProcessdata/atomicList may be escaped
+    // JSON strings or structured values (templates migrated to structured JSON).
+    std::string GetStringOrJson(const nlohmann::json& doc, const std::string& key) {
+        if (!doc.contains(key))
+            return "";
+        const auto& v = doc[key];
+        if (v.is_string())
+            return v.get<std::string>();
+        if (v.is_object() || v.is_array())
+            return v.dump();
+        return "";
+    }
+
 }  // namespace
 
 bool AlgorithmPacketLoader::ParsePacketFromJson(const nlohmann::json& doc, const std::string& filePath,
@@ -308,12 +321,9 @@ bool AlgorithmPacketLoader::ParsePacketFromJson(const nlohmann::json& doc, const
         newPacket.supplier = doc["supplier"].get<std::string>();
     else
         newPacket.supplier = "CWAI";
-    if (doc.contains("algorithmMetadata") && doc["algorithmMetadata"].is_string())
-        newPacket.algorithmMetadata = doc["algorithmMetadata"].get<std::string>();
-    if (doc.contains("algorithmProcessdata") && doc["algorithmProcessdata"].is_string())
-        newPacket.algorithmProcessdata = doc["algorithmProcessdata"].get<std::string>();
-    if (doc.contains("atomicList") && doc["atomicList"].is_string())
-        newPacket.atomicList = doc["atomicList"].get<std::string>();
+    newPacket.algorithmMetadata    = GetStringOrJson(doc, "algorithmMetadata");
+    newPacket.algorithmProcessdata = GetStringOrJson(doc, "algorithmProcessdata");
+    newPacket.atomicList           = GetStringOrJson(doc, "atomicList");
     if (doc.contains("confVersionId") && doc["confVersionId"].is_string())
         newPacket.confVersionId = doc["confVersionId"].get<std::string>();
     if (doc.contains("confVersionName") && doc["confVersionName"].is_string())

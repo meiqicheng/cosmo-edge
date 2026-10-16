@@ -1,17 +1,22 @@
 #include "catch_amalgamated.hpp"
+#include "media/NativeVideoBuffer.h"
 
 #if defined(COSMO_NN_USE_RKNN_BACKEND) && defined(COSMO_MEDIA_USE_ROCKCHIP_BACKEND)
 
+#include <fcntl.h>
 #include <rockchip/mpp_buffer.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <array>
 #include <cstdlib>
+#include <cstring>
 #include <numeric>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "media/NativeVideoBuffer.h"
 #include "nn/core/inference_pipeline_metrics.h"
 #include "nn/core/shared_resource.h"
 #include "nn/device/rknn/rknn_net_node.h"
@@ -56,6 +61,54 @@ cosmo::nn::BlobDesc PackedImageDesc(int height, int width, cosmo::nn::ImageForma
     desc.image_format = format;
     desc.dims         = {1, height, width, 3};
     return desc;
+}
+
+// Some RK3588 boards ship a legacy RGA multicore driver whose scheduler rejects
+// small virtual-address jobs ("no core match"). Probing through the real
+// crop-resize node keeps the assertion honest on every driver instead of
+// hard-coding one board's behavior.
+bool RgaSmallSourceUpscaleAvailable() {
+    static const bool available = [] {
+        namespace nn = cosmo::nn;
+        nn::CropResize param;
+        param.h_top_crop    = {0.0f};
+        param.h_bottom_crop = {0.0f};
+        param.w_left_crop   = {0.0f};
+        param.w_right_crop  = {0.0f};
+        param.dsize         = {64, 64};
+        param.gravity       = 0;
+        param.color         = {114, 114, 114};
+        nn::SharedResource resource;
+        nn::RknnCropResizeNode node;
+        node.SetSharedResource(&resource);
+        node.LoadParam(&param);
+        if (!bool(node.InferTopShapes()))
+            return false;
+        auto image = std::make_shared<nn::Blob>(PackedImageDesc(16, 16, nn::IMAGE_BGR), true);
+        nn::BlobDesc rect_desc;
+        rect_desc.device_type = nn::DEVICE_NAIVE;
+        rect_desc.data_type   = nn::DATA_TYPE_INT32;
+        rect_desc.dims        = {1, 4};
+        auto rect             = std::make_shared<nn::Blob>(rect_desc, true);
+        auto* rect_data       = static_cast<int32_t*>(rect->GetHandle().base);
+        const std::array<int32_t, 4> full{0, 0, 16, 16};
+        std::copy(full.begin(), full.end(), rect_data);
+        nn::BlobDesc top_desc;
+        top_desc.device_type = nn::DEVICE_NAIVE;
+        top_desc.data_type   = nn::DATA_TYPE_UINT8;
+        top_desc.data_format = nn::DATA_FORMAT_NHWC;
+        top_desc.dims        = node.GetTopBlobShapes().front();
+        auto top             = std::make_shared<nn::Blob>(top_desc, true);
+        const auto before    = nn::GetInferencePipelineMetrics().Snapshot();
+        std::vector<std::shared_ptr<nn::Blob>> images{image};
+        std::vector<std::shared_ptr<nn::Blob>> rects{rect};
+        std::vector<std::shared_ptr<nn::Blob>> tops{top};
+        if (!bool(node.Forward(images, rects, tops)))
+            return false;
+        const auto after = nn::GetInferencePipelineMetrics().Snapshot();
+        return after.rknn_rga_crop_resize_calls > before.rknn_rga_crop_resize_calls;
+    }();
+    return available;
 }
 
 }  // namespace
@@ -265,7 +318,11 @@ TEST_CASE("RKNN core scheduling maps explicit and split modes deterministically"
     CHECK(valid);
     CHECK(ParseRknnCoreMode("core_1", &valid) == RknnCoreMode::Core1);
     CHECK(valid);
+    CHECK(ParseRknnCoreMode("CORE2", &valid) == RknnCoreMode::Core2);
+    CHECK(valid);
     CHECK(ParseRknnCoreMode("dual", &valid) == RknnCoreMode::Core01);
+    CHECK(valid);
+    CHECK(ParseRknnCoreMode("triple", &valid) == RknnCoreMode::Core012);
     CHECK(valid);
     CHECK(ParseRknnCoreMode("split", &valid) == RknnCoreMode::Split);
     CHECK(valid);
@@ -277,6 +334,36 @@ TEST_CASE("RKNN core scheduling maps explicit and split modes deterministically"
     CHECK(valid);
     CHECK(ParseRknnCoreMode("unsupported", &valid) == RknnCoreMode::Auto);
     CHECK_FALSE(valid);
+
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Auto, 7) == RKNN_NPU_CORE_AUTO);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Core0, 7) == RKNN_NPU_CORE_0);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Core1, 7) == RKNN_NPU_CORE_1);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Core2, 7) == RKNN_NPU_CORE_2);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Core01, 7) == RKNN_NPU_CORE_0_1);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Core012, 7) == RKNN_NPU_CORE_0_1_2);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 0) == RKNN_NPU_CORE_0);
+    CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 1) == RKNN_NPU_CORE_1);
+    if (RknnTargetCoreCount() >= 3) {
+        CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 2) == RKNN_NPU_CORE_2);
+        CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 3) == RKNN_NPU_CORE_0);
+    } else {
+        CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 2) == RKNN_NPU_CORE_0);
+        CHECK(ResolveRknnCoreMask(RknnCoreMode::Split, 3) == RKNN_NPU_CORE_1);
+    }
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Auto));
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core0));
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core1) == (RknnTargetCoreCount() >= 2));
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core2) == (RknnTargetCoreCount() >= 3));
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core01) == (RknnTargetCoreCount() >= 2));
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Core012) == (RknnTargetCoreCount() >= 3));
+    CHECK(IsRknnCoreModeSupported(RknnCoreMode::Split) == (RknnTargetCoreCount() >= 2));
+    CHECK_FALSE(ShouldConfigureRknnCoreMask(RknnCoreMode::Auto));
+    CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core0));
+    CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core1));
+    CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core2));
+    CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core01));
+    CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Core012));
+    CHECK(ShouldConfigureRknnCoreMask(RknnCoreMode::Split));
     CHECK(std::string(RknnCoreModeName(RknnCoreMode::Core01)) == "core0_1");
     CHECK(std::string(RknnCoreModeName(RknnCoreMode::Core012)) == "core0_1_2");
     CHECK(std::string(RknnCoreModeName(RknnCoreMode::All)) == "all");
@@ -641,9 +728,11 @@ TEST_CASE("RKNN classifier crop-resize stages extreme scaling in RGA and emits p
     node.LoadParam(&crop);
     REQUIRE(bool(node.InferTopShapes()));
 
-    auto image   = std::make_shared<Blob>(PackedImageDesc(8, 8, IMAGE_BGR), true);
+    // Legacy RGA drivers reject BGR888 sources whose width stride is not
+    // 16-byte aligned, so the staged-scaling fixture uses a 16-wide image.
+    auto image   = std::make_shared<Blob>(PackedImageDesc(16, 16, IMAGE_BGR), true);
     auto* pixels = static_cast<uint8_t*>(image->GetHandle().base);
-    for (size_t pixel = 0; pixel < 64; ++pixel) {
+    for (size_t pixel = 0; pixel < 256; ++pixel) {
         pixels[pixel * 3]     = 10;
         pixels[pixel * 3 + 1] = 20;
         pixels[pixel * 3 + 2] = 30;
@@ -658,26 +747,36 @@ TEST_CASE("RKNN classifier crop-resize stages extreme scaling in RGA and emits p
     std::copy(crop_rect.begin(), crop_rect.end(), rect_data);
 
     BlobDesc top_desc;
-    top_desc.device_type = DEVICE_NAIVE;
-    top_desc.data_type   = DATA_TYPE_UINT8;
-    top_desc.data_format = DATA_FORMAT_NHWC;
-    top_desc.dims        = node.GetTopBlobShapes().front();
-    auto top             = std::make_shared<Blob>(top_desc, true);
-    const auto before    = GetInferencePipelineMetrics().Snapshot();
+    top_desc.device_type                = DEVICE_NAIVE;
+    top_desc.data_type                  = DATA_TYPE_UINT8;
+    top_desc.data_format                = DATA_FORMAT_NHWC;
+    top_desc.dims                       = node.GetTopBlobShapes().front();
+    auto top                            = std::make_shared<Blob>(top_desc, true);
+    const bool staged_upscale_available = RgaSmallSourceUpscaleAvailable();
+    const auto before                   = GetInferencePipelineMetrics().Snapshot();
     std::vector<std::shared_ptr<Blob>> images{image};
     std::vector<std::shared_ptr<Blob>> rects{rect};
     std::vector<std::shared_ptr<Blob>> tops{top};
     REQUIRE(bool(node.Forward(images, rects, tops)));
-    const auto after = GetInferencePipelineMetrics().Snapshot();
-    CHECK(after.rknn_rga_crop_resize_calls == before.rknn_rga_crop_resize_calls + 2);
-    CHECK(after.rknn_rga_crop_resize_failures == before.rknn_rga_crop_resize_failures);
-    CHECK(after.rknn_rga_crop_host_fallbacks == before.rknn_rga_crop_host_fallbacks + 1);
-    CHECK(after.rknn_cpu_crop_resize_fallback_calls == before.rknn_cpu_crop_resize_fallback_calls);
-    CHECK(top->GetBlobDesc().image_format == IMAGE_RGB);
+    const auto after   = GetInferencePipelineMetrics().Snapshot();
     const auto* output = static_cast<const uint8_t*>(top->GetHandle().base);
-    CHECK(output[0] == 30);
-    CHECK(output[1] == 20);
-    CHECK(output[2] == 10);
+    if (staged_upscale_available) {
+        CHECK(after.rknn_rga_crop_resize_calls == before.rknn_rga_crop_resize_calls + 2);
+        CHECK(after.rknn_rga_crop_resize_failures == before.rknn_rga_crop_resize_failures);
+        CHECK(after.rknn_rga_crop_host_fallbacks == before.rknn_rga_crop_host_fallbacks + 1);
+        CHECK(after.rknn_cpu_crop_resize_fallback_calls == before.rknn_cpu_crop_resize_fallback_calls);
+        CHECK(top->GetBlobDesc().image_format == IMAGE_RGB);
+        CHECK(output[0] == 30);
+        CHECK(output[1] == 20);
+        CHECK(output[2] == 10);
+    } else {
+        CHECK(after.rknn_rga_crop_resize_failures == before.rknn_rga_crop_resize_failures + 1);
+        CHECK(after.rknn_cpu_crop_resize_fallback_calls == before.rknn_cpu_crop_resize_fallback_calls + 1);
+        CHECK(top->GetBlobDesc().image_format == IMAGE_BGR);
+        CHECK(output[0] == 10);
+        CHECK(output[1] == 20);
+        CHECK(output[2] == 30);
+    }
 }
 
 TEST_CASE("RKNN classifier crop-resize keeps an exact CPU fallback", "[nn][rknn][rga][crop-resize]") {

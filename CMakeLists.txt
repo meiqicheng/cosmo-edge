@@ -158,17 +158,21 @@ if(COSMO_NN_USE_RKNN_BACKEND)
             "RKNN builds require COSMO_TARGET_CHIP=rk3576, rv1126b, or rk3588")
     endif()
     string(TOUPPER "${COSMO_TARGET_CHIP_NORMALIZED}" COSMO_TARGET_CHIP_LABEL)
-    set(COSMO_PLATFORM_PROFILE
-        "${CMAKE_SOURCE_DIR}/config/rknn/platforms/${COSMO_TARGET_CHIP_NORMALIZED}.json")
+    set(COSMO_RKNN_PLATFORM_PROFILE "" CACHE FILEPATH
+        "RKNN platform profile JSON; defaults to config/rknn/platforms/<chip>.json")
+    if(COSMO_RKNN_PLATFORM_PROFILE)
+        set(COSMO_PLATFORM_PROFILE "${COSMO_RKNN_PLATFORM_PROFILE}")
+    else()
+        set(COSMO_PLATFORM_PROFILE
+            "${CMAKE_SOURCE_DIR}/config/rknn/platforms/${COSMO_TARGET_CHIP_NORMALIZED}.json")
+    endif()
     if(NOT EXISTS "${COSMO_PLATFORM_PROFILE}")
         message(FATAL_ERROR "RKNN platform profile not found: ${COSMO_PLATFORM_PROFILE}")
     endif()
-    # Freeze the two NPU scheduler inputs from the platform profile itself. The declared
-    # minimum is CMake 3.16 and string(JSON) needs 3.19, so parse with a strict regex and
-    # fail loudly when a value is absent or out of range instead of defaulting to RK3576's
-    # two cores - a silent default is exactly how the third RK3588 core stays idle.
-    # NOTE: CMake's regex engine does not implement [[:space:]]; the explicit class below
-    # was verified to work on the 3.22 builder, CRLF input included.
+    # Both spellings are exported from one parse: COSMO_RKNN_NPU_CORE_COUNT is
+    # required by src/util/NnBackendConstants.h, while COSMO_RKNN_TARGET_CORE_COUNT
+    # is the macro the rknn_net_node core-mask code consumes. Keeping them in sync
+    # here is what stops a rename from silently idling the third RK3588 core.
     file(READ "${COSMO_PLATFORM_PROFILE}" COSMO_PLATFORM_PROFILE_JSON)
     string(REGEX MATCH "\"npu_core_count\"[ \\t\\r\\n]*:[ \\t\\r\\n]*([0-9]+)"
         _cosmo_npu_core_match "${COSMO_PLATFORM_PROFILE_JSON}")
@@ -178,6 +182,7 @@ if(COSMO_NN_USE_RKNN_BACKEND)
             "Platform profile must declare runtime.npu_core_count in 1..3: "
             "${COSMO_PLATFORM_PROFILE}")
     endif()
+    set(COSMO_RKNN_TARGET_CORE_COUNT "${COSMO_RKNN_NPU_CORE_COUNT}")
     string(REGEX MATCH "\"default_core_mode\"[ \\t\\r\\n]*:[ \\t\\r\\n]*\"([A-Za-z0-9_]+)\""
         _cosmo_core_mode_match "${COSMO_PLATFORM_PROFILE_JSON}")
     set(COSMO_RKNN_DEFAULT_CORE_MODE "${CMAKE_MATCH_1}")
@@ -190,6 +195,7 @@ if(COSMO_NN_USE_RKNN_BACKEND)
         COSMO_RKNN_TARGET_CHIP="${COSMO_TARGET_CHIP_NORMALIZED}"
         COSMO_RKNN_TARGET_CHIP_LABEL="${COSMO_TARGET_CHIP_LABEL}"
         COSMO_RKNN_NPU_CORE_COUNT=${COSMO_RKNN_NPU_CORE_COUNT}
+        COSMO_RKNN_TARGET_CORE_COUNT=${COSMO_RKNN_TARGET_CORE_COUNT}
         COSMO_RKNN_DEFAULT_CORE_MODE="${COSMO_RKNN_DEFAULT_CORE_MODE}")
     message(STATUS
         "RKNN platform profile: ${COSMO_TARGET_CHIP_NORMALIZED} (npu cores=${COSMO_RKNN_NPU_CORE_COUNT}, "

@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "image_repository": "ghcr.io/cosmo-wander-ai/cosmo_edge-build-env_rockchip",
+  "legacy_base_image": "ghcr.io/cosmo-wander-ai/cosmo_edge-build-env_rk3576@sha256:0dbb35f5a4336777c311b5f881886cd9b284371d61ceffff55a8216c01d2b076",
+  "common": {
+    "architecture": "linux/amd64",
+    "target_architecture": "aarch64",
+    "rknn_root": "/opt/rknn",
+    "rkllm_root": "/opt/rkllm",
+    "rkllm": {
+      "version": "1.3.0",
+      "revision": "878f9361fd3afa7e167b7079918918f78d2c1c2a"
+    }
+  },
+  "targets": {
+    "rk3576": {
+      "media_runtime_profile": "mpp-1.1.0-rga-1.10.6-bullseye-v1",
+      "media_root": "/opt/rockchip-media/rk3576",
+      "rkllm_required": true,
+      "glibc_max": "2.31",
+      "required_package_paths": [
+        "lib/librkllmrt.so",
+        "share/licenses/rkllm/LICENSE"
+      ],
+      "forbidden_package_paths": []
+    },
+    "rv1126b": {
+      "media_runtime_profile": "mpp-1.1.0-rga-1.10.6-bullseye-v1",
+      "media_root": "/opt/rockchip-media/rv1126b",
+      "rkllm_required": false,
+      "glibc_max": "2.31",
+      "required_package_paths": [
+        "share/cosmo/platform/rockchip-media-manifest.json",
+        "share/licenses/rockchip-media/mpp/Apache-2.0",
+        "share/licenses/rockchip-media/mpp/MIT",
+        "share/licenses/rockchip-media/librga/COPYING"
+      ],
+      "forbidden_package_paths": [
+        "lib/librkllmrt.so",
+        "share/licenses/rkllm/LICENSE"
+      ]
+    },
+    "rk3588": {
+      "image_repository": "cosmo-edge-build-env-rk3588-bullseye",
+      "base_image": "debian@sha256:e5b6442dd2e9684cf5e87d8338b5968f3b348636fc0be6d7850a381e3731a2bd",
+      "sdk_source_image": "ghcr.io/cosmo-wander-ai/cosmo_edge-build-env_rk3576@sha256:135d25d0baf14e7918726f7efb040a0627926aedd5825f52fab6c1cd208da348",
+      "media_runtime_profile": "mpp-1.1.0-rga-1.10.6-bullseye-v1",
+      "media_root": "/opt/rockchip-media/rk3588",
+      "rkllm_required": true,
+      "ffmpeg_root": "/opt/ffmpeg-debian11",
+      "glibc_max": "2.31",
+      "required_package_paths": [
+        "share/cosmo/platform-profile.json",
+        "lib/libavcodec.so.58",
+        "lib/librga.so",
+        "lib/librkllmrt.so",
+        "share/licenses/rkllm/LICENSE"
+      ],
+      "forbidden_package_paths": []
+    }
+  }
+}

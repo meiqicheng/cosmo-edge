@@ -92,6 +92,20 @@ void AlgChannelDecode::Stop() {
     stop();
 }
 
+// Track the host-frame requirement per task id. A task that needs host pixels
+// (e.g. classify, area/line rules, alarm media, preview/capture consumers)
+// inserts its id; TaskUnRegist erases it. The decoder stays in host-frame mode
+// while the set is non-empty, so removing the last host-frame task restores
+// native-only eligibility for the channel (P1-1).
+void AlgChannelDecode::SetRequiresHostFrame(const std::string& task_id, bool v) {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (v) {
+        requires_host_frame_tasks_.insert(task_id);
+    } else {
+        requires_host_frame_tasks_.erase(task_id);
+    }
+}
+
 void AlgChannelDecode::QueueStatus(std::vector<AlgActionDataQueueStatus>& que_status,
                                    unsigned int duration_sec) {
     AlgActionDataQueueStatus status;
@@ -316,6 +330,17 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
     const int64_t output_timestamp    = matched_frame_info ? frame_info.timestamp : util::GetMilliseconds();
     const int64_t output_stream_index = matched_frame_info ? frame_info.streamIndex : video_frame->stream_idx;
 
+    // Capture frame identity before any Materialize decision so the host-frame
+    // and native-only paths carry identical stream/frame/timestamp metadata.
+    AlgFrameMeta frame_meta;
+    frame_meta.valid       = true;
+    frame_meta.streamIndex = output_stream_index;
+    frame_meta.frameIndex  = static_cast<int64_t>(decoded_frame_index);
+    frame_meta.timestamp   = output_timestamp;
+    frame_meta.width       = static_cast<int>(decoded_frame.GetWidth());
+    frame_meta.height      = static_cast<int>(decoded_frame.GetHeight());
+    frame_meta.pixelFormat = decoded_frame.GetPixelFormat();
+
     AlgFrameDistributionPlan task_plan;
     const bool prepared_task_distribution = decoded_frame.IsDeferred();
     if (prepared_task_distribution) {
@@ -323,7 +348,10 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
     }
 
     media::NativeVideoBufferPtr native_inference_buffer;
-    if (task_plan.SupportsNativeInference() && NativeInferenceBufferEnabled()) {
+    // Host materialization and native descriptor export are separate decisions.
+    // A classify or alarm action can require a host frame while the root
+    // detector still uses the MPP DMA-BUF for RKNN/RGA zero-copy input.
+    if (task_plan.RequestsNativeDescriptor() && NativeInferenceBufferEnabled()) {
         native_inference_buffer = decoded_frame.ExportNativeBuffer();
     }
 
@@ -349,6 +377,60 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
         return;
     }
 
+    const bool all_tasks_native =
+        native_inference_buffer && native_inference_buffer->Valid() && task_plan.SupportsNativeInference();
+    const bool skip_materialize = all_tasks_native && viewer_plan.empty() &&
+                                  !NeedsHostFrame(output_stream_index) && !RequiresHostFrame();
+    // One-shot diagnostic: a native descriptor was exported for this frame yet
+    // the host materialization still runs. Log the exact disabling condition
+    // once per process so the materialization-gate regression is visible.
+    static std::atomic<bool> skip_materialize_reason_logged{false};
+    if (native_inference_buffer && !skip_materialize && !skip_materialize_reason_logged.exchange(true)) {
+        LOG_WARN(
+            "Native-only materialize-skip disabled: deferred={} task_plan_empty={} native_all={} "
+            "viewer_plan_empty={} needs_host_frame={} requires_host_frame={} stream_index={}",
+            decoded_frame.IsDeferred(), task_plan.Empty(), all_tasks_native, viewer_plan.empty(),
+            NeedsHostFrame(output_stream_index), RequiresHostFrame(), output_stream_index);
+    }
+
+    frame_index_ = video_frame->index;
+    decode_count_++;
+    consecutive_decode_failures_ = 0;
+
+    if (skip_materialize) {
+        duration_stat_.EndSample();
+        auto native_only_data                       = std::make_shared<AlgData>();
+        native_only_data->chanDataOrig.packet       = demux_data->chanDataOrig.packet;
+        native_only_data->chanDataOrig.fps          = demux_data->chanDataOrig.fps;
+        native_only_data->dataType                  = AlgDataType::ChannelDataDec;
+        native_only_data->chanDataDec.native_buffer = std::move(native_inference_buffer);
+        native_only_data->chanDataDec.meta          = frame_meta;
+        if (native_only_data->chanDataDec.native_buffer) {
+            const auto& native = *native_only_data->chanDataDec.native_buffer;
+            auto& meta         = native_only_data->chanDataDec.meta;
+            meta.width         = native.width;
+            meta.height        = native.height;
+            switch (native.format) {
+                case media::NativeVideoBufferFormat::NV12:
+                    meta.pixelFormat = media::PixelFormat::PIXEL_NV12;
+                    break;
+                case media::NativeVideoBufferFormat::I420:
+                    meta.pixelFormat = media::PixelFormat::PIXEL_I420;
+                    break;
+                case media::NativeVideoBufferFormat::NV21:
+                    meta.pixelFormat = media::PixelFormat::PIXEL_NV21;
+                    break;
+                default:
+                    break;
+            }
+        }
+        native_only_data->chanDataDec.reportTimeStamp = frame_meta.timestamp;
+        native_only_data->channelId                   = channel_id_;
+        native_only_data->firstTimePoint              = demux_data->firstTimePoint;
+        DistributorNativeOnlyFrame(task_plan, native_only_data);
+        return;
+    }
+
     auto frame_data = decoded_frame.Materialize();
     duration_stat_.EndSample();
     if (!frame_data || !frame_data->Active()) {
@@ -360,17 +442,11 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
     frame_data->SetTimestamp(output_timestamp);
     frame_data->SetStreamIndex(output_stream_index);
 
-    frame_index_ = video_frame->index;
-    decode_count_++;
-    consecutive_decode_failures_ = 0;  // Successful decode; reset consecutive failure counter.
-
-    // Apply resize for super-resolution frames; otherwise use as-is.
     VideoFramePtr output_frame = frame_data;
     if (NeedsResize(video_frame)) {
         output_frame = service::ServiceRegistry::Instance().Get<service::IVideoFrameTransform>().Resize(
             frame_data, media::kVideoDefaultHeight, media::kVideoDefaultWidth);
         if (!output_frame) {
-            // Resize failure usually means insufficient device/memory; abort to avoid null-pointer crash.
             action_status_ = util::ErrorEnum::DecoderFrameFailed;
             LOG_WARN("{} Resize failed at frame:{} stream:{} (src:{}x{} dst:{}x{})", name_,
                      frame_data ? static_cast<int64_t>(frame_data->GetFrameIndex()) : int64_t{-1},
@@ -390,7 +466,6 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
         return;
     }
     if (!output_frame->Active()) {
-        // VideoFrame created but no valid memory allocated (Active=false when Acquire fails).
         action_status_ = util::ErrorEnum::DecoderFrameFailed;
         return;
     }
@@ -402,8 +477,9 @@ void AlgChannelDecode::HandFrame(AlgDataPtr demux_data) {
     }
     DoCaptureImage(output_frame);
     CaptureJpeg(output_frame);
-    const auto color_convert = [this, native_inference_buffer](AlgDataPtr frame, VideoFramePtr in_data) {
-        return ColorConvert(frame, in_data, native_inference_buffer);
+    const auto color_convert = [this, native_inference_buffer, frame_meta](AlgDataPtr frame,
+                                                                           VideoFramePtr in_data) {
+        return ColorConvert(frame, in_data, native_inference_buffer, frame_meta);
     };
     if (prepared_task_distribution) {
         DistributorPreparedFrame(task_plan, demux_data, output_frame, color_convert);
@@ -446,7 +522,8 @@ AlgFrameInfo AlgChannelDecode::FrameInfoGet(int64_t index) {
 // Image capture and viewer distribution — moved to AlgChannelDecodeCapture.cc
 
 AlgDataPtr AlgChannelDecode::ColorConvert(AlgDataPtr demux_data, VideoFramePtr in_data,
-                                          media::NativeVideoBufferPtr native_buffer) {
+                                          media::NativeVideoBufferPtr native_buffer,
+                                          const AlgFrameMeta& frame_meta) {
     if (!VideoFrameValid(in_data, true)) {
         return nullptr;
     }
@@ -500,13 +577,19 @@ AlgDataPtr AlgChannelDecode::ColorConvert(AlgDataPtr demux_data, VideoFramePtr i
     ai_frame->SetTimestamp(in_data->GetTimestamp());
     ai_frame->SetStreamIndex(in_data->GetStreamIndex());
 
-    AlgDataPtr data                 = std::make_shared<AlgData>();
-    data->chanDataOrig.packet       = demux_data->chanDataOrig.packet;
-    data->chanDataOrig.fps          = demux_data->chanDataOrig.fps;
-    data->dataType                  = AlgDataType::ChannelDataDec;
-    data->chanDataDec.frame         = ai_frame;
-    data->chanDataDec.native_buffer = std::move(native_buffer);
-    data->channelId                 = channel_id_;
+    AlgDataPtr data                   = std::make_shared<AlgData>();
+    data->chanDataOrig.packet         = demux_data->chanDataOrig.packet;
+    data->chanDataOrig.fps            = demux_data->chanDataOrig.fps;
+    data->dataType                    = AlgDataType::ChannelDataDec;
+    data->chanDataDec.frame           = ai_frame;
+    data->chanDataDec.native_buffer   = std::move(native_buffer);
+    data->chanDataDec.meta            = frame_meta;
+    auto& out_meta                    = data->chanDataDec.meta;
+    out_meta.width                    = static_cast<int>(ai_frame->GetWidth());
+    out_meta.height                   = static_cast<int>(ai_frame->GetHeight());
+    out_meta.pixelFormat              = ai_frame->GetPixelFormat();
+    data->chanDataDec.reportTimeStamp = frame_meta.timestamp;
+    data->channelId                   = channel_id_;
 
     data->firstTimePoint = demux_data->firstTimePoint;
     action_status_       = util::ErrorEnum::Success;

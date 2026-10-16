@@ -63,6 +63,7 @@ enum class RknnCoreMode : uint8_t {
     Auto = 0,
     Core0,
     Core1,
+    Core2,
     Core01,
     // Tri-core selection; only RK3588 can honour it. Lower-core parts degrade.
     Core012,
@@ -86,6 +87,27 @@ int NormalizeRknnNpuCoreCount(int npu_core_count);
 RknnCoreSelection ResolveRknnCoreSelection(RknnCoreMode mode, uint64_t context_sequence, int npu_core_count);
 rknn_core_mask ResolveRknnCoreMask(RknnCoreMode mode, uint64_t context_sequence, int npu_core_count);
 bool ShouldConfigureRknnCoreMask(RknnCoreMode mode, int npu_core_count);
+
+RknnCoreMode ConfiguredRknnCoreMode();
+uint32_t RknnTargetCoreCount();
+uint64_t NextRknnContextSequence();
+// Overload that resolves against the packaged core count; it forwards to the
+// count-aware overload above so both spellings agree.
+rknn_core_mask ResolveRknnCoreMask(RknnCoreMode mode, uint64_t context_sequence);
+
+enum class RknnSplitPolicy : uint8_t {
+    Sequence = 0,  // legacy: bind by load sequence modulo core count
+    Weighted,      // greedy cost-weighted assignment (model byte size proxy)
+};
+
+RknnSplitPolicy ConfiguredRknnSplitPolicy();
+const char* RknnSplitPolicyName(RknnSplitPolicy policy);
+// Greedy min-cost core assignment across Split mode. Keeps a per-core ledger of
+// accumulated model costs and binds each new context to the cheapest core.
+rknn_core_mask ResolveRknnSplitCoreMaskWeighted(uint64_t context_sequence, size_t model_bytes);
+void ResetRknnSplitCostStateForTest();
+bool IsRknnCoreModeSupported(RknnCoreMode mode);
+bool ShouldConfigureRknnCoreMask(RknnCoreMode mode);
 const char* RknnCoreModeName(RknnCoreMode mode);
 
 class RknnNetNode final : public NetNode, public RknnBoundInputProvider {
@@ -129,7 +151,7 @@ private:
     void PublishRgaBoundInputTarget();
     void ClearRgaBoundInputTarget();
     void DestroyContext();
-    Status InitializeLoadedContext(uint64_t context_sequence);
+    Status InitializeLoadedContext(uint64_t context_sequence, uint64_t model_fingerprint);
 
     rknn_context context_{0};
     rknn_input_output_num io_count_{};

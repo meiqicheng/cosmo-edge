@@ -140,7 +140,7 @@ tasks:
   - id: cv
     displayName: CV
     type: cv
-    algorithmId: "99898"
+    algorithmId: "55009"
     scheduleId: schedule
     template: algorithm-template.json
 loadProfile:
@@ -301,6 +301,126 @@ loadProfile:
     /taskConfig\.params has duplicate key "param\.sensitivity"/,
   );
 });
+
+test('rk3588 v29 templates keep algorithm ids, names and flow ids consistent', () => {
+  const dirs = [
+    'person-detector-24fps',
+    'no-safety-helmet-24fps',
+    'concurrent-mixed-24fps',
+    'longrun_dualcv_24h_8ch',
+    'vlm-qwen35-0.1fps',
+  ];
+  for (const dir of dirs) {
+    const pkg = new ScenarioPackage(path.join(root, 'scenarios/rk3588-v29-run', dir)).load();
+    for (const task of pkg.tasks) {
+      assert.ok(task.template.algorithmName, `${dir}:${task.id} must carry algorithmName`);
+      assert.equal(String(task.template.algorithmId), String(task.algorithmId));
+      assert.equal(String(task.template.algorithmCode), String(task.algorithmId));
+    }
+  }
+});
+
+test('no-safety-helmet template no longer keeps the person-detector version id', () => {
+  const pkg = new ScenarioPackage(
+    path.join(root, 'scenarios/rk3588-v29-run/no-safety-helmet-24fps'),
+  ).load();
+  const template = pkg.tasks[0].template;
+  assert.equal(template.algorithmId, '7463002');
+
+  const versionIds = template.configVersionList.map((version) => version.id);
+  assert.ok(
+    !versionIds.includes('default-7463'),
+    `unexpected person-detector version id in ${versionIds.join(', ')}`,
+  );
+  assert.ok(versionIds.includes('default-7463002'));
+  assert.ok(versionIds.includes(template.confVersionId));
+});
+
+test('layout save payload carries the algorithm name and config version name', () => {
+  const pkg = new ScenarioPackage(
+    path.join(root, 'scenarios/rk3588-v29-run/no-safety-helmet-24fps'),
+  ).load();
+  assert.equal(pkg.layoutSavePayload.algorithmName, 'No Safety Helmet');
+  assert.equal(pkg.layoutSavePayload.configVersionName, '默认');
+});
+
+test('rejects a template that keeps another algorithm config version id', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scenario-bench-template-version-id-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  writeScenario(dir, { algorithmId: '7463002' });
+  writeJson(path.join(dir, 'algorithm-template.json'), {
+    algorithmId: '7463002',
+    algorithmCode: '7463002',
+    algorithmName: 'No Safety Helmet',
+    confVersionId: '79c9d9bdf07445048b57602e1dce6b6e',
+    configVersionList: [
+      { id: 'default-7463', name: '默认' },
+      { id: '79c9d9bdf07445048b57602e1dce6b6e', name: '默认' },
+    ],
+    algorithmProcessdata: '[]',
+  });
+
+  assert.throws(() => new ScenarioPackage(dir).load(), /default-7463/);
+});
+
+test('rejects a template whose algorithmId disagrees with scenario.yml', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scenario-bench-template-id-mismatch-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  writeScenario(dir, { algorithmId: '7463002' });
+  writeJson(path.join(dir, 'algorithm-template.json'), {
+    algorithmId: '7463',
+    algorithmCode: '7463',
+    algorithmName: 'Pedestrian Detector',
+    algorithmProcessdata: '[]',
+  });
+
+  assert.throws(
+    () => new ScenarioPackage(dir).load(),
+    /does not match scenario\.yml algorithmId "7463002"/,
+  );
+});
+
+test('rejects a template whose flow chain references an unknown step', (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scenario-bench-template-flow-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  writeScenario(dir, { algorithmId: '7463' });
+  writeJson(path.join(dir, 'algorithm-template.json'), {
+    algorithmId: '7463',
+    algorithmCode: '7463',
+    algorithmName: 'Pedestrian Detector',
+    algorithmProcessdata: JSON.stringify([
+      { actionId: 'BA_00001', flowActionId: 'decode', preFlowActionId: '-1' },
+      { actionId: 'AA_00001', flowActionId: 'detect', preFlowActionId: 'missing-step' },
+    ]),
+  });
+
+  assert.throws(() => new ScenarioPackage(dir).load(), /preFlowActionId "missing-step"/);
+});
+
+function writeScenario(dir, { name = 'fixture', algorithmId, template = 'algorithm-template.json' }) {
+  fs.writeFileSync(path.join(dir, 'scenario.yml'), `name: ${name}
+sampleIntervalSec: 5
+channels:
+  mode: local
+  repeatCount: 0
+  sources:
+    - name: cv
+      file: /device/cv.mp4
+tasks:
+  - id: cv
+    displayName: CV
+    algorithmId: "${algorithmId}"
+    scheduleId: schedule
+    template: ${template}
+loadProfile:
+  - channels: 1
+    holdSec: 30
+`, 'utf8');
+}
+
+function writeJson(file, value) {
+  fs.writeFileSync(file, JSON.stringify(value, null, 2), 'utf8');
+}
 
 function writeTemplate(file, processNode) {
   fs.writeFileSync(file, JSON.stringify({

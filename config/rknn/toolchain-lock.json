@@ -53,6 +53,15 @@
         "system_runtime_sha256": "0f1c5db6c649c8705759308aa56ecffc3295c7eb465f9ec9170882f44004aa8d"
       }
     },
+    "rk3588": {
+      "status": "candidate-validated",
+      "device_baseline": {
+        "kernel": "5.10.198",
+        "rknpu_driver": "rknpu (via /dev/dri/renderD128)",
+        "system_runtime": "2.0.0b0",
+        "note": "YOLOv8 INT8 reconverted (artifact bce9f86626678b0b8989b9218ee9e3bf583001810715973b414f48b15c6ca834) reproducing original 17a2cd60... input; backend-smoke + fastpath-qualify PASS on-device. See output/agent-runs/rk3588-v3-device-acceptance/evidence/device-acceptance.md"
+      }
+    },
     "rv1126b": {
       "status": "candidate-validated",
       "requires_target_bound_evidence": true

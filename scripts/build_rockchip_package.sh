@@ -59,7 +59,11 @@ esac
 if [ -z "${PROJECT_ROOT_PATH:-}" ]; then
     PROJECT_ROOT_PATH=$(cd "$(dirname "$0")/.." && pwd -P)
 fi
-builder_lock="${PROJECT_ROOT_PATH}/config/rockchip-build/builder-lock.json"
+# All Rockchip targets (rk3576, rk3588, rv1126b) share one builder lock.
+# COSMO_BUILDER_LOCK_FILE lets a Debian 11 (bullseye) build select the
+# bullseye lock (builder-lock.bullseye.json) while the default lock stays
+# the Ubuntu 22.04 (glibc 2.35) legacy policy.
+builder_lock="${COSMO_BUILDER_LOCK_FILE:-${PROJECT_ROOT_PATH}/config/rockchip-build/builder-lock.json}"
 image_lock="${COSMO_ROCKCHIP_BUILDER_LOCK:-/opt/cosmo/rockchip-builder-lock.json}"
 if [ ! -f "${builder_lock}" ]; then
     echo "ERROR: Rockchip builder lock is missing: ${builder_lock}" >&2
@@ -74,7 +78,9 @@ if ! cmp -s "${builder_lock}" "${image_lock}"; then
     exit 1
 fi
 
-IFS=$'\t' read -r rknn_root rkllm_root media_root media_runtime rkllm_required < <(
+# Delimiter must be non-whitespace: bash collapses runs of IFS whitespace,
+# which would drop empty fields (rk3588 has media_root="").
+IFS='|' read -r rknn_root rkllm_root media_root media_runtime rkllm_required ffmpeg_root glibc_max < <(
     python3 - "${builder_lock}" "${chip}" <<'PY'
 import json
 import pathlib
@@ -86,23 +92,27 @@ common = lock["common"]
 target = lock["targets"][chip]
 values = (
     common["rknn_root"],
-    common["rkllm_root"],
+    common.get("rkllm_root") or common["rknn_root"],
     target["media_root"],
     target["media_runtime_profile"],
     "ON" if target["rkllm_required"] else "OFF",
+    target.get("ffmpeg_root") or common.get("ffmpeg_root", ""),
+    target.get("glibc_max") or common.get("glibc_max", ""),
 )
-if any("\t" in str(value) or "\n" in str(value) for value in values):
+if any("|" in str(value) or "\n" in str(value) for value in values):
     raise SystemExit("builder lock values must be single-line fields")
-print("\t".join(str(value) for value in values))
+print("|".join(str(value) for value in values))
 PY
 )
 
 test -f "${rknn_root}/include/rknn_api.h"
 test -f "${rknn_root}/lib/librknnrt.so"
-test -f "${media_root}/include/rockchip/rk_mpi.h"
-test -f "${media_root}/include/rga/im2d.h"
-test -f "${media_root}/lib/librockchip_mpp.so"
-test -f "${media_root}/lib/librga.so"
+if [ -n "${media_root}" ]; then
+    test -f "${media_root}/include/rockchip/rk_mpi.h"
+    test -f "${media_root}/include/rga/im2d.h"
+    test -f "${media_root}/lib/librockchip_mpp.so"
+    test -f "${media_root}/lib/librga.so"
+fi
 if [ "${rkllm_required}" = "ON" ]; then
     test -f "${rkllm_root}/include/rkllm.h"
     test -f "${rkllm_root}/lib/librkllmrt.so"
@@ -111,13 +121,16 @@ else
     rkllm_root="${rknn_root}"
 fi
 
-rm -rf "${PROJECT_ROOT_PATH}/build_rknn"
-COSMO_PACKAGE_MODELS="${package_models}" \
-COSMO_MODEL_GUARD_BUILD_PROFILE="${build_profile}" \
-COSMO_RKLLM_REQUIRED="${rkllm_required}" \
-RKNN_ROOT="${rknn_root}" \
-RKLLM_ROOT="${rkllm_root}" \
-ROCKCHIP_MEDIA_ROOT="${media_root}" \
+: 
+# env (not a ${var:+ASSIGN=val} command prefix): word expansion there does
+# not re-parse into an assignment, so the whole token becomes the command name.
+env COSMO_PACKAGE_MODELS="${package_models}" \
+    COSMO_MODEL_GUARD_BUILD_PROFILE="${build_profile}" \
+    COSMO_RKLLM_REQUIRED="${rkllm_required}" \
+    RKNN_ROOT="${rknn_root}" \
+    RKLLM_ROOT="${rkllm_root}" \
+    ROCKCHIP_MEDIA_ROOT="${media_root}" \
+    ${ffmpeg_root:+COSMO_FFMPEG_ROOT="${ffmpeg_root}"} \
     "${PROJECT_ROOT_PATH}/scripts/build_rknn.sh" -c "${chip}" -T
 
 shopt -s nullglob
@@ -128,6 +141,12 @@ if ((${#packages[@]} != 1)) || [ ! -f "${packages[0]:-}" ] || [ -L "${packages[0
 fi
 
 package="${packages[0]}"
+if [ -n "${glibc_max}" ]; then
+    python3 "${PROJECT_ROOT_PATH}/tools/package/glibc_gate.py" \
+        --archive "${package}" \
+        --max "${glibc_max}" \
+        --json "$(dirname "${package}")/glibc-gate.json"
+fi
 python3 "${PROJECT_ROOT_PATH}/scripts/verify_package_contents.py" \
     --archive "$(cd "$(dirname "${package}")" && pwd -P)/$(basename "${package}")" \
     --build-profile "${build_profile}" \

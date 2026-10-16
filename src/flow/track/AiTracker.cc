@@ -6,6 +6,7 @@
 #include <numeric>
 
 #include "flow/common/AlgDataRecord.h"
+#include "flow/common/AlgDetectTypes.h"
 #include "flow/track/AiTrackerTypes.h"
 #include "util/GeometricCalculation.h"
 #include "util/GeometricPos.h"
@@ -174,11 +175,12 @@ void AiTracker::HandFrame(AlgDataPtr algData) {
     }
 
     SetAtomicCode(algData->chanDataDetect.atomicCode);
+    // Identity/geometry must not depend on whether the decode stage materialized
+    // a host frame: the native-only (DMA-BUF) path carries it in AlgFrameMeta.
+    const auto input_info = ResolveAlgFrameInfo(algData->chanDataDec);
     if (!tracker_) {
-        int width  = algData->chanDataDec.frame ? static_cast<int>(algData->chanDataDec.frame->GetWidth())
-                                                : media::kVideoDefaultWidth;
-        int height = algData->chanDataDec.frame ? static_cast<int>(algData->chanDataDec.frame->GetHeight())
-                                                : media::kVideoDefaultHeight;
+        int width  = input_info.width;
+        int height = input_info.height;
         if (!AiSdkInit(algData->chanDataDetect.atomicCode, algData->chanDataDetect.lables, width, height)) {
             action_status = util::ErrorEnum::AI_INST_NOTCREATED;
             return;
@@ -189,7 +191,7 @@ void AiTracker::HandFrame(AlgDataPtr algData) {
         action_status = util::ErrorEnum::FlowDataInvalid;
         return;
     }
-    frame_index_ = algData->chanDataDec.frame ? algData->chanDataDec.frame->GetFrameIndex() : 0;
+    frame_index_ = static_cast<size_t>(input_info.frameIndex >= 0 ? input_info.frameIndex : 0);
     if (last_frame_index_ > frame_index_) {
         LOG_WARN("{}[{} {}] DEBUG Last Frame:{} This Frame:{}", kTag, name_, uuid, last_frame_index_,
                  frame_index_);
@@ -225,10 +227,11 @@ void AiTracker::HandFrame(AlgDataPtr algData) {
         tracker_->SetConfig(param_.motion.motion, param_.motion.frames, param_.motion.track_dynamic_match);
     }
     action_status = tracker_->Trace(algData->chanDataDetect.detRet->targets, trackRst->targets);
-    auto frameIndex =
-        algOutData->chanDataDec.frame ? algOutData->chanDataDec.frame->GetFrameIndex() : uint64_t{0};
-    auto streamIndex =
-        algOutData->chanDataDec.frame ? algOutData->chanDataDec.frame->GetStreamIndex() : int64_t{0};
+    // Identity must not depend on whether the decode stage materialized a host
+    // frame: the native-only (DMA-BUF) path carries it in AlgFrameMeta instead.
+    const auto out_info = ResolveAlgFrameInfo(algOutData->chanDataDec);
+    auto frameIndex     = static_cast<uint64_t>(out_info.frameIndex >= 0 ? out_info.frameIndex : 0);
+    auto streamIndex    = out_info.streamIndex;
     for (auto& target : trackRst->targets) {
         target.frameIndex  = frameIndex;
         target.streamIndex = static_cast<size_t>(streamIndex);

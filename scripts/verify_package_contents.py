@@ -110,6 +110,28 @@ PRIVATE_MARKERS = (
     b"-----BEGIN EC PRIVATE KEY-----",
     b"-----BEGIN OPENSSH PRIVATE KEY-----",
 )
+# A complete PEM block (BEGIN line, base64 body, matching END line). Marker
+# constants embedded by libraries such as GLib appear as isolated strings and
+# do not form a block, so they stay exempt without a blanket ELF skip.
+PRIVATE_KEY_BLOCK_RE = re.compile(
+    rb"-----BEGIN ((?:RSA |EC |ENCRYPTED |OPENSSH )?PRIVATE KEY)-----"
+    rb"[A-Za-z0-9+/=\r\n]+"
+    rb"-----END \1-----"
+)
+# Known-good ELF members whose bytes legitimately contain complete PEM marker
+# pairs. Exemption is granted ONLY for the exact archive member path AND its
+# frozen sha256; add measured entries here when an audit flags such a library.
+EXEMPT_ELF_SHA256: dict[str, str] = {
+    # GnuTLS embeds a public test RSA key (self-test/cert-generation fixture)
+    # as a complete PEM block inside the shared library; not shipped key
+    # material. Measured from the rk3588 bullseye package build.
+    "lib/libgnutls.so.30": "45484907186edbc15f68ea8ac0e3985ef79f368ef4b275d010e5e88a8eda6612",
+}
+# FFmpeg runtime license check (P1-6). The packaged libavcodec must identify
+# as LGPL-2.1-or-later to match the shipped COPYING.LGPLv2.1. The rk3588
+# bullseye builder cross-compiles FFmpeg 4.4.6 from source with --disable-gpl
+# (no libx264 or other GPL-only components), so no binary-specific waiver is
+# allowed: a GPL-identified FFmpeg fails here instead of being exempted.
 FORBIDDEN_BASENAMES = {
     "commissioning-ed25519.seed",
     "device-certificate.bin",
@@ -344,9 +366,9 @@ def verify_model_bundle(
         if name.startswith("resource/models/") and name.endswith(".rknn")
     }
     if bundle_name not in contents:
-        if target_chip == "rv1126b" and package_rknn_models:
+        if target_chip in ("rv1126b", "rk3588") and package_rknn_models:
             raise PackageAuditError(
-                "RV1126B models require a packaged model-bundle manifest"
+                f"{target_chip.upper()} models require a packaged model-bundle manifest"
             )
         return
 
@@ -418,6 +440,46 @@ def verify_model_bundle(
         raise PackageAuditError("packaged RKNN model inventory differs from its bundle")
 
 
+def verify_algorithm_resources(contents: dict[str, bytes]) -> None:
+    """Reject exported templates masquerading as loadable runtime algorithms."""
+    for relative, data in contents.items():
+        path = pathlib.PurePosixPath(relative)
+        if path.parent.as_posix() != "resource/algorithm" or path.suffix != ".json":
+            continue
+        try:
+            payload = json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise PackageAuditError(
+                f"algorithm resource is not valid UTF-8 JSON: {relative}"
+            ) from error
+        if not isinstance(payload, dict):
+            raise PackageAuditError(
+                f"algorithm resource root must be an object: {relative}"
+            )
+        for field in ("algorithmMetadata", "algorithmProcessdata", "atomicList"):
+            if field not in payload:
+                continue
+            # Runtime packets carry these as JSON strings; templates migrated to
+            # structured values are serialized to strings on load.
+            if not isinstance(payload[field], (str, dict, list)):
+                raise PackageAuditError(
+                    f"algorithm resource {field} must be a JSON string, object, or array: {relative}"
+                )
+
+
+def assert_no_private_key_material(relative: str, data: bytes) -> None:
+    # Only complete PEM blocks count: libraries such as GLib embed the marker
+    # strings as isolated constants for certificate-format detection, while an
+    # actually packaged key always carries BEGIN..END plus its base64 body.
+    # This scan therefore also covers ELF members (embedded key material is
+    # ASCII-visible); the only exemption is EXEMPT_ELF_SHA256 (exact path +
+    # frozen sha256).
+    if EXEMPT_ELF_SHA256.get(relative) == content_sha256(data):
+        return
+    if PRIVATE_KEY_BLOCK_RE.search(data):
+        raise PackageAuditError(f"private key material is forbidden: {relative}")
+
+
 def verify_package(
     path: pathlib.Path,
     profile: str,
@@ -450,8 +512,7 @@ def verify_package(
                     raise PackageAuditError(f"cannot read member: {relative}")
                 data = stream.read()
                 contents[relative] = data
-                if any(marker in data for marker in PRIVATE_MARKERS):
-                    raise PackageAuditError(f"private key material is forbidden: {relative}")
+                assert_no_private_key_material(relative, data)
 
     for directory in REQUIRED_DIRS:
         if directory not in entries or not entries[directory].isdir():
@@ -533,6 +594,7 @@ def verify_package(
     verify_runtime_license_bundle(contents, effective_chip, profile)
 
     verify_model_bundle(entries, contents, effective_chip)
+    verify_algorithm_resources(contents)
 
     if target_chip is not None:
         if target_chip in ROCKCHIP_CHIPS:

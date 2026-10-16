@@ -37,7 +37,15 @@ function parseArgs(argv) {
       args.command = 'help';
     } else if (a.startsWith('--')) {
       const key = a.slice(2);
-      if (['verbose', 'no-reuse', 'cleanup', 'skip-import', 'password-stdin'].includes(key)) {
+      if ([
+        'verbose',
+        'no-reuse',
+        'cleanup',
+        'skip-import',
+        'password-stdin',
+        'allow-rga-crop-host-staging',
+        'allow-mpp-rga-materialization',
+      ].includes(key)) {
         args[key] = true;
       } else {
         args[key] = argv[++i];
@@ -79,6 +87,10 @@ run options:
   --only-channels <n>  Run only one exact channel-count step from the effective profile
   --ramp-batch-size <n>
   --ramp-batch-delay-sec <n>
+  --channel-settle-ms <n>   Wait after channel creation before the first bind (default: 3000)
+  --bind-retry-count <n>    Transient bind retries per task (default: 3)
+  --bind-retry-base-delay-ms <n>  First retry backoff (default: 1000)
+  --hold-warmup-sec <n>   Ignore the first N seconds of each hold window for bottleneck detection (default: 0)
   --vlm-ready-timeout-sec <n> Wait for each new VLM route, default 180
   --preview <mode>      none (default) | raw | algorithm
   --preview-streams <n> Number of preview streams or all (default)
@@ -128,6 +140,8 @@ checkpoint options:
   --min-rga-bound-native-int8-frames <n> Required native INT8 bound frames with full RKNN accounting
   --min-rknn-mpp-dmabuf-frames <n> Required RKNN frames sourced from MPP DMA-BUF
   --min-rknn-rga-crop-dmabuf-frames <n> Required classifier crops sourced from DMA-BUF
+  --allow-rga-crop-host-staging Allow RGA crop host staging when DMA-BUF input is unavailable
+  --allow-mpp-rga-materialization Allow the RK3588 RGA-I420 materialization path without requiring MPP DMA-BUF
   --max-rga-bound-requantize-avg-ms <n> Maximum average native U8-to-INT8 transform latency
 `);
 }
@@ -533,12 +547,14 @@ async function runBenchmark(args) {
     if (args['skip-import']) {
       log.info('Skipping layout save (--skip-import).');
     } else {
+      const namesBefore = await readAlgorithmNames(client, log);
       for (const item of pkg.layoutSavePayloads) {
         log.info(`Saving orchestration template for task "${item.taskId}" via /algorithm/layout/save...`);
         await client.layoutSave(item.payload);
         throwIfAborted(signal);
       }
       log.info(`Layout saved for ${pkg.layoutSavePayloads.length} task(s).`);
+      await reconcileAlgorithmNames(client, pkg, namesBefore, log);
     }
 
     channelMgr = new ChannelManager(client, {
@@ -557,6 +573,9 @@ async function runBenchmark(args) {
       bindings: pkg.bindings,
       rampBatchSize: Number(args['ramp-batch-size'] ?? 1),
       rampBatchDelaySec: Number(args['ramp-batch-delay-sec'] ?? 15),
+      channelSettleMs: Number(args['channel-settle-ms'] ?? 3000),
+      bindRetryCount: Number(args['bind-retry-count'] ?? 3),
+      bindRetryBaseDelayMs: Number(args['bind-retry-base-delay-ms'] ?? 1000),
       signal,
     }, log);
     runner.setChannels(videoChannelIds);
@@ -572,6 +591,7 @@ async function runBenchmark(args) {
     // after the most recent ramp; samples are still recorded for reporting.
     const DISCARD_GRACE_MS = 15_000;
     let lastRampAt = 0;
+    const holdWarmupSec = Number(args['hold-warmup-sec'] ?? 0);
 
     const captureSample = async (phase = 'hold', targetChannels = currentChannels) => {
       throwIfAborted(signal);
@@ -635,7 +655,7 @@ async function runBenchmark(args) {
       const diskUsed = sample.hardware?.eMMCUtilization?.usedPercent;
       const diskLimit = Number(pkg?.thresholds?.pass?.maxDiskUsedPercent ?? 90);
       if (mem98Count >= 3) reasons.push(`memory >= 98% for ${mem98Count} consecutive samples`);
-      if (memAvg60s != null && memAvg60s >= 95) reasons.push(`memory 60s average ${memAvg60s.toFixed(1)}% >= 95%`);
+      if (memAvg60s != null && memAvg60s >= 98) reasons.push(`memory 60s average ${memAvg60s.toFixed(1)}% >= 98%`);
       // OOM cliff observed on RK3588 .6 (2026-09-20): mem 78% -> 92% on binding
       // one more channel, device unreachable ~15s later (engine 502, adbd gone).
       // Stop on a single 92% sample: past this point the board dies before the
@@ -723,7 +743,7 @@ async function runBenchmark(args) {
         const summary = summarizeStep({
           ...step,
           currentVlmBindings: currentVlmBindingsByStep.get(step.index) ?? [],
-        }, samples, pkg.thresholds, pkg.videoMode);
+        }, samples, pkg.thresholds, pkg.videoMode, holdWarmupSec);
         const minFps = summary.minFpsAcross;
         const meanDiscard = summary.avgDiscard;
         const maxNpu = summary.maxNpu;
@@ -876,6 +896,8 @@ async function runCheckpoint(args) {
     minRgaBoundNativeInt8Frames: optionalNumber(args, 'min-rga-bound-native-int8-frames'),
     minRknnMppDmaBufFrames: optionalNumber(args, 'min-rknn-mpp-dmabuf-frames'),
     minRknnRgaCropDmaBufFrames: optionalNumber(args, 'min-rknn-rga-crop-dmabuf-frames'),
+    allowRgaCropHostStaging: args['allow-rga-crop-host-staging'] === true,
+    allowMppRgaMaterialization: args['allow-mpp-rga-materialization'] === true,
     maxRgaBoundRequantizeAvgMs: optionalNumber(args, 'max-rga-bound-requantize-avg-ms'),
     expectedPreviewStreams: optionalNumber(args, 'expected-preview-streams'),
     expectedDecoderBackend: args['expected-decoder-backend'],
@@ -890,6 +912,92 @@ async function runCheckpoint(args) {
   if (result.failures.length) console.log(`  failed: ${result.failures.join(', ')}`);
   if (result.pending.length) console.log(`  pending: ${result.pending.join(', ')}`);
   process.exitCode = result.verdict === 'PASS' ? 0 : (result.verdict === 'IN_PROGRESS' ? 3 : 1);
+}
+
+/**
+ * Snapshot algorithmId -> algorithmName from the same /Algorithm/Page endpoint
+ * the Web UI renders.
+ * @returns {Promise<Map<string,string>|null>} null when the read failed.
+ */
+async function readAlgorithmNames(client, log) {
+  try {
+    const page = await client.algorithmPage({ pageNum: 1, pageSize: 500 });
+    const names = new Map();
+    for (const row of page?.rows ?? []) {
+      const id = String(row?.algorithmId ?? row?.id ?? '').trim();
+      if (id) names.set(id, String(row?.algorithmName ?? ''));
+    }
+    return names;
+  } catch (err) {
+    log.warn(`Could not read algorithm names: ${err.message}`);
+    return null;
+  }
+}
+
+/**
+ * /algorithm/layout/save carries no algorithmName, so the board can blank the
+ * name or keep a stale one. Repair the display metadata through the public
+ * /algorithm/update route, then verify the value read back by the Web UI.
+ */
+async function reconcileAlgorithmNames(client, pkg, namesBefore, log) {
+  let namesAfter = await readAlgorithmNames(client, log);
+  if (!namesAfter) return;
+
+  const repaired = [];
+  for (const item of pkg.layoutSavePayloads) {
+    const id = String(item.algorithmId);
+    const desired = String(item.payload.algorithmName ?? '').trim();
+    const after = namesAfter.get(id);
+    if (after == null) {
+      log.warn(`Algorithm "${id}" is absent from /Algorithm/Page after layout save.`);
+      continue;
+    }
+    if (after === desired) {
+      const before = namesBefore?.get(id);
+      if (before && before !== after) {
+        log.warn(`Algorithm "${id}" name changed during layout/save: "${before}" -> "${after}".`);
+      } else {
+        log.info(`Algorithm "${id}" name "${after}" kept across layout/save.`);
+      }
+      continue;
+    }
+
+    const category = Number(item.payload.algorithmCategory);
+    if (!desired || !Number.isInteger(category)) {
+      log.warn(
+        `Algorithm "${id}" name after layout/save is "${after}" instead of "${desired}", `
+        + 'but the template does not contain enough metadata to repair it.',
+      );
+      continue;
+    }
+
+    log.warn(
+      `Algorithm "${id}" name after layout/save is "${after || '(empty)'}" instead of `
+      + `"${desired}"; repairing via /algorithm/update.`,
+    );
+    await client.algorithmUpdate({
+      algorithmId: id,
+      algorithmName: desired,
+      algorithmCategory: category,
+      remark: String(item.payload.remark ?? ''),
+    });
+    repaired.push({ id, desired });
+  }
+
+  if (!repaired.length) return;
+  namesAfter = await readAlgorithmNames(client, log);
+  if (!namesAfter) {
+    throw new Error('algorithm name repair could not be verified through /Algorithm/Page');
+  }
+  for (const { id, desired } of repaired) {
+    const actual = namesAfter.get(id);
+    if (actual !== desired) {
+      throw new Error(
+        `algorithm "${id}" name repair failed: expected "${desired}", got "${actual ?? '(missing)'}"`,
+      );
+    }
+    log.info(`Algorithm "${id}" name repaired to "${desired}".`);
+  }
 }
 
 async function main() {

@@ -20,6 +20,7 @@
 
 #include "media/DmaHeap32Buffer.h"
 #include "media/PreviewPipelineMetrics.h"
+#include "media/RockchipMppCompat.h"
 #include "media/RockchipRgaBuffer.h"
 #include "media/VideoDecoderCpu.h"
 #include "util/Log.h"
@@ -68,9 +69,7 @@ namespace {
     }
 
     bool IsCompact420Format(MppFrameFormat format) {
-        const auto properties = static_cast<RK_U32>(format) & MPP_FRAME_FMT_PROP_MASK;
-        if ((properties & (MPP_FRAME_FBC_MASK | MPP_FRAME_TILE_FLAG)) != 0 ||
-            MPP_FRAME_FMT_IS_YUV_10BIT(format)) {
+        if (MppFrameIsUnsupportedLayout(format)) {
             return false;
         }
         const auto base = static_cast<RK_U32>(format) & MPP_FRAME_FMT_MASK;
@@ -140,15 +139,36 @@ namespace {
         NativeVideoBufferFormat native_format = NativeVideoBufferFormat::Unknown;
         if (base_format == MPP_FMT_YUV420SP) {
             native_format = NativeVideoBufferFormat::NV12;
-        } else if (base_format == MPP_FMT_YUV420SP_VU) {
-            native_format = NativeVideoBufferFormat::NV21;
         } else if (base_format == MPP_FMT_YUV420P) {
             native_format = NativeVideoBufferFormat::I420;
         }
+        // NV21 (YUV420SP_VU) has no native inference consumer; exporting it would
+        // force downstream code to guess the chroma order. Keep such frames on the
+        // explicit host materialization path (CopyMppFrameCpu handles VU order).
+        NativeVideoPlaneLayout layout;
+        const bool layout_valid =
+            native_format != NativeVideoBufferFormat::Unknown &&
+            DeriveNativeVideoPlaneLayout(native_format, static_cast<int>(width), static_cast<int>(height),
+                                         static_cast<int>(horizontal_stride),
+                                         static_cast<int>(vertical_stride), layout);
+        if (!layout_valid || mpp_buffer_get_size(buffer) < layout.required_bytes) {
+            LOG_WARN(
+                "{} MPP DMA-BUF export rejected for native inference: format=0x{:x} layout={} "
+                "capacity={}",
+                decoder_name, static_cast<RK_U32>(format),
+                native_format == NativeVideoBufferFormat::Unknown ? "unsupported"
+                                                                  : (layout_valid ? "undersized" : "invalid"),
+                mpp_buffer_get_size(buffer));
+            return nullptr;
+        }
         const int fd = mpp_buffer_get_fd(buffer);
-        if (native_format == NativeVideoBufferFormat::Unknown || fd < 0 ||
-            mpp_buffer_inc_ref(buffer) != MPP_OK) {
+        if (fd < 0 || mpp_buffer_inc_ref(buffer) != MPP_OK) {
             LOG_WARN("{} could not retain MPP DMA-BUF for inference", decoder_name);
+            return nullptr;
+        }
+        if (MppBufferReadBegin(buffer) != MPP_OK) {
+            LOG_WARN("{} could not sync MPP DMA-BUF for RGA read; rolling back", decoder_name);
+            mpp_buffer_put(buffer);
             return nullptr;
         }
 
@@ -164,6 +184,7 @@ namespace {
         result->color_range   = ToNativeColorRange(mpp_frame_get_color_range(frame));
         result->owner         = std::shared_ptr<void>(buffer, [](void* value) {
             if (value) {
+                MppBufferReadEnd(static_cast<MppBuffer>(value));
                 mpp_buffer_put(static_cast<MppBuffer>(value));
             }
         });
@@ -209,13 +230,13 @@ namespace {
         }
 
         auto* source = static_cast<const uint8_t*>(mpp_buffer_get_ptr(buffer));
-        if (!source || mpp_buffer_sync_ro_begin(buffer) != MPP_OK) {
+        if (!source || MppBufferReadBegin(buffer) != MPP_OK) {
             return nullptr;
         }
         struct ReadSyncGuard {
             MppBuffer buffer;
             ~ReadSyncGuard() {
-                mpp_buffer_sync_ro_end(buffer);
+                MppBufferReadEnd(buffer);
             }
         } sync_guard{buffer};
 
@@ -283,7 +304,6 @@ namespace {
             vertical_stride > static_cast<size_t>(std::numeric_limits<int>::max()) ||
             horizontal_stride < width || vertical_stride < height || !IsCompact420Format(format) || !buffer ||
             source_format == RK_FORMAT_UNKNOWN) {
-            GetPreviewPipelineMetrics().RecordMppRgaCopyOut(false);
             GetPreviewPipelineMetrics().RecordMppCpuCopyOutFallback();
             return CopyMppFrameCpu(decoder_name, frame);
         }
@@ -295,26 +315,50 @@ namespace {
             return nullptr;
         }
 
+        if (MppBufferReadBegin(buffer) != MPP_OK) {
+            GetPreviewPipelineMetrics().RecordMppRgaCopyOut(false);
+            GetPreviewPipelineMetrics().RecordMppCpuCopyOutFallback();
+            return CopyMppFrameCpu(decoder_name, frame);
+        }
+        struct ReadSyncGuard {
+            MppBuffer buffer;
+            ~ReadSyncGuard() { MppBufferReadEnd(buffer); }
+        } sync_guard{buffer};
+
         const auto rga_started = std::chrono::steady_clock::now();
-        ScopedRgaBufferHandle source_handle;
-        ScopedRgaBufferHandle target_handle(output->GetData(), output->GetSize());
         const int source_fd = mpp_buffer_get_fd(buffer);
-        source_handle.ImportFd(source_fd, mpp_buffer_get_size(buffer));
+        // Reuse a per-thread staging buffer instead of allocating a fresh
+        // dma32 buffer for every frame. A per-frame Allocate costs
+        // open + DMA_HEAP_IOCTL_ALLOC + mmap/munmap + close churn that adds
+        // fd pressure and allocator jitter to the copy-out path. Materialize
+        // can run on different consumer threads, so the buffer is
+        // thread_local rather than shared across threads.
+        static thread_local media::Dma32Buffer target_dma;
+        if (target_dma.Size() != output->GetSize()) {
+            target_dma.Release();
+            if (!target_dma.Allocate(output->GetSize())) {
+                target_dma.Release();
+            }
+        }
         IM_STATUS status = IM_STATUS_OUT_OF_MEMORY;
-        if (source_handle && target_handle) {
-            auto source = wrapbuffer_handle_t(source_handle.Get(), static_cast<int>(width),
-                                              static_cast<int>(height), static_cast<int>(horizontal_stride),
-                                              static_cast<int>(vertical_stride), source_format);
-            auto target =
-                wrapbuffer_handle_t(target_handle.Get(), static_cast<int>(width), static_cast<int>(height),
-                                    static_cast<int>(width), static_cast<int>(height), RK_FORMAT_YCbCr_420_P);
+        if (source_fd >= 0 && target_dma.Size() == output->GetSize()) {
+            // Pass the decoder-owned dma-buf directly so librga retains the
+            // MPP plane/stride metadata on RK3588.
+            const auto source = wrapbuffer_fd_t(source_fd, static_cast<int>(width),
+                                                static_cast<int>(height), static_cast<int>(horizontal_stride),
+                                                static_cast<int>(vertical_stride), source_format);
+            // RGA's legacy scheduler requires an FD-only contract here. MPP
+            // supplies the source FD; stage the current host-frame boundary
+            // through a dma32 FD until native VideoFrame DMA-BUF propagation
+            // is available downstream.
+            const auto target = RgaFdBuffer(target_dma.Fd(), static_cast<int>(width),
+                                            static_cast<int>(height), RK_FORMAT_YCbCr_420_P);
+            std::lock_guard<std::mutex> rga_lock(media::RgaGlobalLock());
             if (source_format == RK_FORMAT_YCbCr_420_P) {
-                const im_rect source_rect{0, 0, static_cast<int>(width), static_cast<int>(height)};
-                const im_rect target_rect = source_rect;
+                const im_rect rect{0, 0, static_cast<int>(width), static_cast<int>(height)};
                 const im_rect empty_rect{};
                 const rga_buffer_t empty_buffer{};
-                status =
-                    improcess(source, target, empty_buffer, source_rect, target_rect, empty_rect, IM_SYNC);
+                status = improcess(source, target, empty_buffer, rect, rect, empty_rect, IM_SYNC);
             } else {
                 status = imcvtcolor_t(source, target, source_format, RK_FORMAT_YCbCr_420_P,
                                       IM_COLOR_SPACE_DEFAULT, 1);
@@ -324,8 +368,13 @@ namespace {
         GetPreviewPipelineMetrics().RecordRgaOperation(rga_success, ElapsedNanoseconds(rga_started));
         GetPreviewPipelineMetrics().RecordMppRgaCopyOut(rga_success);
         if (rga_success) {
-            rga_consecutive_failures.store(0, std::memory_order_relaxed);
-            return output;
+            const auto* mapped = static_cast<const uint8_t*>(target_dma.Map());
+            if (mapped) {
+                std::memcpy(output->GetData(), mapped, output->GetSize());
+                rga_consecutive_failures.store(0, std::memory_order_relaxed);
+                return output;
+            }
+            GetPreviewPipelineMetrics().RecordMppRgaCopyOut(false);
         }
 
         // Failure can originate in the kernel import, before our own logger.
@@ -695,7 +744,8 @@ bool VideoDecoderRockchip::ConfigureFrameGroup(size_t buffer_size) {
     MPP_RET ret                     = MPP_OK;
     const bool reuse_existing_group = state_->frame_group && state_->frame_group_buffer_size == buffer_size;
     if (!reuse_existing_group && state_->frame_group) {
-        // Resolution change with a live group: hand the group back and rebuild.
+        // Resolution change with a live group: hand the group back and rebuild
+        // it, so the new reservation can come from the dma32 heap.
         mpp_buffer_group_put(state_->frame_group);
         state_->frame_group          = nullptr;
         state_->frame_group_is_dma32 = false;
@@ -705,7 +755,8 @@ bool VideoDecoderRockchip::ConfigureFrameGroup(size_t buffer_size) {
         // The externally supplied dma32 group keeps the decoded DMA-BUFs below
         // the 4 GiB boundary, which is what lets the RGA2-only NV12->I420
         // materialization run on RGA2. Fall back to the internal group when the
-        // heap cannot serve the reservation.
+        // heap cannot serve the reservation. An externally reserved group is
+        // already sized, so it skips mpp_buffer_group_limit_config.
         if (CreateDma32FrameGroup(buffer_size)) {
             LOG_INFO("{} MPP decoder external frame group: {} dma32 buffers of {} bytes ({} live decoders)",
                      idx_name_, Dma32DecoderGroupBufferCount(), buffer_size, Dma32DecoderCount());
@@ -724,6 +775,24 @@ bool VideoDecoderRockchip::ConfigureFrameGroup(size_t buffer_size) {
                 return false;
             }
         }
+    } else if (!reuse_existing_group) {
+        ret = mpp_buffer_group_clear(state_->frame_group);
+        if (ret != MPP_OK) {
+            LOG_WARN("{} MPP decoder frame-group reset failed: {}", idx_name_, ret);
+            return false;
+        }
+        ret = mpp_buffer_group_limit_config(state_->frame_group, buffer_size, kDecoderBufferCount);
+        if (ret != MPP_OK) {
+            LOG_WARN("{} MPP decoder frame-group limit failed: {}", idx_name_, ret);
+            return false;
+        }
+    }
+    if (!reuse_existing_group) {
+        // Every dma-buf in the group is replaced above, either by rebuilding the
+        // group or by mpp_buffer_group_clear: bump the epoch so RGA fd-handle
+        // caches in the inference nodes drop handles for the old dma-bufs before
+        // reused fd numbers can resolve to a wrong buffer.
+        media::BumpRockchipDecoderEpoch();
         ret = state_->api->control(state_->context, MPP_DEC_SET_EXT_BUF_GROUP, state_->frame_group);
         if (ret != MPP_OK) {
             LOG_WARN("{} MPP decoder external frame-group setup failed: {}", idx_name_, ret);
@@ -812,8 +881,18 @@ DecodedVideoFrame VideoDecoderRockchip::ReceiveMppFrame(bool& made_progress) {
     if (timing != state_->pending.end()) {
         state_->pending.erase(timing);
     }
-    const size_t frame_width            = mpp_frame_get_width(frame);
-    const size_t frame_height           = mpp_frame_get_height(frame);
+    const size_t frame_width  = mpp_frame_get_width(frame);
+    const size_t frame_height = mpp_frame_get_height(frame);
+    if (mpp_frame_get_buffer(frame)) {
+        static std::atomic_flag frame_contract_logged = ATOMIC_FLAG_INIT;
+        if (!frame_contract_logged.test_and_set(std::memory_order_relaxed)) {
+            auto contract_buffer = mpp_frame_get_buffer(frame);
+            LOG_INFO("{} MPP frame contract: {}x{} stride={}x{} fmt=0x{:x} fd={} size={}",
+                     idx_name_, frame_width, frame_height, mpp_frame_get_hor_stride(frame),
+                     mpp_frame_get_ver_stride(frame), mpp_frame_get_fmt(frame),
+                     mpp_buffer_get_fd(contract_buffer), mpp_buffer_get_size(contract_buffer));
+        }
+    }
     width_                              = frame_width;
     height_                             = frame_height;
     auto holder                         = std::make_shared<MppFrameHolder>(frame);
@@ -879,6 +958,9 @@ void VideoDecoderRockchip::CleanMpp() {
         state_->api     = nullptr;
     }
     if (state_->frame_group) {
+        // Frame flow has stopped: invalidate stale RGA handles for this
+        // group's dma-bufs process-wide (see BumpRockchipDecoderEpoch).
+        media::BumpRockchipDecoderEpoch();
         mpp_buffer_group_put(state_->frame_group);
         state_->frame_group = nullptr;
     }

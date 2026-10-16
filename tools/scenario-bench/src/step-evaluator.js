@@ -5,7 +5,7 @@ import {
   strategyForTaskType,
 } from './task-strategies.js';
 
-export function summarizeStep(step, samples, thresholds = {}, videoMode = 'local') {
+export function summarizeStep(step, samples, thresholds = {}, videoMode = 'local', holdWarmupSec = 0) {
   const allTicks = selectStepSamples(
     samples.filter((s) => s.stepIndex === (step.sampleStepIndex ?? step.index)),
     step,
@@ -15,7 +15,29 @@ export function summarizeStep(step, samples, thresholds = {}, videoMode = 'local
   // VLM steps already have an explicit model-loading phase. Keep the complete
   // hold window so low-frequency completions are divided by the real observed
   // time instead of a shortened first-event-to-end interval.
-  const ticks = hasVlm ? allTicks : allTicks.slice(Math.floor(allTicks.length / 2));
+  let ticks;
+  if (hasVlm) {
+    ticks = allTicks;
+  } else if (holdWarmupSec > 0 && allTicks.length >= 2) {
+    // Time-based warmup: discard samples collected before holdWarmupSec into the
+    // hold window. This avoids ramp-up transients (e.g. model init / NPU alloc)
+    // from triggering false bottleneck detections.
+    const holdStartTs = allTicks[0].ts;
+    const warmupMs = holdWarmupSec * 1000;
+    const warmedUp = allTicks.filter((tick) => (tick.ts - holdStartTs) >= warmupMs);
+    // Always keep at least 1 sample so the step still produces metrics.
+    ticks = warmedUp.length >= 1 ? warmedUp : allTicks.slice(-1);
+    const elapsedSec = allTicks.length > 1 ? (allTicks[allTicks.length - 1].ts - holdStartTs) / 1000 : 0;
+    // Per-tick FPS diagnostics for warmed-up ticks
+    const tickFps = warmedUp.map((tick) => {
+      const chFps = (tick.channels ?? []).map((ch) => `${ch.channelId ?? '?'}=${ch.measuredFps ?? '?'}`);
+      return `[${((tick.ts - holdStartTs) / 1000).toFixed(0)}s] ${chFps.join(' ')}`;
+    });
+    console.error(`[warmup-debug] step=${step.index} allTicks=${allTicks.length} holdStartTs=${holdStartTs} warmupMs=${warmupMs} warmedUp=${warmedUp.length} elapsedSec=${elapsedSec.toFixed(1)}`);
+    for (const line of tickFps) { console.error(`  ${line}`); }
+  } else {
+    ticks = allTicks.slice(Math.floor(allTicks.length / 2));
+  }
   if (!allTicks.length) {
     return {
       step,

@@ -54,7 +54,9 @@ set(MEDIA_CPU_SRC
 # resize operations, and the RKNN fast path can bind MPP/RGA DMA-BUF inputs
 # directly. FFmpeg and CPU transforms remain explicit fault-tolerance fallbacks.
 set(MEDIA_ROCKCHIP_SRC
+    RockchipMppCompat.h
     RockchipRgaBuffer.h
+    NativeVideoMaterializeRockchip.cc
     VideoDecoderCpu.cc           VideoDecoderCpu.h
     VideoDecoderCreateRockchip.cc
     VideoDecoderRockchip.cc      VideoDecoderRockchip.h

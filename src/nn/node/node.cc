@@ -151,6 +151,16 @@ Status CheckNodeForwardParam(Blob& bottom_blob, Blob& top_blob, bool check_same_
     return COSMO_NN_OK;
 }
 
+Status CheckNodeForwardParamNativeAware(Blob& bottom_blob, Blob& top_blob, bool check_same_device) {
+    if (!bottom_blob.GetHandle().base && !bottom_blob.GetHandle().native_image.Valid())
+        return Status(COSMO_NN_ERR_NULL_PARAM, "bottom blob is null");
+
+    if (check_same_device && (bottom_blob.GetBlobDesc().device_type != top_blob.GetBlobDesc().device_type))
+        return Status(COSMO_NN_ERR_NULL_PARAM, "bottom and top blob must be same device type");
+
+    return COSMO_NN_OK;
+}
+
 Status CheckNodeInputOutput(std::shared_ptr<Blob>& bottom_blob, std::shared_ptr<Blob>& top_blob,
                             bool check_same_device) {
     if (!bottom_blob || !top_blob)
@@ -195,6 +205,23 @@ Status CheckNodeInputOutput(std::vector<std::shared_ptr<Blob>>& bottom_blobs,
             }
         }
     }
+
+    return COSMO_NN_OK;
+}
+
+Status CheckNodeInputOutputNativeAware(std::shared_ptr<Blob>& bottom_blob,
+                                       std::shared_ptr<Blob>& top_blob, bool check_same_device) {
+    if (!bottom_blob || !top_blob)
+        return Status(COSMO_NN_ERR_NULL_PARAM, "bottom or top blob is null");
+
+    if (!bottom_blob->GetHandle().base && !bottom_blob->GetHandle().native_image.Valid())
+        return Status(COSMO_NN_ERR_NULL_PARAM, "bottom blob is null");
+
+    if (!top_blob->GetHandle().base && !top_blob->GetHandle().native_image.Valid())
+        return Status(COSMO_NN_ERR_NULL_PARAM, "top blob is null");
+
+    if (check_same_device && (bottom_blob->GetBlobDesc().device_type != top_blob->GetBlobDesc().device_type))
+        return Status(COSMO_NN_ERR_NULL_PARAM, "bottom and top blob must be same device type");
 
     return COSMO_NN_OK;
 }

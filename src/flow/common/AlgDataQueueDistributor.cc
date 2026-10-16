@@ -4,6 +4,7 @@
 
 #include <algorithm>
 
+#include "flow/common/AlgTaskNativeCapability.h"
 #include "util/VideoInfo.h"
 #include "util/dto/ActionCodes.h"
 
@@ -26,8 +27,9 @@ void AlgDataQueueDistributor::UpdateSubTask(AlgDataTask& taskGroup, AlgTaskUnit&
                (newTask.flowActionId == task.flowActionId);
     });
     if (it != taskGroup.tasks.end()) {
-        // Update fps
-        it->fps = newTask.fps;
+        // Update fields that affect planning when a running task is refreshed.
+        it->fps                 = newTask.fps;
+        it->requires_host_frame = newTask.requires_host_frame;
         // Update the sub-task's queue pointer to prevent holding the old queue and causing a memory leak
         if (newTask.que && it->que != newTask.que) {
             it->que = newTask.que;
@@ -276,11 +278,13 @@ AlgFrameDistributionPlan AlgDataQueueDistributor::PrepareFrameDistribution(AlgDa
             task_group.que->RecordDiscard();
             continue;
         }
-        const bool detector_group =
-            !task_group.tasks.empty() &&
-            std::all_of(task_group.tasks.begin(), task_group.tasks.end(),
-                        [](const AlgTaskUnit& task) { return task.actionId == AADetect_Code.data(); });
-        plan.native_inference_eligible = plan.native_inference_eligible && detector_group;
+        const bool native_capable_group = AlgTasksNativeOnlyEligible(task_group.tasks);
+        plan.native_inference_eligible  = plan.native_inference_eligible && native_capable_group;
+        const bool native_descriptor_supported =
+            std::any_of(task_group.tasks.begin(), task_group.tasks.end(), [](const AlgTaskUnit& task) {
+                return ResolveAlgTaskNativeCapability(task.actionId).supports_native_input;
+            });
+        plan.native_descriptor_requested = plan.native_descriptor_requested || native_descriptor_supported;
         plan.queues.push_back(task_group.que);
     }
     return plan;
@@ -306,6 +310,24 @@ int AlgDataQueueDistributor::DistributorPreparedFrame(
         auto queued = converted;
         if (plan.queues.size() > 1 && converted->chanDataDec.native_buffer) {
             queued = AlgDataCopy(converted);
+        }
+        if (queue && queue->Insert(std::move(queued))) {
+            message_count += 1;
+        }
+    }
+    return message_count;
+}
+
+int AlgDataQueueDistributor::DistributorNativeOnlyFrame(const AlgFrameDistributionPlan& plan,
+                                                        AlgDataPtr data) {
+    if (!data || plan.Empty()) {
+        return 0;
+    }
+    int message_count = 0;
+    for (const auto& queue : plan.queues) {
+        auto queued = data;
+        if (plan.queues.size() > 1 && data->chanDataDec.native_buffer) {
+            queued = AlgDataCopy(data);
         }
         if (queue && queue->Insert(std::move(queued))) {
             message_count += 1;

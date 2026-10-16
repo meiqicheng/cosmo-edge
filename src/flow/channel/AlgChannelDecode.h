@@ -8,6 +8,7 @@
 #include <memory>
 #include <shared_mutex>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #ifdef __cplusplus
@@ -72,6 +73,13 @@ public:
         return action_status_;
     }
 
+    // When a downstream flow action requires a host frame (e.g. classify),
+    // native-only decode must be disabled even if the detector supports it.
+    // The requirement is tracked per task id so that removing a task releases
+    // the latch when no other task still needs a host frame (P1-1).
+    void SetRequiresHostFrame(const std::string& task_id, bool v);
+    [[nodiscard]] bool RequiresHostFrame() const { return !requires_host_frame_tasks_.empty(); }
+
     // Public interface for image capture.
     VideoFramePtr CaptureImage(int timeoutMs = 3000);
 
@@ -89,7 +97,8 @@ private:
     void PrepareDecoder(VideoPacketPtr& videoFrame);
     bool NeedsResize(VideoPacketPtr& videoFrame);
     AlgDataPtr ColorConvert(AlgDataPtr demuxData, VideoFramePtr inData,
-                            media::NativeVideoBufferPtr nativeBuffer = nullptr);
+                            media::NativeVideoBufferPtr nativeBuffer = nullptr,
+                            const AlgFrameMeta& frameMeta = {});
 
     void FrameInfoSave(VideoPacketPtr packet);
     AlgFrameInfo FrameInfoGet(int64_t index);
@@ -138,5 +147,6 @@ private:
 
     int width_{0};
     int height_{0};
+    std::unordered_set<std::string> requires_host_frame_tasks_;
 };
 }  // namespace cosmo

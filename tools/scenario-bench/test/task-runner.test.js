@@ -115,6 +115,62 @@ test('task runner preserves runtime-threshold gate identity at a completed hold'
   assert.deepEqual(result.bottleneckGates, gates);
 });
 
+test('task runner retries transient bind failures and succeeds', async () => {
+  const calls = [];
+  const client = {
+    async taskApplyParamsBatch({ targetChannelIds }) {
+      calls.push(targetChannelIds);
+      if (calls.length === 1) {
+        return { failedList: [{ id: 'channel-1', resCode: 'TaskCreateFailed' }] };
+      }
+      return { failedList: [] };
+    },
+    async taskBatchSwitch() {
+      return { failedList: [] };
+    },
+  };
+  const runner = new TaskRunner(client, {
+    algorithmId: '7463',
+    scheduleId: 'always',
+    rampBatchDelaySec: 0,
+    channelSettleMs: 0,
+    bindRetryBaseDelayMs: 1,
+  });
+  runner.setChannels(['channel-1']);
+
+  const result = await runner.runStaircase([{ channels: 1, holdSec: 0.001 }], {}, 0.001);
+
+  assert.equal(result.bottleneckStep, undefined);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(calls[1], ['channel-1']);
+});
+
+test('task runner does not retry permanent bind failures', async () => {
+  const calls = [];
+  const client = {
+    async taskApplyParamsBatch({ targetChannelIds }) {
+      calls.push(targetChannelIds);
+      return { failedList: [{ id: 'channel-1', resCode: 'TaskTooMuch' }] };
+    },
+    async taskBatchSwitch() {
+      return { failedList: [] };
+    },
+  };
+  const runner = new TaskRunner(client, {
+    algorithmId: '7463',
+    scheduleId: 'always',
+    rampBatchDelaySec: 0,
+    channelSettleMs: 0,
+    bindRetryBaseDelayMs: 1,
+  });
+  runner.setChannels(['channel-1']);
+
+  const result = await runner.runStaircase([{ channels: 1, holdSec: 0.001 }], {}, 0.001);
+
+  assert.equal(result.bottleneckSource, 'task-binding');
+  assert.equal(calls.length, 1);
+});
+
 test('task runner interrupts a hold and disables active tasks on SIGTERM', async () => {
   const controller = new AbortController();
   const switches = [];
@@ -136,6 +192,7 @@ test('task runner interrupts a hold and disables active tasks on SIGTERM', async
     algorithmId: '7463',
     scheduleId: 'always',
     rampBatchDelaySec: 0,
+    channelSettleMs: 0,
     signal: controller.signal,
   });
   runner.setChannels(['channel-1']);

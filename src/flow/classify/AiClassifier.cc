@@ -40,7 +40,13 @@ bool AiClassifier::CheckDataAvailable(AlgDataPtr algData) {
         }
     }
 
-    if (!algData->chanDataDec.frame || !algData->chanDataDec.frame->Active()) {
+    // Native-only (DMA-BUF) frames carry no host frame; classification is
+    // native-input capable (ConvertImagesToBlobs wraps the native fd and the
+    // RKNN preprocess node performs the RGA box crop), so accept them when a
+    // valid native buffer is attached.
+    const bool has_host_frame  = algData->chanDataDec.frame && algData->chanDataDec.frame->Active();
+    const bool has_native_buf = algData->chanDataDec.native_buffer && algData->chanDataDec.native_buffer->Valid();
+    if (!has_host_frame && !has_native_buf) {
         action_status = util::ErrorEnum::FrameDataInvalid;
         return false;
     }
@@ -93,6 +99,14 @@ void AiClassifier::HandFramesEx(std::vector<AlgDataPtr> alg_datas) {
             classify_result->timestamp   = alg_data->chanDataDec.frame->GetTimestamp();
             classify_result->picWidth    = alg_data->chanDataDec.frame->GetWidth();
             classify_result->picHeight   = alg_data->chanDataDec.frame->GetHeight();
+        } else if (alg_data->chanDataDec.meta.valid) {
+            // Native-only path: identity comes from the decode-stage metadata.
+            const auto& meta           = alg_data->chanDataDec.meta;
+            classify_result->frameIndex  = meta.frameIndex;
+            classify_result->streamIndex = meta.streamIndex;
+            classify_result->timestamp   = meta.timestamp;
+            classify_result->picWidth    = meta.width;
+            classify_result->picHeight   = meta.height;
         }
 
         auto input = alg_data->GetTaskResult(AlgDataType::TaskDataTrack);

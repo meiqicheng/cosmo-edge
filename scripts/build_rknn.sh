@@ -55,7 +55,12 @@ if ! [[ "${BUILD_JOBS}" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 TARGET_CHIP=$(printf '%s' "${TARGET_CHIP}" | tr '[:upper:]' '[:lower:]')
-PLATFORM_PROFILE="${PROJECT_ROOT_PATH}/config/rknn/platforms/${TARGET_CHIP}.json"
+# The platform profile directory can be redirected to an image-local copy
+# (COSMO_PLATFORM_PROFILE_DIR) so the Debian 11 (bullseye) builder can
+# verify its own media against the bullseye runtime profile while the
+# Ubuntu 22.04 legacy builder keeps using the checked-in profiles.
+PLATFORM_PROFILE_DIR="${COSMO_PLATFORM_PROFILE_DIR:-${PROJECT_ROOT_PATH}/config/rknn/platforms}"
+PLATFORM_PROFILE="${PLATFORM_PROFILE_DIR}/${TARGET_CHIP}.json"
 if [ ! -f "${PLATFORM_PROFILE}" ]; then
     echo "ERROR: unsupported RKNN platform profile: ${TARGET_CHIP}" >&2
     exit 1
@@ -84,9 +89,31 @@ if [ "${PROFILE_CHIP}" != "${TARGET_CHIP}" ]; then
     exit 1
 fi
 
+# The staged resource manifest must stay hash-closed against the repository,
+# so staging needs a repository profile path. The image-local override
+# (COSMO_PLATFORM_PROFILE_DIR) exists for chips whose checked-in profile still
+# references the Ubuntu legacy media profile; when the checked-in profile
+# already matches the selected profile, prefer the repository copy.
+REPO_PLATFORM_PROFILE="${PROJECT_ROOT_PATH}/config/rknn/platforms/${TARGET_CHIP}.json"
+if [ -f "${REPO_PLATFORM_PROFILE}" ] && [ "${PLATFORM_PROFILE}" != "${REPO_PLATFORM_PROFILE}" ]; then
+    if python3 - "${REPO_PLATFORM_PROFILE}" "${PLATFORM_PROFILE}" <<'PY'
+import json
+import sys
+
+def runtime_profile(path):
+    profile = json.loads(open(path, encoding="utf-8").read())
+    return profile.get("media", {}).get("runtime_profile")
+
+sys.exit(0 if runtime_profile(sys.argv[1]) == runtime_profile(sys.argv[2]) else 1)
+PY
+    then
+        PLATFORM_PROFILE="${REPO_PLATFORM_PROFILE}"
+    fi
+fi
+
 MEDIA_CPU_BACKEND=ON
 MEDIA_ROCKCHIP_BACKEND=OFF
-if [ -n "${ROCKCHIP_MEDIA_ROOT_PATH}" ]; then
+if [ -n "${ROCKCHIP_MEDIA_ROOT_PATH}" ] && [ "${COSMO_FORCE_CPU_MEDIA:-OFF}" != "ON" ]; then
     python3 "${PROJECT_ROOT_PATH}/tools/rknn/media_sysroot_lock.py" verify \
         --platform-profile "${PLATFORM_PROFILE}" \
         --root "${ROCKCHIP_MEDIA_ROOT_PATH}"
@@ -165,6 +192,8 @@ cmake -S "${PROJECT_ROOT_PATH}" -B "${BUILD_DIR}" \
     -DCOSMO_RKLLM_ROOT="${RKLLM_ROOT_PATH}" \
     -DCOSMO_RKLLM_REQUIRED="${RKLLM_REQUIRED}" \
     -DCOSMO_ROCKCHIP_MEDIA_ROOT="${ROCKCHIP_MEDIA_ROOT_PATH}" \
+    -DCOSMO_RKNN_PLATFORM_PROFILE="${PLATFORM_PROFILE}" \
+    ${COSMO_FFMPEG_ROOT:+-DCOSMO_FFMPEG_ROOT="${COSMO_FFMPEG_ROOT}"} \
     -DCOSMO_DEV_MODE="${DEV_MODE}" \
     "${MODEL_GUARD_CMAKE_ARGS[@]}" \
     -DCOSMO_PACKAGE_MODELS="${PACKAGE_MODELS}" \
@@ -175,8 +204,9 @@ cmake -S "${PROJECT_ROOT_PATH}" -B "${BUILD_DIR}" \
     -DRESOURCE_MODELS_DIR="${RESOURCE_MODELS_DIR}"
 
 ln -sf "${BUILD_DIR}/compile_commands.json" "${PROJECT_ROOT_PATH}/compile_commands.json" 2>/dev/null || true
+echo "Parallel build jobs: ${BUILD_JOBS}"
 cmake --build "${BUILD_DIR}" --target install -j"${BUILD_JOBS}"
 if [ "${BUILD_TESTS_FLAG}" = "ON" ]; then
     cmake --build "${BUILD_DIR}" --target cosmo-tests -j"${BUILD_JOBS}"
 fi
-cmake --build "${BUILD_DIR}" --target package_all
+cmake --build "${BUILD_DIR}" --target package_all -j"${BUILD_JOBS}"

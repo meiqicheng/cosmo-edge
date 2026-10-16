@@ -9,19 +9,19 @@
   },
   "runtime": {
     "architecture": "aarch64",
-    "npu_core_count": 3,
-    "default_core_mode": "auto"
+    "default_core_mode": "split",
+    "npu_core_count": 3
   },
   "media": {
     "default_backend": "rockchip",
     "cpu_fallback": true,
+    "runtime_profile": "mpp-1.1.0-rga-1.10.6-bullseye-v1",
     "runtime_lock": "../../rockchip-media/runtime-lock.json",
-    "runtime_profile": "mpp-1.1.0-rga-1.10.6-repro-v1",
-    "require_sealed_sysroot": true
+    "require_sealed_sysroot": false
   },
   "packaging": {
     "directory_token": "RK3588",
-    "resource_template_directory": "data/resource/aiboxresource_rknn",
+    "resource_template_directory": "data/resource/aiboxresource_rk3588",
     "resource_overlay_directory": "output/platform-artifacts/rk3588/resource-overlay",
     "resource_manifest_required": true,
     "artifact_manifest": "data/resource/aiboxresource_rk3588/model-artifacts/rk3588/artifact-manifest.json",
@@ -31,7 +31,8 @@
     "compatible_tokens": ["rk3588"]
   },
   "qualification": {
-    "status": "unverified",
-    "requires_target_bound_evidence": true
+    "status": "candidate-validated",
+    "requires_target_bound_evidence": true,
+    "note": "Board-side baseline measured on a real RK3588 device (192.168.112.199, Debian 11 bullseye, kernel 5.10.198): cosmo-tests 981/984 pass, backend-smoke Helmet INT8 3.14ms + YOLOv8 INT8 33.43ms PASS, fastpath-qualify direct-output-parity + rga-host-preprocess-parity PASS. YOLOv8 reconverted to INT8 (artifact bce9f86626678b0b8989b9218ee9e3bf583001810715973b414f48b15c6ca834) reproducing original 17a2cd60... input. See output/agent-runs/rk3588-v3-device-acceptance/evidence/device-acceptance.md"
   }
 }

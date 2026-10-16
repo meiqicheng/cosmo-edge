@@ -697,11 +697,13 @@ TEST_CASE("CameraTaskUnit keeps legacy and special channel parameters editable",
 
     REQUIRE(unit.SetChannelParams(std::vector<MsgDynamicKeyValue>{
                 MakeParam("param.injected", "99"), MakeParam("param.noDescriptor", "6"),
-                MakeParam("param.videoRepeatCount", "3")}) == util::ErrorEnum::Success);
+                MakeParam("param.videoRepeatCount", "3"), MakeParam("param.videoReadFps", "5")}) ==
+            util::ErrorEnum::Success);
     const auto updated = unit.GetParams();
     CHECK_FALSE(HasParam(updated, "param.injected"));
     CHECK_FALSE(HasParam(updated, "param.noDescriptor"));
     CHECK(FindParamValue(updated, "param.videoRepeatCount") == "3");
+    CHECK(FindParamValue(updated, "param.videoReadFps") == "5");
 }
 
 TEST_CASE("CameraTaskUnit restores exact channel snapshots when persistence fails",

@@ -130,6 +130,7 @@ validate_target_storage() {
         fail "target data root must be a directory"
 
     if [ -z "${COSMO_MIGRATION_TEST_ROOT:-}" ] &&
+       [ "${COSMO_ALLOW_UNMOUNTED_USERDATA:-0}" != 1 ] &&
        [ "$COSMO_PACKAGE_DATA_DIR" = /userdata/cwaiuserdata ]; then
         [ -d /userdata ] || fail "/userdata is unavailable for this Rockchip package"
         [ -r /proc/mounts ] || fail "cannot verify the /userdata mount"
@@ -177,6 +178,13 @@ assess_data_root_migration() {
             return 0
         fi
         if [ "$legacy_has_persistent_state" -eq 1 ]; then
+            legacy_realpath="$(readlink -f "$legacy_data_root" 2>/dev/null || true)"
+            target_realpath="$(readlink -f "$target_data_root" 2>/dev/null || true)"
+            if [ "${COSMO_ALLOW_UNMOUNTED_USERDATA:-0}" = 1 ] &&
+               [ "$legacy_realpath" = "$target_realpath" ]; then
+                log "Test mode: legacy and target data roots resolve to the same directory; keeping it authoritative"
+                return 0
+            fi
             fail "both legacy and target data roots contain persistent state; refusing an ambiguous merge"
         fi
         log "Only ${COSMO_PACKAGE_DATA_DIR} contains persistent state; keeping it authoritative"
@@ -350,6 +358,11 @@ rm -f -- "${active_root}/scripts/install.sh"
 
 # Always replace the unit. Existing main installations may still point to the
 # former /appfs/minivision/mv_data tree, while a deleted unit must be recreated.
+# LimitNOFILE: 25+ concurrent channels exhaust a 1024 soft fd quota (each
+# channel holds ~30-40 fds: MPP DMA-BUF pool, RKNPU context, demux sockets,
+# queues), which cascaded into nginx 502s and an engine abort. Raise soft==hard
+# so the engine, nginx and srs in this unit share a quota sized for the
+# 32-channel cap plus headroom.
 mkdir -p -- "$systemd_root"
 service_file="${systemd_root}/cosmo.service"
 service_temp="${service_file}.tmp.$$"
@@ -364,6 +377,7 @@ umask 022
         '[Service]' \
         'Type=simple' \
         'User=root' \
+        'LimitNOFILE=524288:524288' \
         'EnvironmentFile=-/appfs/cosmo_wander/cwai_data/share/cosmo/runtime-paths.env' \
         'ExecStart=/appfs/cosmo_wander/cwai_data/scripts/inte_run_start.sh' \
         'KillMode=mixed' \

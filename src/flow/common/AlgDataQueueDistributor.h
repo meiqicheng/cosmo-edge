@@ -17,6 +17,12 @@ struct AlgTaskUnit {
     float fps{-1.0};           // Frame rate of the registrant
     AlgDataType dataType{AlgDataType::ChannelDataDec};
     std::shared_ptr<AlgDataQueue<AlgDataPtr>> que;
+    // True when the full task pipeline (not just this root action) contains an
+    // action that requires a materialized host frame.  The decoder's native-only
+    // eligibility must consider the whole task graph, not only the direct
+    // downstream consumer, so a downstream action that needs host pixels
+    // disables the fast path even when the root action is native-eligible.
+    bool requires_host_frame{false};
 };
 struct AlgDataTask {
     float max_task_fps{0.0};
@@ -28,7 +34,14 @@ struct AlgDataTask {
 
 struct AlgFrameDistributionPlan {
     std::vector<std::shared_ptr<AlgDataQueue<AlgDataPtr>>> queues;
+    // True only when every selected task group can consume the native input
+    // without a materialized host frame. This controls the native-only fast
+    // path, not whether a native descriptor should be exported.
     bool native_inference_eligible{true};
+    // True when at least one selected task group can consume a native input
+    // descriptor. A host-frame-consuming downstream action disables the
+    // native-only fast path, but the root detector can still use the descriptor.
+    bool native_descriptor_requested{false};
 
     [[nodiscard]] bool Empty() const {
         return queues.empty();
@@ -36,6 +49,10 @@ struct AlgFrameDistributionPlan {
 
     [[nodiscard]] bool SupportsNativeInference() const {
         return !queues.empty() && native_inference_eligible;
+    }
+
+    [[nodiscard]] bool RequestsNativeDescriptor() const {
+        return !queues.empty() && native_descriptor_requested;
     }
 };
 
@@ -66,6 +83,12 @@ public:
     /// been materialized exactly once.
     int DistributorPreparedFrame(const AlgFrameDistributionPlan& plan, AlgDataPtr frame, VideoFramePtr data,
                                  std::function<AlgDataPtr(AlgDataPtr, VideoFramePtr)> func);
+
+    /// Native-only distribution: enqueue a pre-built AlgDataPtr (with
+    /// chanDataDec.native_buffer set, no host VideoFrame) directly to the
+    /// prepared plan's queues.  Used when all tasks support native inference
+    /// and the expensive Materialize() + ColorConvert() path can be skipped.
+    int DistributorNativeOnlyFrame(const AlgFrameDistributionPlan& plan, AlgDataPtr data);
 
     // Distribute data to specific registered queues
     // Only send to the channel registered by the task. Used for detection data distribution.

@@ -20,7 +20,7 @@
       "package_directory": "prod_RK3588_7982161_helmet_V1.0.0",
       "spec": {
         "path": "config/rknn/models/helmet.json",
-        "sha256": "50bdfab0729e5acb5e4dfb896a811052fb2cffd98d27eb0770b90bc96e424243"
+        "sha256": "8e8453ae79c2d1566b1bfd3bc746adec38bf28f3d303772f69d9f2f3a589d903"
       },
       "source": {
         "path": "data/resource/aiboxresource_x86/models/prod_X86_7982161_helmet_V1.0.0/model.onnx",
@@ -38,7 +38,7 @@
       "package_directory": "prod_RK3588_9275710_YOLOV8_V1.0.0",
       "spec": {
         "path": "config/rknn/models/yolov8.json",
-        "sha256": "5f83a415fbdb9a67f13e31c2a910ad4d71d6d2284893b25492df5112935f2920"
+        "sha256": "e437f7202ce79a253a60cc742aa41efaebacea04166dd65c840dc15b1bb060d9"
       },
       "source": {
         "path": "data/resource/aiboxresource_x86/models/prod_X86_9275710_YOLOV8_V1.0.0/model.onnx",

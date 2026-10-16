@@ -128,7 +128,7 @@ broken_links = {}
 for path in package_root.rglob("*"):
     if not path.is_symlink():
         continue
-    relative = str(path.relative_to(package_root))
+    relative = path.relative_to(package_root).as_posix()
     if not path.exists():
         broken_links[relative] = os.readlink(path)
         continue
@@ -395,6 +395,10 @@ def _run(
             command,
             cwd=cwd,
             text=True,
+            # Git and tool output is UTF-8 regardless of platform locale;
+            # a GBK/cp936 console would otherwise crash the reader thread.
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             check=False,
             timeout=timeout,

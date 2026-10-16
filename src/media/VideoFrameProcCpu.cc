@@ -21,6 +21,15 @@ extern "C" {
 #include "util/Log.h"
 #include "util/VideoInfo.h"
 
+// NEON-accelerated I420 -> BGR/RGB conversion kernel (RK3588 CPU fallback path).
+// Fallback is used only when the RGA hardware path fails (e.g. old-kernel RGA
+// multicore rejects jobs with "no core match"). Guard follows repo convention
+// (see VideoFrameOsd.cc:13 / rknn_net_node.cc:17).
+#if defined(__aarch64__) || defined(__ARM_NEON) || defined(__ARM_NEON__)
+#include <arm_neon.h>
+#define COSMO_HAS_NEON 1
+#endif
+
 // stb implementations — these macros are normally defined in VideoFrameCodec.cc
 // (Sophon-only), so the CPU build needs them here.
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -35,6 +44,139 @@ namespace media {
         inline uint8_t ClampToByte(int value) {
             return static_cast<uint8_t>(std::clamp(value, 0, 255));
         }
+
+#ifdef COSMO_HAS_NEON
+        // 8 pixels per iteration, one contiguous 24-byte vst3_u8 store.
+        void I420ToPackedNeon(const uint8_t* y_plane, const uint8_t* u_plane,
+                              const uint8_t* v_plane, uint8_t* out, int w, int h,
+                              bool dst_bgr) {
+            const int32x4_t v16    = vdupq_n_s32(-16);
+            const int32x4_t v128   = vdupq_n_s32(-128);
+            const int32x4_t v128r  = vdupq_n_s32(128);
+            const int32x4_t c298   = vdupq_n_s32(298);
+            const int32x4_t c409   = vdupq_n_s32(409);
+            const int32x4_t c100   = vdupq_n_s32(-100);
+            const int32x4_t c208   = vdupq_n_s32(-208);
+            const int32x4_t c516   = vdupq_n_s32(516);
+            const int uv_stride    = w / 2;
+
+            for (int py = 0; py < h; py++) {
+                const int uvrow = (py / 2) * uv_stride;
+                int px = 0;
+                for (; px + 7 < w; px += 8) {
+                    // Y low/high 8 -> split into low-4 / high-4 (each int32x4)
+                    uint8x8_t y8  = vld1_u8(y_plane + py * w + px);
+                    int32x4_t yl  = vreinterpretq_s32_u32(
+                        vmovl_u16(vget_low_u16(vmovl_u8(y8))));
+                    int32x4_t yh  = vreinterpretq_s32_u32(
+                        vmovl_u16(vget_high_u16(vmovl_u8(y8))));
+
+                    // U/V half-res duplicated -> [u0,u0,u1,u1,u2,u2,u3,u3]
+                    uint8x8_t u_raw = vld1_u8(u_plane + uvrow + px / 2);
+                    uint8x8_t v_raw = vld1_u8(v_plane + uvrow + px / 2);
+                    uint8x8_t u9    = vzip_u8(u_raw, u_raw).val[0];
+                    uint8x8_t v9    = vzip_u8(v_raw, v_raw).val[0];
+                    uint8x8_t u_hi  = vext_u8(u9, u9, 4);
+                    uint8x8_t v_hi  = vext_u8(v9, v9, 4);
+
+                    int32x4_t ul = vaddq_s32(
+                        vreinterpretq_s32_u32(
+                            vmovl_u16(vget_low_u16(vmovl_u8(u9)))),
+                        v128);
+                    int32x4_t vl = vaddq_s32(
+                        vreinterpretq_s32_u32(
+                            vmovl_u16(vget_low_u16(vmovl_u8(v9)))),
+                        v128);
+                    int32x4_t uh = vaddq_s32(
+                        vreinterpretq_s32_u32(
+                            vmovl_u16(vget_low_u16(vmovl_u8(u_hi)))),
+                        v128);
+                    int32x4_t vh = vaddq_s32(
+                        vreinterpretq_s32_u32(
+                            vmovl_u16(vget_low_u16(vmovl_u8(v_hi)))),
+                        v128);
+
+                    int32x4_t c_l = vaddq_s32(yl, v16);
+                    int32x4_t c_h = vaddq_s32(yh, v16);
+
+                    int32x4_t rl = vshrq_n_s32(
+                        vaddq_s32(vaddq_s32(vmulq_s32(c_l, c298),
+                                            vmulq_s32(vl, c409)),
+                                  v128r),
+                        8);
+                    int32x4_t gl = vshrq_n_s32(
+                        vaddq_s32(
+                            vaddq_s32(vaddq_s32(vmulq_s32(c_l, c298),
+                                                vmulq_s32(ul, c100)),
+                                      vmulq_s32(vl, c208)),
+                            v128r),
+                        8);
+                    int32x4_t bl = vshrq_n_s32(
+                        vaddq_s32(vaddq_s32(vmulq_s32(c_l, c298),
+                                            vmulq_s32(ul, c516)),
+                                  v128r),
+                        8);
+                    int32x4_t rh = vshrq_n_s32(
+                        vaddq_s32(vaddq_s32(vmulq_s32(c_h, c298),
+                                            vmulq_s32(vh, c409)),
+                                  v128r),
+                        8);
+                    int32x4_t gh = vshrq_n_s32(
+                        vaddq_s32(
+                            vaddq_s32(vaddq_s32(vmulq_s32(c_h, c298),
+                                                vmulq_s32(uh, c100)),
+                                      vmulq_s32(vh, c208)),
+                            v128r),
+                        8);
+                    int32x4_t bh = vshrq_n_s32(
+                        vaddq_s32(vaddq_s32(vmulq_s32(c_h, c298),
+                                            vmulq_s32(uh, c516)),
+                                  v128r),
+                        8);
+
+                    uint8x8_t r8 = vqmovun_s16(
+                        vcombine_s16(vqmovn_s32(rl), vqmovn_s32(rh)));
+                    uint8x8_t g8 = vqmovun_s16(
+                        vcombine_s16(vqmovn_s32(gl), vqmovn_s32(gh)));
+                    uint8x8_t b8 = vqmovun_s16(
+                        vcombine_s16(vqmovn_s32(bl), vqmovn_s32(bh)));
+
+                    uint8x8x3_t o;
+                    if (dst_bgr) {
+                        o.val[0] = b8;
+                        o.val[1] = g8;
+                        o.val[2] = r8;
+                    } else {
+                        o.val[0] = r8;
+                        o.val[1] = g8;
+                        o.val[2] = b8;
+                    }
+                    vst3_u8(out + (py * w + px) * 3, o);
+                }
+                for (; px < w; px++) {
+                    int yv = y_plane[py * w + px];
+                    int uv = u_plane[uvrow + px / 2];
+                    int vv = v_plane[uvrow + px / 2];
+                    int c  = yv - 16;
+                    int d  = uv - 128;
+                    int e  = vv - 128;
+                    uint8_t r = ClampToByte((298 * c + 409 * e + 128) >> 8);
+                    uint8_t g = ClampToByte((298 * c - 100 * d - 208 * e + 128) >> 8);
+                    uint8_t b = ClampToByte((298 * c + 516 * d + 128) >> 8);
+                    int idx = (py * w + px) * 3;
+                    if (dst_bgr) {
+                        out[idx + 0] = b;
+                        out[idx + 1] = g;
+                        out[idx + 2] = r;
+                    } else {
+                        out[idx + 0] = r;
+                        out[idx + 1] = g;
+                        out[idx + 2] = b;
+                    }
+                }
+            }
+        }
+#endif
 
         VideoFramePtr ConvertI420ToPacked(VideoFramePtr frame, PixelFormat dst_fmt, const char* caller) {
             if (!VideoFrameValid(frame)) {

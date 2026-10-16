@@ -70,11 +70,12 @@ std::optional<rknn_core_mask> ParseCoreMask(const std::string& value) {
         return RKNN_NPU_CORE_2;
     if (value == "01" || value == "dual")
         return RKNN_NPU_CORE_0_1;
-    if (value == "012" || value == "tri" || value == "triple")
+    if (value == "012" || value == "0_1_2" || value == "tri" || value == "triple")
         return RKNN_NPU_CORE_0_1_2;
     if (value == "all" || value == "max")
         return RKNN_NPU_CORE_ALL;
-    throw std::runtime_error("core mask must be one of: auto, 0, 1, 2, 01, 012, all");
+    throw std::runtime_error(
+        "core mask must be one of: auto, 0, 1, 2, 01, dual, 012, 0_1_2, tri, triple, all");
 }
 
 std::string Shape(const rknn_tensor_attr& attr) {

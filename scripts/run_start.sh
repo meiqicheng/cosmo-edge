@@ -46,7 +46,18 @@ case "${PLTFORM_TYPE}" in
         PLTFORM_TYPE="x86_64-cpu"
         ;;
     aarch64|arm64)
-        PLTFORM_TYPE="sophon"
+        # aarch64 is shared by Sophon, Rockchip and AXERA boards; prefer the
+        # packaged target-chip record when present so the log names the real
+        # platform. An unknown aarch64 board still falls back to "sophon",
+        # which matches the historic default for this deployment layout.
+        target_chip_record="${INSTALLPATH}/share/cosmo/target-chip.txt"
+        if [ -r "${target_chip_record}" ] && grep -q '^ax650n$' "${target_chip_record}"; then
+            PLTFORM_TYPE="axera"
+        elif [ -r "${target_chip_record}" ] && grep -Eq '^(rk3576|rk3588|rv1126b)$' "${target_chip_record}"; then
+            PLTFORM_TYPE="rockchip"
+        else
+            PLTFORM_TYPE="sophon"
+        fi
         ;;
 esac
 cosmo_log "$logTag" "Install path=${INSTALLPATH}, platform=${PLTFORM_TYPE}" "$logFile"

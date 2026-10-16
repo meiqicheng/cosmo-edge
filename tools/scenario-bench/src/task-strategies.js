@@ -6,6 +6,7 @@ const DEFAULT_TYPE = 'cv';
 const CV_TERMINAL_EVENT_ACTION_IDS = new Set([
   'BA_00004', // event report / task alarm
   'BA_10004', // face-feature report / face alarm
+  'BA_90001', // target judgment: event-driven, runs at alarm/event rate not frame rate
 ]);
 
 const CV_TERMINAL_EVENT_NAMES = [
@@ -15,6 +16,8 @@ const CV_TERMINAL_EVENT_NAMES = [
   'facealarm',
   '事件上报',
   '人脸特征上报',
+  '目标判断',
+  '灵敏度计算',
 ];
 
 const TASK_TYPE_ALIASES = new Map([

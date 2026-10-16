@@ -29,6 +29,6 @@
   },
   "spec": {
     "path": "config/rknn/models/helmet.json",
-    "sha256": "50bdfab0729e5acb5e4dfb896a811052fb2cffd98d27eb0770b90bc96e424243"
+    "sha256": "8e8453ae79c2d1566b1bfd3bc746adec38bf28f3d303772f69d9f2f3a589d903"
   }
 }

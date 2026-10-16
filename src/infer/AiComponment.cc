@@ -47,14 +47,18 @@ util::ErrorEnum ConvertImagesToBlobs(const std::vector<VideoFramePtr>& images,
 
     for (size_t i = 0; i < images.size(); i++) {
         auto image = images[i];
-        if (!image || !image->Active())
-            return util::ErrorEnum::InvalidParam;
+        const bool has_native = i < native_buffers.size() && native_buffers[i] &&
+                                native_buffers[i]->Valid();
+        if (!image || !image->Active()) {
+            if (!has_native)
+                return util::ErrorEnum::InvalidParam;
+        }
 
 #ifdef COSMO_NN_USE_HOST_BACKEND
         // CPU backend: CpuResizeNode/CpuNormalizeNode expect packed BGR/RGB (NHWC)
         // input, but DecodeJpeg() on CPU produces I420 (YUV420P planar) format.
         // Convert I420 to packed BGR before wrapping in a self-allocating blob.
-        if (image->GetPixelFormat() == media::PixelFormat::PIXEL_I420) {
+        if (image && image->GetPixelFormat() == media::PixelFormat::PIXEL_I420) {
             int w = static_cast<int>(image->GetWidth());
             int h = static_cast<int>(image->GetHeight());
 
@@ -114,40 +118,59 @@ util::ErrorEnum ConvertImagesToBlobs(const std::vector<VideoFramePtr>& images,
         desc.data_format  = GetDataFormatType();
         desc.image_format = GetImageFormatType();
         desc.data_type    = cosmo::nn::DataType::DATA_TYPE_UINT8;
-        desc.dims         = {1, static_cast<int>(image->GetHeight()), static_cast<int>(image->GetWidth()),
+
+        int blob_w = 0;
+        int blob_h = 0;
+        if (image && image->Active()) {
+            blob_w = static_cast<int>(image->GetWidth());
+            blob_h = static_cast<int>(image->GetHeight());
+        } else if (has_native) {
+            blob_w = native_buffers[i]->width;
+            blob_h = native_buffers[i]->height;
+        }
+
+        desc.dims         = {1, blob_h, blob_w,
                              static_cast<int>(cosmo::nn::ImageFormatChannels(desc.image_format))};
         desc.device_type  = GetDeviceType();
         cosmo::nn::BlobHandle handle;
-        if (i < native_buffers.size() && native_buffers[i] && native_buffers[i]->Valid() &&
-            native_buffers[i]->width == static_cast<int>(image->GetWidth()) &&
-            native_buffers[i]->height == static_cast<int>(image->GetHeight())) {
-            const auto& native                = *native_buffers[i];
-            handle.native_image.fd            = native.fd;
-            handle.native_image.bytes         = native.bytes;
-            handle.native_image.width         = native.width;
-            handle.native_image.height        = native.height;
-            handle.native_image.width_stride  = native.width_stride;
-            handle.native_image.height_stride = native.height_stride;
-            if (native.color_space == media::NativeVideoColorSpace::Bt601) {
-                handle.native_image.color_space = cosmo::nn::NativeImageColorSpace::Bt601;
-            } else if (native.color_space == media::NativeVideoColorSpace::Bt709) {
-                handle.native_image.color_space = cosmo::nn::NativeImageColorSpace::Bt709;
-            } else if (native.color_space == media::NativeVideoColorSpace::Bt2020) {
-                handle.native_image.color_space = cosmo::nn::NativeImageColorSpace::Bt2020;
+        if (has_native) {
+            // Compare against the blob geometry rather than the source image: the
+            // blob may have been resized, and a stale image size would silently
+            // publish a native descriptor that does not match the blob.
+            const bool dim_match = image && image->Active()
+                ? (native_buffers[i]->width == blob_w && native_buffers[i]->height == blob_h)
+                : true;
+            if (dim_match) {
+                const auto& native                = *native_buffers[i];
+                handle.native_image.fd            = native.fd;
+                handle.native_image.bytes         = native.bytes;
+                handle.native_image.width         = native.width;
+                handle.native_image.height        = native.height;
+                handle.native_image.width_stride  = native.width_stride;
+                handle.native_image.height_stride = native.height_stride;
+                if (native.color_space == media::NativeVideoColorSpace::Bt601) {
+                    handle.native_image.color_space = cosmo::nn::NativeImageColorSpace::Bt601;
+                } else if (native.color_space == media::NativeVideoColorSpace::Bt709) {
+                    handle.native_image.color_space = cosmo::nn::NativeImageColorSpace::Bt709;
+                } else if (native.color_space == media::NativeVideoColorSpace::Bt2020) {
+                    handle.native_image.color_space = cosmo::nn::NativeImageColorSpace::Bt2020;
+                }
+                if (native.color_range == media::NativeVideoColorRange::Limited) {
+                    handle.native_image.color_range = cosmo::nn::NativeImageColorRange::Limited;
+                } else if (native.color_range == media::NativeVideoColorRange::Full) {
+                    handle.native_image.color_range = cosmo::nn::NativeImageColorRange::Full;
+                }
+                if (native.format == media::NativeVideoBufferFormat::NV12) {
+                    handle.native_image.format = cosmo::nn::IMAGE_NV12;
+                } else if (native.format == media::NativeVideoBufferFormat::I420) {
+                    handle.native_image.format = cosmo::nn::IMAGE_I420;
+                }
             }
-            if (native.color_range == media::NativeVideoColorRange::Limited) {
-                handle.native_image.color_range = cosmo::nn::NativeImageColorRange::Limited;
-            } else if (native.color_range == media::NativeVideoColorRange::Full) {
-                handle.native_image.color_range = cosmo::nn::NativeImageColorRange::Full;
-            }
-            if (native.format == media::NativeVideoBufferFormat::NV12) {
-                handle.native_image.format = cosmo::nn::IMAGE_NV12;
-            } else if (native.format == media::NativeVideoBufferFormat::I420) {
-                handle.native_image.format = cosmo::nn::IMAGE_I420;
+        }
             }
         }
 #if defined(COSMO_NN_USE_RKNN_BACKEND) && defined(COSMO_MEDIA_USE_ROCKCHIP_BACKEND)
-        if (image->IsDeferred() && handle.native_image.Valid()) {
+        if (image && image->IsDeferred() && handle.native_image.Valid()) {
             // Retain both owners: native-aware preprocessing may never request
             // BGR, while another consumer or a hardware fallback can request it.
             handle.host_data_provider = [image, native = native_buffers[i]]() -> void* {
@@ -156,9 +179,11 @@ util::ErrorEnum ConvertImagesToBlobs(const std::vector<VideoFramePtr>& images,
             };
         } else
 #endif
-        {
+        if (image && image->Active()) {
             handle.base = image->GetData();
-            if (!handle.base)
+            // A native-only frame legitimately has no host data; only fail when
+            // neither a host base nor a native descriptor is available.
+            if (!handle.base && !handle.native_image.Valid())
                 return util::ErrorEnum::InvalidParam;
         }
         blob->SetBlobDesc(desc);

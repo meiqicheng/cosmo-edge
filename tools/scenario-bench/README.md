@@ -78,11 +78,18 @@ node src/cli.js checkpoint \
   --expected-preview-streams 4 \
   --expected-decoder-backend rockchip-mpp-rga \
   --expected-encoder-backend rockchip-mpp-rga \
+  --allow-rga-crop-host-staging \
   --min-rga-bound-native-int8-frames 1 \
   --min-rknn-mpp-dmabuf-frames 1 \
   --min-rknn-rga-crop-dmabuf-frames 1 \
   --max-rga-bound-requantize-avg-ms 2
 ```
+
+`--allow-rga-crop-host-staging` 用于 RK3588 这类分类输入仍经过 DMA32 staging
+再交给 RGA 的路径。它只豁免 RGA host-staging 计数；审计仍要求
+`rknnRgaCropResizeFailures`、`rknnCpuCropResizeFallbackCalls` 等真实失败计数为 0，
+并要求全部 crop 调用由 DMA-BUF 或 host staging 完整记账。预览关闭时，
+`native.previewFrameFlow` 记为 `N/A`，不再错误要求 OSD/编码/发布帧。
 
 输出结论只有三种：`IN_PROGRESS` 表示时长尚未达到且其余门禁正常（命令退出码 3），`FAIL` 表示连续性、负载、资源或原生媒体链路存在失败（退出码 1），`PASS` 仅在时长达到且全部必需检查通过时产生（命令退出码 0）。`gate-hours` 从首次观测到目标路数、活动路数和唯一通道数均达到配置负载时开始累计；登录、建连和部分路数爬坡只计入 `runAgeSec`，不计入验收使用的 `fullLoadCoverageSec`。审计覆盖采样间断/新鲜度、固定路数、逐通道 FPS 与丢帧、CPU/内存/磁盘、内存池增长、MPP/RGA/RKNN 失败及计数器回退、延迟 Copy-out 记账、OSD/编码/发布帧流和 SRS 发布流；针对原生 RKNN 路径还可要求 MPP DMA-BUF 输入、分类裁剪 DMA-BUF、全部 forward 的 INT8 直绑覆盖和必要符号位变换的平均耗时。输入和候选身份文件的 SHA-256 会写入结果。
 
@@ -410,6 +417,18 @@ VLM 模式还执行有效性校验：缺少直接 VLM 节点遥测时，不会�
 默认运行会调用 `algorithm/layout/save` 将 `algorithm-template.json` 导入设备。这个文件应来自 Web 页面中已配置完成的场景任务导出包，包含算法流程、原子能力、节点参数和任务配置等信息。工具不会自动设计或生成算法流程，只负责导入已有编排并对其做并发压测。
 
 工具会对平台导出的模板做必要的 payload 归一化，例如将 `algorithmCategory`、`algorithmUsage` 转为字符串，以适配后端 DTO。
+
+导入前会校验模板自身的一致性：`algorithmId`/`algorithmCode` 必须与 `scenario.yml` 中的 `algorithmId` 一致，
+`algorithmName` 不能为空，`configVersionList[*].id` 只能是当前 `confVersionId` 或本算法的 `default-<code>`，
+流程节点的 `preFlowActionId` 必须指向同一模板内存在的 `flowActionId`。从其它算法复制模板后只改 `algorithmId`
+会留下源算法的配置版本 id，这类模板会被直接拒绝，避免导入时把两个算法的名称与配置写到一起。
+
+`algorithm/layout/save` 的请求体目前不包含 `algorithmName`（板端 DTO 尚无该字段），因此该接口不会修正设备上的
+算法名称。工具会在导入前后各读一次 `/Algorithm/Page`，如果某个算法的名称在导入后变为空或发生变化，会在日志中
+给出告警；空名称会让板端回退到文件名，在 Web 界面表现为 `{code}_{时间戳}` 这样的时间戳名称。
+
+发送 payload 时会带上模板的 `configVersionName`（缺省时取 `configVersionList` 中当前版本的名称）。板端
+`AlgorithmLayoutMng::LayoutSave` 会无条件写回该字段，不带会把设备上的版本名清空。
 
 仅当确认设备上已经存在对应算法编排时，才建议使用 `--skip-import`。如果跳过导入但设备上没有对应编排，任务绑定可能失败，采样会缺失有效数据。
 

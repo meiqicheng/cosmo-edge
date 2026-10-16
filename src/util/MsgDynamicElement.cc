@@ -77,7 +77,8 @@ namespace {
 
 bool MsgDynamicElement::IsLegacyChannelEditableException(std::string_view type,
                                                          std::string_view paramKey) noexcept {
-    return type == "retroDirect" || paramKey == cosmo::key::CHANNEL_SOURCE_REPEAT;
+    return type == "retroDirect" || paramKey == cosmo::key::CHANNEL_SOURCE_REPEAT ||
+           paramKey == cosmo::key::CHANNEL_SOURCE_FPS;
 }
 
 void MsgDynamicElement::NormalizeLegacyChannelOwnership(std::vector<MsgDynamicElement>& elements,
@@ -98,7 +99,7 @@ void MsgDynamicElement::NormalizeLegacyChannelOwnership(std::vector<MsgDynamicEl
 
     const auto isChannelRenderableAtDepth = [](const MsgDynamicElement& element, size_t depth) {
         const auto key = element.key.ToRefString();
-        if (key == cosmo::key::CHANNEL_SOURCE_REPEAT) {
+        if (key == cosmo::key::CHANNEL_SOURCE_REPEAT || key == cosmo::key::CHANNEL_SOURCE_FPS) {
             return depth <= 1;
         }
         if (element.type == "retroDirect") {

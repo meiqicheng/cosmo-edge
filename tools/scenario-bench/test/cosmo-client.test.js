@@ -104,6 +104,32 @@ test('batch task switch uses the wire-level switch field', async () => {
   });
 });
 
+test('algorithm update uses the public display metadata route', async () => {
+  const client = new CosmoClient({ base: 'http://device', token: 'token' });
+  let request = null;
+  client._post = async (route, payload) => {
+    request = { route, payload };
+    return { resData: {} };
+  };
+
+  await client.algorithmUpdate({
+    algorithmId: '7463002',
+    algorithmName: 'No Safety Helmet',
+    algorithmCategory: 2,
+    remark: '',
+  });
+
+  assert.deepEqual(request, {
+    route: '/algorithm/update',
+    payload: {
+      algorithmId: '7463002',
+      algorithmName: 'No Safety Helmet',
+      algorithmCategory: 2,
+      remark: '',
+    },
+  });
+});
+
 function successResponse(uploadId = crypto.randomUUID()) {
   return new Response(JSON.stringify({
     resCode: 1,

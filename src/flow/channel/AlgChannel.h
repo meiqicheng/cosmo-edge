@@ -68,6 +68,11 @@ public:
     // Remove task and return true when no tasks remain (channel deletable).
     bool RmvTask(const std::string& target_task_id);
 
+    void SetDecoderRequiresHostFrame(const std::string& task_id, bool v) {
+        decoder_.SetRequiresHostFrame(task_id, v);
+    }
+    [[nodiscard]] bool GetDecoderRequiresHostFrame() const { return decoder_.RequiresHostFrame(); }
+
     [[nodiscard]] std::vector<std::string> GetTasks() const;
 
     [[nodiscard]] bool IsDataActive() const;

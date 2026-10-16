@@ -909,6 +909,11 @@ TEST_CASE("Upload staging accepts a private root inherited from its deployment p
     const auto parent = temp.Path() / "upload";
     const auto root   = parent / "sessions";
     fs::create_directories(root);
+    // Pin the deployment parent to 0755 so inherited-owner acceptance does
+    // not depend on the test process umask (embedded root shells often run
+    // with umask 0, which would leave the parent world-writable).
+    fs::permissions(parent, fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec |
+                                fs::perms::others_read | fs::perms::others_exec);
     REQUIRE(chown(parent.c_str(), kDeploymentOwner, kDeploymentOwner) == 0);
     REQUIRE(chown(root.c_str(), kDeploymentOwner, kDeploymentOwner) == 0);
 

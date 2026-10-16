@@ -35,6 +35,6 @@
   },
   "spec": {
     "path": "config/rknn/models/yolov8.json",
-    "sha256": "5f83a415fbdb9a67f13e31c2a910ad4d71d6d2284893b25492df5112935f2920"
+    "sha256": "e437f7202ce79a253a60cc742aa41efaebacea04166dd65c840dc15b1bb060d9"
   }
 }
