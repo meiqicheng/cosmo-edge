@@ -96,7 +96,7 @@ ${INSTALLPATH}/scripts/run_start.sh start /data/cwaiuserdata/log/logs/INTE_RUN_c
 
 | 变量 / 参数 | 默认值 | 说明 |
 | --- | --- | --- |
-| `COSMO_TARGET_CHIP` | `rk3576` | `rk3576` 或 `rv1126b`；Compose 将它传给 `--chip` |
+| `COSMO_TARGET_CHIP` | `rk3576` | `rk3576`、`rv1126b` 或 `rk3588`；Compose 将它传给 `--chip` |
 | `COSMO_PACKAGE_MODELS` | `include` | `include` 或仅用于代码/结构验证的 `preserve` |
 | `COSMO_BUILD_JOBS` | `4` | 交叉构建并行度 |
 | `COSMO_ROCKCHIP_BUILDER_IMAGE` | 仓库固定 digest 的 GHCR 镜像 | 受控覆盖构建镜像 |
@@ -106,6 +106,8 @@ ${INSTALLPATH}/scripts/run_start.sh start /data/cwaiuserdata/log/logs/INTE_RUN_c
 选定 artifact manifest 生成并校验 `output/platform-artifacts/rv1126b/resource-overlay`；
 `preserve` 只验证代码和包结构，不能替代设备验收。仓库默认清单是 AGPL-3.0
 社区示例，不属于商业模型交付；商业/专有模型必须使用独立清单和许可记录。
+RK3588 目前没有随仓模型 bundle，其 `include` 构建会在暂存步骤因缺少目标模型目录而失败，
+因此 RK3588 只能出 `preserve` 包，用于验证代码、工具链与包结构，板端验收需先补模型输入。
 
 ## 资源目录
 

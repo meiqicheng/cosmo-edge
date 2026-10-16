@@ -93,7 +93,10 @@ export class TaskRunner {
       });
       if (failedList?.length) {
         const failed = failedList.map((f) => f.id).join(', ');
+        // Surface the engine's own reason (resCode/resMsg) - without it a bind
+        // failure is undebuggable from the run log alone.
         this.log?.warn(`ApplyParamsBatch partially failed for task "${task.id}" on: ${failed}`);
+        this.log?.warn(`  engine reasons: ${JSON.stringify(failedList)}`);
         failures.push(...failedList.map((f) => ({ ...f, taskId: task.id })));
       }
     }

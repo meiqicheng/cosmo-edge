@@ -26,6 +26,8 @@ jobs:
             models: include
           - chip: rv1126b
             models: include
+          - chip: rk3588
+            models: preserve
 
     steps:
       - name: Checkout code

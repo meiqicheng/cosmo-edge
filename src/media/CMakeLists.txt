@@ -1,6 +1,7 @@
 # Common (backend-agnostic) source files
 set(MEDIA_COMMON_SRC
     Color.h
+    DmaHeap32Buffer.cc            DmaHeap32Buffer.h
     EncodedImageInfo.cc           EncodedImageInfo.h
     FileDemuxStrategy.cc         FileDemuxStrategy.h
     IDemuxStrategy.h
@@ -49,9 +50,9 @@ set(MEDIA_CPU_SRC
 )
 
 # Rockchip hardware backend. MPP handles H.264/H.265 decode and H.264 encode,
-# RGA handles admitted color-conversion/resize operations, and the RKNN fast
-# path can bind MPP/RGA DMA-BUF inputs directly. FFmpeg and CPU transforms
-# remain explicit fault-tolerance fallbacks.
+# plus JPEG encode/decode (jpege/jpegd); RGA handles admitted color-conversion/
+# resize operations, and the RKNN fast path can bind MPP/RGA DMA-BUF inputs
+# directly. FFmpeg and CPU transforms remain explicit fault-tolerance fallbacks.
 set(MEDIA_ROCKCHIP_SRC
     RockchipRgaBuffer.h
     VideoDecoderCpu.cc           VideoDecoderCpu.h
@@ -60,6 +61,8 @@ set(MEDIA_ROCKCHIP_SRC
     VideoEncoderCpu.cc           VideoEncoderCpu.h
     VideoEncoderCreateRockchip.cc
     VideoEncoderRockchip.cc      VideoEncoderRockchip.h
+    VideoFrameCodecRockchip.cc
+    VideoFrameCodecRockchipInternal.h
     VideoFrameProcCpu.cc         VideoFrameProcCpu.h
     VideoFrameProcFactoryRockchip.cc
     VideoFrameProcRockchip.cc    VideoFrameProcRockchip.h

@@ -7,6 +7,14 @@ import unittest
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 
+_verifier_spec = importlib.util.spec_from_file_location(
+    "package_verifier_contracts",
+    REPOSITORY / "scripts/verify_package_contents.py",
+)
+assert _verifier_spec and _verifier_spec.loader
+verifier = importlib.util.module_from_spec(_verifier_spec)
+_verifier_spec.loader.exec_module(verifier)
+
 
 class PlatformContracts(unittest.TestCase):
     def test_builder_policy_and_installer_identity(self):
@@ -41,6 +49,11 @@ class PlatformContracts(unittest.TestCase):
                 encoding="utf-8"
             )
         )
+        rk3588 = json.loads(
+            (REPOSITORY / "config/rknn/platforms/rk3588.json").read_text(
+                encoding="utf-8"
+            )
+        )
         toolchain_lock = json.loads(
             (REPOSITORY / "config/rknn/toolchain-lock.json").read_text(
                 encoding="utf-8"
@@ -56,7 +69,7 @@ class PlatformContracts(unittest.TestCase):
                 encoding="utf-8"
             )
         )
-        for profile, chip in ((rk3576, "rk3576"), (rv1126b, "rv1126b")):
+        for profile, chip in ((rk3576, "rk3576"), (rv1126b, "rv1126b"), (rk3588, "rk3588")):
             self.assertEqual(profile["backend"], "rknn")
             self.assertEqual(profile["chip"], chip)
             self.assertEqual(profile["conversion"]["target_platform"], chip)
@@ -71,6 +84,15 @@ class PlatformContracts(unittest.TestCase):
                 profile["qualification"]["status"],
                 toolchain_lock["qualification"][chip]["status"],
             )
+            # The runtime sizes its NPU core-mask scheduling from this field, so a
+            # profile that disagrees with the silicon silently wastes cores (or asks
+            # for a mask the part cannot honour). One table owns the mapping.
+            self.assertEqual(
+                profile["runtime"]["npu_core_count"],
+                verifier.ROCKCHIP_NPU_CORE_COUNTS[chip],
+            )
+            self.assertIn(profile["runtime"]["default_core_mode"],
+                          ("auto", "split", "all"))
         self.assertNotEqual(
             rk3576["media"]["runtime_profile"],
             rv1126b["media"]["runtime_profile"],
@@ -102,7 +124,7 @@ class PlatformContracts(unittest.TestCase):
                 hashlib.sha256(artifact_path.read_bytes()).hexdigest(),
                 artifact["sha256"],
             )
-        for profile in (rk3576, rv1126b):
+        for profile in (rk3576, rv1126b, rk3588):
             chip = profile["chip"]
             self.assertEqual(
                 builder_lock["targets"][chip]["media_runtime_profile"],

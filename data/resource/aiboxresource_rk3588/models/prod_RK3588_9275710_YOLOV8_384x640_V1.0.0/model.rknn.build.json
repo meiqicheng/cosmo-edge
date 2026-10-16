@@ -1,0 +1,41 @@
+{
+  "artifact": {
+    "bytes": 4236877,
+    "path": "data/resource/aiboxresource_rk3588/models/prod_RK3588_9275710_YOLOV8_384x640_V1.0.0/model.rknn",
+    "sha256": "8e543133f469fa92ed6311289c92a8566d85f3b5aac0ec61ddfa013f86fb3e36"
+  },
+  "build": {
+    "dataset": "external; sampled frames list at E:/Gdsc/projects/2512机器人视觉/source/robot_vision/weights/ultralytics/export_640x384/dataset.txt",
+    "dataset_sha256": "",
+    "optimization_level": 3,
+    "preprocessing_owner": "host",
+    "quantized": true,
+    "target_platform": "rk3588",
+    "dataset_scope": "outside-repo calibration images (safety-helmet scene); not regenerable from repo"
+  },
+  "created_at": "2026-09-21T00:00:00+00:00",
+  "rknn_toolkit2_version": "2.3.2",
+  "schema_version": 1,
+  "source": {
+    "ir_version": 10,
+    "opsets": {
+      "": 18
+    },
+    "outputs": [
+      "out0",
+      "out1",
+      "out2",
+      "out3",
+      "out4",
+      "out5"
+    ],
+    "path": "external; yolov8n_384x640.onnx (split-head export from yolov8n.pt, COCO 80 classes)",
+    "sha256": "652e0cde459458c8319384cd248298ea8ca21f9142948e2ae2aaf8ff7636accd",
+    "note": "6-head split export (box/cls per stride, fine-to-coarse); matches YoloDfl6HeadV1 adapter contract. Converted by convert_rknn_yolov8n_384x640.py outside repo."
+  },
+  "spec": {
+    "path": "config/rknn/models/yolov8.json",
+    "sha256": "e437f7202ce79a253a60cc742aa41efaebacea04166dd65c840dc15b1bb060d9",
+    "note": "contract reference only; this artifact was converted outside the repo toolchain (rect input 384x640, INT8 PTQ)"
+  }
+}

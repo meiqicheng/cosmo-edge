@@ -565,6 +565,13 @@ async function runBenchmark(args) {
     const activeEntries = () => runner.expectedTaskEntries(runner.allChannelIds.slice(0, currentChannels));
     const FPS_HALVE_RATIO = 0.5;
     const DISCARD_BOTTLENECK = 0.05;
+    // A freshly bound channel discards its startup frame backlog, which at
+    // small step sizes dominates the channel-mean discard and can trip the
+    // fuse even though the pipeline is healthy (binding transient, not
+    // saturation). Ignore discard samples taken within this grace window
+    // after the most recent ramp; samples are still recorded for reporting.
+    const DISCARD_GRACE_MS = 15_000;
+    let lastRampAt = 0;
 
     const captureSample = async (phase = 'hold', targetChannels = currentChannels) => {
       throwIfAborted(signal);
@@ -617,11 +624,30 @@ async function runBenchmark(args) {
       const mem98Count = lastConsecutive((s) => s.hardware?.generalMemoryUtilization?.usedPercent, (v) => v >= 98);
       const cpu98Count = lastConsecutive((s) => s.hardware?.cpuUtilization?.usedPercent, (v) => v >= 98);
       const npu98Count = lastConsecutive((s) => s.hardware?.npuUtilization?.usedPercent, (v) => v >= 98);
-      const discardCount = lastConsecutive(meanChannelDiscard, (v) => v > DISCARD_BOTTLENECK);
+      let discardCount = 0;
+      for (let i = samples.length - 1; i >= 0; i--) {
+        const s = samples[i];
+        if (s.ts - lastRampAt < DISCARD_GRACE_MS) continue; // skip binding-transient window
+        const value = meanChannelDiscard(s);
+        if (typeof value !== 'number' || !(value > DISCARD_BOTTLENECK)) break;
+        discardCount++;
+      }
       const diskUsed = sample.hardware?.eMMCUtilization?.usedPercent;
       const diskLimit = Number(pkg?.thresholds?.pass?.maxDiskUsedPercent ?? 90);
       if (mem98Count >= 3) reasons.push(`memory >= 98% for ${mem98Count} consecutive samples`);
       if (memAvg60s != null && memAvg60s >= 95) reasons.push(`memory 60s average ${memAvg60s.toFixed(1)}% >= 95%`);
+      // OOM cliff observed on RK3588 .6 (2026-09-20): mem 78% -> 92% on binding
+      // one more channel, device unreachable ~15s later (engine 502, adbd gone).
+      // Stop on a single 92% sample: past this point the board dies before the
+      // consecutive-sample rules can fire.
+      const memNow = sample.hardware?.generalMemoryUtilization?.usedPercent;
+      if (Number.isFinite(memNow) && memNow >= 92) reasons.push(`memory ${memNow}% >= 92% (OOM-cliff guard)`);
+      // Engine-fatal cliff observed on RK3588 .6 (2026-09-20): engine process
+      // aborts ([FATAL] backtrace, device API dead) when CPU sits at ~96%
+      // while binding one more channel (25 ch cpu=95% ok -> 26 ch cpu=96% crash).
+      // Stop on a single 96% sample to keep the device alive for later steps.
+      const cpuNow = sample.hardware?.cpuUtilization?.usedPercent;
+      if (Number.isFinite(cpuNow) && cpuNow >= 96) reasons.push(`CPU ${cpuNow}% >= 96% (engine-fatal guard)`);
       if (cpu98Count >= 3) reasons.push(`CPU >= 98% for ${cpu98Count} consecutive samples`);
       // if (npu98Count >= 3) reasons.push(`NPU >= 98% for ${npu98Count} consecutive samples`);
       if (discardCount >= 2) reasons.push(`discardRate > ${DISCARD_BOTTLENECK} for ${discardCount} consecutive samples`);
@@ -637,6 +663,7 @@ async function runBenchmark(args) {
       onRampBatch: async (step, active, added, entries) => {
         currentChannels = active.length;
         currentStepIndex = step.index;
+        lastRampAt = Date.now();
         const addedChannels = new Set(added);
         const addedVlmEntries = entries.filter(
           (entry) => strategyForTaskType(entry.taskType).id === 'vlm'
@@ -684,6 +711,7 @@ async function runBenchmark(args) {
       onStepStart: async (step, active, entries) => {
         currentChannels = active.length;
         currentStepIndex = step.index;
+        lastRampAt = Date.now();
 
         await previewLoad.sync(entries);
         throwIfAborted(signal);

@@ -141,7 +141,7 @@ endif()
 set(COSMO_TARGET_CHIP "" CACHE STRING "Target accelerator chip recorded in release packages")
 if(COSMO_TARGET_CHIP)
     string(TOLOWER "${COSMO_TARGET_CHIP}" COSMO_TARGET_CHIP_NORMALIZED)
-    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(bm1688|cv186x|rk3576|rv1126b|unspecified)$")
+    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(bm1688|cv186x|rk3576|rv1126b|rk3588|unspecified)$")
         message(FATAL_ERROR "Unsupported COSMO_TARGET_CHIP: ${COSMO_TARGET_CHIP}")
     endif()
 endif()
@@ -153,9 +153,9 @@ cosmo_configure_runtime_paths(
 message(STATUS "Cosmo mutable data root: ${COSMO_DEFAULT_DATA_DIR}")
 
 if(COSMO_NN_USE_RKNN_BACKEND)
-    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(rk3576|rv1126b)$")
+    if(NOT COSMO_TARGET_CHIP_NORMALIZED MATCHES "^(rk3576|rv1126b|rk3588)$")
         message(FATAL_ERROR
-            "RKNN builds require COSMO_TARGET_CHIP=rk3576 or rv1126b")
+            "RKNN builds require COSMO_TARGET_CHIP=rk3576, rv1126b, or rk3588")
     endif()
     string(TOUPPER "${COSMO_TARGET_CHIP_NORMALIZED}" COSMO_TARGET_CHIP_LABEL)
     set(COSMO_PLATFORM_PROFILE
@@ -163,11 +163,37 @@ if(COSMO_NN_USE_RKNN_BACKEND)
     if(NOT EXISTS "${COSMO_PLATFORM_PROFILE}")
         message(FATAL_ERROR "RKNN platform profile not found: ${COSMO_PLATFORM_PROFILE}")
     endif()
+    # Freeze the two NPU scheduler inputs from the platform profile itself. The declared
+    # minimum is CMake 3.16 and string(JSON) needs 3.19, so parse with a strict regex and
+    # fail loudly when a value is absent or out of range instead of defaulting to RK3576's
+    # two cores - a silent default is exactly how the third RK3588 core stays idle.
+    # NOTE: CMake's regex engine does not implement [[:space:]]; the explicit class below
+    # was verified to work on the 3.22 builder, CRLF input included.
+    file(READ "${COSMO_PLATFORM_PROFILE}" COSMO_PLATFORM_PROFILE_JSON)
+    string(REGEX MATCH "\"npu_core_count\"[ \\t\\r\\n]*:[ \\t\\r\\n]*([0-9]+)"
+        _cosmo_npu_core_match "${COSMO_PLATFORM_PROFILE_JSON}")
+    set(COSMO_RKNN_NPU_CORE_COUNT "${CMAKE_MATCH_1}")
+    if(NOT COSMO_RKNN_NPU_CORE_COUNT MATCHES "^[1-3]$")
+        message(FATAL_ERROR
+            "Platform profile must declare runtime.npu_core_count in 1..3: "
+            "${COSMO_PLATFORM_PROFILE}")
+    endif()
+    string(REGEX MATCH "\"default_core_mode\"[ \\t\\r\\n]*:[ \\t\\r\\n]*\"([A-Za-z0-9_]+)\""
+        _cosmo_core_mode_match "${COSMO_PLATFORM_PROFILE_JSON}")
+    set(COSMO_RKNN_DEFAULT_CORE_MODE "${CMAKE_MATCH_1}")
+    if(NOT COSMO_RKNN_DEFAULT_CORE_MODE)
+        message(FATAL_ERROR
+            "Platform profile must declare runtime.default_core_mode: "
+            "${COSMO_PLATFORM_PROFILE}")
+    endif()
     add_compile_definitions(
         COSMO_RKNN_TARGET_CHIP="${COSMO_TARGET_CHIP_NORMALIZED}"
-        COSMO_RKNN_TARGET_CHIP_LABEL="${COSMO_TARGET_CHIP_LABEL}")
+        COSMO_RKNN_TARGET_CHIP_LABEL="${COSMO_TARGET_CHIP_LABEL}"
+        COSMO_RKNN_NPU_CORE_COUNT=${COSMO_RKNN_NPU_CORE_COUNT}
+        COSMO_RKNN_DEFAULT_CORE_MODE="${COSMO_RKNN_DEFAULT_CORE_MODE}")
     message(STATUS
-        "RKNN platform profile: ${COSMO_TARGET_CHIP_NORMALIZED} (${COSMO_PLATFORM_PROFILE})")
+        "RKNN platform profile: ${COSMO_TARGET_CHIP_NORMALIZED} (npu cores=${COSMO_RKNN_NPU_CORE_COUNT}, "
+        "default_core_mode=${COSMO_RKNN_DEFAULT_CORE_MODE}) (${COSMO_PLATFORM_PROFILE})")
 endif()
 
 # Media acceleration is selected independently from inference. Defaults keep

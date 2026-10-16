@@ -56,6 +56,10 @@
     "rv1126b": {
       "status": "candidate-validated",
       "requires_target_bound_evidence": true
+    },
+    "rk3588": {
+      "status": "unverified",
+      "requires_target_bound_evidence": true
     }
   }
 }

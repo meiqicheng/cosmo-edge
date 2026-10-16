@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "media/DmaHeap32Buffer.h"
 #include "nn/device/rknn/rknn_yolov8_adapter.h"
 #include "nn/node/net_node.h"
 #include "rknn_api.h"
@@ -14,6 +15,18 @@
 namespace cosmo::nn {
 
 inline constexpr char kRknnRgbUint8InputContract[] = "cosmo.rknn.input.rgb_u8_nhwc_0_255_to_0_1.v1";
+
+// Detector input rectangle contract: width is fixed at 640 and height must be a
+// multiple of 32 inside [352, 640] (e.g. 640x640, 640x480, 640x416, 640x384).
+// A multiple of 32 satisfies the YOLOv8 P5 stride-32 grid constraint and the
+// RKNPU2 8/16-byte alignment rules at the same time; the lower bound follows the
+// 640x352 candidate documented in the detector-input rectangularization analysis.
+inline constexpr int kRknnDetectorInputWidth     = 640;
+inline constexpr int kRknnDetectorInputMinHeight = 352;
+inline constexpr int kRknnDetectorInputAlignment = 32;
+
+bool IsRknnDetectorInputHeight(int height);
+bool IsRknnDetectorInputSize(int height, int width);
 
 bool IsRknnRgbUint8InputContract(const std::string& contract);
 bool IsRknnNativeInt8InputCompatible(const rknn_tensor_attr& attr, const BlobDesc& desc);
@@ -39,17 +52,40 @@ bool RknnDirectCandidatesEnabled();
 bool RknnBoundInputEnabled();
 bool RknnRgaBoundInputEnabled();
 
+// RKNPU2 exposes one core per silicon NPU cluster: 1 on RV1126B, 2 on RK3576 and
+// 3 on RK3588. The count is a hardware fact carried in the packaged
+// platform-profile.json (`runtime.npu_core_count`) so the scheduler below can be
+// sized from configuration instead of assuming the two-core RK3576 shape.
+inline constexpr int kRknnMinNpuCoreCount = 1;
+inline constexpr int kRknnMaxNpuCoreCount = 3;
+
 enum class RknnCoreMode : uint8_t {
     Auto = 0,
     Core0,
     Core1,
     Core01,
+    // Tri-core selection; only RK3588 can honour it. Lower-core parts degrade.
+    Core012,
     Split,
+    // Saturate every core the detected part has, without naming a count.
+    All,
+};
+
+// Result of resolving a requested mode against the detected core count. Resolving
+// once keeps the mask and the "should we call rknn_set_core_mask at all" decision
+// from disagreeing, which is how a single-core part would receive a mask it rejects.
+struct RknnCoreSelection {
+    rknn_core_mask mask{RKNN_NPU_CORE_AUTO};
+    bool apply{false};
+    bool degraded{false};
 };
 
 RknnCoreMode ParseRknnCoreMode(const std::string& value, bool* valid = nullptr);
-rknn_core_mask ResolveRknnCoreMask(RknnCoreMode mode, uint64_t context_sequence);
-bool ShouldConfigureRknnCoreMask(RknnCoreMode mode);
+// Clamps a configured/observed core count into [kRknnMinNpuCoreCount, kRknnMaxNpuCoreCount].
+int NormalizeRknnNpuCoreCount(int npu_core_count);
+RknnCoreSelection ResolveRknnCoreSelection(RknnCoreMode mode, uint64_t context_sequence, int npu_core_count);
+rknn_core_mask ResolveRknnCoreMask(RknnCoreMode mode, uint64_t context_sequence, int npu_core_count);
+bool ShouldConfigureRknnCoreMask(RknnCoreMode mode, int npu_core_count);
 const char* RknnCoreModeName(RknnCoreMode mode);
 
 class RknnNetNode final : public NetNode, public RknnBoundInputProvider {
@@ -66,6 +102,11 @@ public:
     Status AttachOwnedContext(rknn_context context, uint64_t model_fingerprint);
     Status Forward(std::vector<std::shared_ptr<Blob>>& bottom_blobs,
                    std::vector<std::shared_ptr<Blob>>& top_blobs) override;
+    // NetNode also declares a three-argument Forward for nodes that take parameter
+    // blobs. Overriding only the two-argument form hides that overload by name, which
+    // -Woverloaded-virtual reports in strict-warning translation units such as
+    // RkllmVlmBackend.cc; re-expose it rather than silently hiding it.
+    using NetNode::Forward;
     bool EnsureRgaBoundInput(int height, int width, std::string& reason) override;
 
 private:
@@ -84,6 +125,7 @@ private:
     bool TryBindNativeInputMemory(const BlobDesc& desc, std::string& reason);
     bool TryBindRgaInputMemory(int height, int width, std::string& reason);
     bool AllocateAndBindInputMemory(rknn_tensor_attr attr, BoundInputMode mode, std::string& reason);
+    rknn_tensor_mem* CreateBoundInputMemory(uint32_t bytes, std::string& reason);
     void PublishRgaBoundInputTarget();
     void ClearRgaBoundInputTarget();
     void DestroyContext();
@@ -100,6 +142,9 @@ private:
     RknnOutputAdapterContract output_adapter_contract_;
     rknn_tensor_attr bound_input_attr_{};
     rknn_tensor_mem* bound_input_memory_{nullptr};
+    // Owns the model input DMA-BUF when it was taken from a 32-bit-addressable
+    // dma-heap instead of rknn_create_mem(); see AllocateAndBindInputMemory.
+    media::DmaHeap32Buffer bound_input_heap_buffer_;
     std::vector<unsigned char> model_data_;
     std::vector<float> input_nhwc_;
     std::vector<uint8_t> input_uint8_;

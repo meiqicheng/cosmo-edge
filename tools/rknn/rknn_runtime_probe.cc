@@ -56,6 +56,9 @@ void Check(int result, const std::string& action) {
     }
 }
 
+// Core modes mirror the engine's RknnCoreMode tokens. `012`/`tri` only has an effect on
+// a triple-core RK3588, which is exactly what Phase 2 board evidence must demonstrate:
+// the same model measured under `01` and under `012`.
 std::optional<rknn_core_mask> ParseCoreMask(const std::string& value) {
     if (value == "auto")
         return std::nullopt;
@@ -63,9 +66,15 @@ std::optional<rknn_core_mask> ParseCoreMask(const std::string& value) {
         return RKNN_NPU_CORE_0;
     if (value == "1")
         return RKNN_NPU_CORE_1;
-    if (value == "01")
+    if (value == "2")
+        return RKNN_NPU_CORE_2;
+    if (value == "01" || value == "dual")
         return RKNN_NPU_CORE_0_1;
-    throw std::runtime_error("core mask must be one of: auto, 0, 1, 01");
+    if (value == "012" || value == "tri" || value == "triple")
+        return RKNN_NPU_CORE_0_1_2;
+    if (value == "all" || value == "max")
+        return RKNN_NPU_CORE_ALL;
+    throw std::runtime_error("core mask must be one of: auto, 0, 1, 2, 01, 012, all");
 }
 
 std::string Shape(const rknn_tensor_attr& attr) {
@@ -90,20 +99,28 @@ void PrintTensor(const char* direction, const rknn_tensor_attr& attr) {
 
 int main(int argc, char** argv) {
     if (argc < 2 || argc > 3) {
-        std::cerr << "Usage: " << argv[0] << " <model.rknn> [auto|0|1|01]\n";
+        std::cerr << "Usage: " << argv[0] << " <model.rknn> [auto|0|1|2|01|012|all]\n"
+                  << "  Compare modes for the same model to obtain board evidence: on a\n"
+                  << "  triple-core RK3588 expect 012 to beat 01. The packaged core count is\n"
+                  << "  recorded in share/cosmo/platform-profile.json runtime.npu_core_count.\n";
         return 2;
     }
 
     try {
-        const auto model     = ReadFile(argv[1]);
-        const auto core_mask = ParseCoreMask(argc == 3 ? argv[2] : "auto");
+        const std::string requested_mode = argc == 3 ? argv[2] : "auto";
+        const auto model                 = ReadFile(argv[1]);
+        const auto core_mask             = ParseCoreMask(requested_mode);
 
         ContextGuard context;
         Check(rknn_init(context.Out(), const_cast<std::uint8_t*>(model.data()),
                         static_cast<std::uint32_t>(model.size()), 0, nullptr),
               "rknn_init");
+        std::cout << "core_mask_requested=" << requested_mode << '\n';
         if (core_mask) {
             Check(rknn_set_core_mask(context.Get(), *core_mask), "rknn_set_core_mask");
+            std::cout << "core_mask_applied=" << static_cast<int>(*core_mask) << '\n';
+        } else {
+            std::cout << "core_mask_applied=none (runtime default)\n";
         }
 
         rknn_sdk_version version{};

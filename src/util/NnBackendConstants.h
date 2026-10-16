@@ -57,6 +57,18 @@ static constexpr const char* kSupportedChips[] = {"BM1688", "CV186X"};
 #ifndef COSMO_RKNN_TARGET_CHIP_LABEL
 #error "RKNN builds must define COSMO_RKNN_TARGET_CHIP_LABEL through COSMO_TARGET_CHIP"
 #endif
+#ifndef COSMO_RKNN_NPU_CORE_COUNT
+#error "RKNN builds must define COSMO_RKNN_NPU_CORE_COUNT from the platform profile"
+#endif
+#ifndef COSMO_RKNN_DEFAULT_CORE_MODE
+#error "RKNN builds must define COSMO_RKNN_DEFAULT_CORE_MODE from the platform profile"
+#endif
+
+/// NPU core count is a silicon fact (1 RV1126B / 2 RK3576 / 3 RK3588) read from
+/// config/rknn/platforms/<chip>.json:runtime.npu_core_count at configure time and
+/// frozen into the package, so the scheduler never assumes the RK3576 shape.
+static constexpr int kRknnNpuCoreCount            = COSMO_RKNN_NPU_CORE_COUNT;
+static constexpr const char* kRknnDefaultCoreMode = COSMO_RKNN_DEFAULT_CORE_MODE;
 
 /// Legacy target-labelled directories remain readable. Newly imported models
 /// use a vendor-level token; config.json chip_type is the compatibility gate.

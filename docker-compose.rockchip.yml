@@ -1,6 +1,6 @@
 services:
   cosmo-rockchip-package:
-    image: ${COSMO_ROCKCHIP_BUILDER_IMAGE:-ghcr.io/cosmo-wander-ai/cosmo_edge-build-env_rockchip@sha256:0810c23042cbe86d3a1c91f848b9849a34d94222f3ad7b7418913a26da19e71b}
+    image: ${COSMO_ROCKCHIP_BUILDER_IMAGE:-cosmo_edge-build-env_rockchip@sha256:0810c23042cbe86d3a1c91f848b9849a34d94222f3ad7b7418913a26da19e71b}
     platform: linux/amd64
     network_mode: host
     volumes:

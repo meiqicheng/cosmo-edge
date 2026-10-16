@@ -74,6 +74,7 @@ assert_generated_defaults cv186x /data/cwaiuserdata
 assert_generated_defaults x86 /data/cwaiuserdata
 assert_generated_defaults rk3576 /userdata/cwaiuserdata
 assert_generated_defaults rv1126b /userdata/cwaiuserdata
+assert_generated_defaults rk3588 /userdata/cwaiuserdata
 
 render_install="${root}/render-install"
 mkdir -p "${render_install}/bin/nginx_conf" "${render_install}/bin/srs_conf"
