@@ -38,6 +38,11 @@ struct cosmo::PosSaveSensitivity::TrackIdData {
     size_t last_timestamp{0};     // Timestamp before disappearance
     bool is_history_full{false};  // Calculate sensitivity only after history queue has been popped
     AiDetectRstEl target;
+    // Carries the box/targetPos pair that was current when the retained frame
+    // was captured, so the alarm records geometry matching the saved picture
+    // rather than the newest detection. Both branch lines carried this field;
+    // it was dropped while merging.
+    DataAlarmTargetConfidence target_confidence_info;
     std::vector<AiDetectRstEl> group_targets;
     std::deque<TrackIdDataEl> history;
 };

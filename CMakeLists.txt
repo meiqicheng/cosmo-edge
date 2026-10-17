@@ -727,8 +727,18 @@ endif()
 ##########################################################
 if(BUILD_TESTS)
     file(GLOB TEST_SRC "test/*.cc" "test/*.cpp" "test/mock/*.cc")
+    # Excluded until their missing dependency exists. Both files were authored
+    # on codex/rk3588-debian11 and include "mock/MockServiceRegistry.h", which
+    # is absent from every branch (main, debian11, debian12) — they never
+    # compiled anywhere. They stayed invisible because this GLOB has no
+    # CONFIGURE_DEPENDS, so a build directory configured before they were added
+    # never picks them up; a clean configure does. Excluding them here is the
+    # honest option: stubbing an empty registry would let them compile but
+    # silently turn the cases into no-ops.
     list(FILTER TEST_SRC EXCLUDE REGEX
         ".*ReleaseBootstrapVerifierStandaloneTest\\.cc$")
+    list(FILTER TEST_SRC EXCLUDE REGEX
+        ".*test_native_only_(eligibility|inference)\\.cc$")
 
     #App sources without main.cc
     set(APP_SRC_NO_MAIN ${APP_SRC})

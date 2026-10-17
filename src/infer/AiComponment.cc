@@ -167,8 +167,6 @@ util::ErrorEnum ConvertImagesToBlobs(const std::vector<VideoFramePtr>& images,
                 }
             }
         }
-            }
-        }
 #if defined(COSMO_NN_USE_RKNN_BACKEND) && defined(COSMO_MEDIA_USE_ROCKCHIP_BACKEND)
         if (image && image->IsDeferred() && handle.native_image.Valid()) {
             // Retain both owners: native-aware preprocessing may never request

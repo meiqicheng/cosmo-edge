@@ -677,6 +677,12 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
     // RK3588/RGA2 carries a 32-bit RGA_MMU that cannot map buffers above 4 GiB.
     // The dma32 heap reservation keeps the buffers this path imports below that
     // boundary, which is what lets the handle-based import below stay usable.
+    // One acquire serves both roles: the bound input target when the graph
+    // published one, otherwise a host staging import. Acquiring (and, on first
+    // use, publishing) is what makes the provider bind and publish the target;
+    // without it the detector graph never publishes one and the resize would
+    // read an unpublished null virtual address. Any rejection falls through to
+    // the host staging path below.
     media::ScopedRgaBufferHandle host_target_handle;
     uint32_t target_handle  = 0;
     const bool bound_target = allow_bound_target && AcquireRgaBoundTarget(target_handle);
@@ -688,16 +694,6 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
         rga_unavailable_ = true;
         GetInferencePipelineMetrics().RecordRknnRgaFailure();
         return false;
-    }
-    // Acquire (and, on first use, publish) the graph-local RGA-bound input
-    // target. The acquire call is what makes the provider bind and publish the
-    // target; without it the detector graph never publishes one and the resize
-    // would read an unpublished null virtual address. Any rejection falls
-    // through to the host staging path below.
-    bool bound_target   = false;
-    uint32_t bound_handle = 0;
-    if (allow_bound_target) {
-        bound_target = AcquireRgaBoundTarget(bound_handle);
     }
     void* target_va         = top_handle.base;
     int target_width_stride = out_width_;
@@ -715,10 +711,12 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
     target.format   = RK_FORMAT_RGB_888;
     rga_buffer_t target_fd{};
     if (bound_target) {
-        target_fd = wrapbuffer_handle_t(bound_handle, out_width_, out_height_, target_width_stride,
+        target_fd = wrapbuffer_handle_t(target_handle, out_width_, out_height_, target_width_stride,
                                         out_height_, RK_FORMAT_RGB_888);
     }
-    const auto& native = bottom_handle.native_image;
+    // Plane-layout validation is a debian12/mainline guard that debian11 lacked:
+    // it rejects native frames whose stride/bytes do not describe a complete
+    // image before any RGA handle is imported for them.
     media::NativeVideoPlaneLayout native_layout;
     bool native_layout_valid = false;
     if (native.format == IMAGE_NV12 || native.format == IMAGE_I420) {
@@ -729,8 +727,6 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
         if (!native_layout_valid && RknnMppDmaBufEnabled() && native.Valid())
             LogMppDmaBufLayoutRejectedOnce(native);
     }
-    const bool native_compatible = RknnMppDmaBufEnabled() && native.Valid() && native_layout_valid &&
-                                   native.width == source_width && native.height == source_height;
     if (!target.vir_addr) {
         static std::atomic<bool> va_warned{false};
         if (!va_warned.exchange(true))
@@ -742,80 +738,27 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
 
     IM_STATUS last_status     = IM_STATUS_FAILED;
     bool native_csc_attempted = false;
-    const auto run_resize     = [&](rga_buffer_handle_t source_handle, int visible_width, int visible_height,
-                                int width_stride, int height_stride, int source_format,
-                                IM_COLOR_SPACE_MODE yuv_color_space) {
-        auto source = wrapbuffer_handle_t(source_handle, visible_width, visible_height, width_stride,
-                                              height_stride, source_format);
-        // Native CSC may fail before the packed RGB retry in this same frame.
-        // That retry shares target, so explicitly remove the native color mode.
-        imsetColorSpace(&target, IM_COLOR_SPACE_DEFAULT);
-        if (yuv_color_space != IM_COLOR_SPACE_DEFAULT) {
-            // Modern librga interprets color_space_mode as the color range of
-            // each buffer. Writing the legacy conversion selector (0x1)
-            // directly into the source descriptor is rejected by legacy
-            // RGA2-Pro runtimes. Describe source and destination ranges explicitly;
-            // improcess then performs CSC and resize in the same DMA-BUF job.
-            media::SetRgaYuvToRgbColorSpace(source, target, yuv_color_space);
-        }
-
-        // imfill_t is a color-fill op that librga routes to the RGA2 core (32-bit
-        // RGA_MMU) which cannot map >4 GiB buffers. Pre-fill the letterbox with a
-        // CPU memset instead; improcess (routed to RGA3, 64-bit) performs the
-        // resize+CSC. The fill only reruns when the target fingerprint changes —
-        // RGA overwrites the center window each frame, so the padding band from
-        // the previous fill is still exact.
-        FillLetterboxIfNeeded(target.vir_addr, target_size,
-                              static_cast<uint8_t>(padding_color_[0]),
-                              bound_target ? rga_bound_target_generation_ : 0);
-
-        const float scale        = std::min(static_cast<float>(out_width_) / visible_width,
-                                                static_cast<float>(out_height_) / visible_height);
-        const int resized_width  = static_cast<int>(visible_width * scale);
-        const int resized_height = static_cast<int>(visible_height * scale);
-        const int offset_x       = (out_width_ - resized_width) / 2;
-        const int offset_y       = (out_height_ - resized_height) / 2;
-        const im_rect source_rect{0, 0, visible_width, visible_height};
-        const im_rect target_rect{offset_x, offset_y, resized_width, resized_height};
-        const im_rect empty_rect{};
-        const rga_buffer_t empty_buffer{};
-        const auto resize_started = MetricsClock::now();
-        native_csc_attempted      = yuv_color_space != IM_COLOR_SPACE_DEFAULT;
-        last_status = improcess(source, target, empty_buffer, source_rect, target_rect, empty_rect, IM_SYNC);
-        GetInferencePipelineMetrics().RecordRknnRgaResizeColor(ElapsedNanoseconds(resize_started));
-        return media::RockchipRgaSucceeded(last_status);
-    };
     // Older kernel drivers (e.g. RGA multicore v1.3.x paired with userspace
     // 1.10.x) can reject jobs that carry color_space_mode bits with a driver
     // level "no core match" submission failure. Detect that once and keep the
     // pipeline alive by submitting subsequent YUV->RGB jobs without explicit
     // color space descriptors; BT.601 limited-range is the safe default there.
+    // The merged branch carried two `run_resize` lambdas here (a handle-based
+    // one and a virtual-address one); both lost their only caller when the
+    // packed-host path moved to the dma32 staging pair below, so neither is
+    // defined any more. The native DMA-BUF path is the sole RGA submitter.
     static std::atomic<bool> yuv_colorspace_unsupported{false};
-    const auto run_resize = [&](const void* source_va, int visible_width, int visible_height,
-                                int width_stride, int height_stride, int source_format,
-                                IM_COLOR_SPACE_MODE yuv_color_space) {
-        std::lock_guard<std::mutex> rga_lock(media::RgaGlobalLock());
-        if (yuv_colorspace_unsupported.load(std::memory_order_relaxed))
-            return run_resize_once(source_va, visible_width, visible_height, width_stride, height_stride,
-                                   source_format, yuv_color_space, false);
-        if (run_resize_once(source_va, visible_width, visible_height, width_stride, height_stride,
-                            source_format, yuv_color_space, true))
-            return true;
-        if (yuv_color_space == IM_COLOR_SPACE_DEFAULT)
-            return false;
-        yuv_colorspace_unsupported.store(true, std::memory_order_relaxed);
-        LOG_WARN(
-            "RKNN RGA rejected YUV color-space descriptors; retrying without them "
-            "(legacy RGA driver detected)");
-        return run_resize_once(source_va, visible_width, visible_height, width_stride, height_stride,
-                               source_format, yuv_color_space, false);
-    };
 
     // Native MPP frames and the RKNN input target are both DMA-BUFs. Keep
     // them as fd-backed RGA handles instead of importing the mapped virtual
     // address: on RK3588 the virtual-address import path is the one that
     // fails for these buffers, while both fd imports are already known-good.
     const auto run_native_resize_once = [&](rga_buffer_t source, bool apply_color_space) {
+        // The deleted run_resize lambda used to publish this flag. The native
+        // path is now the only YUV->RGB submitter, so "did we attempt a CSC"
+        // must be raised here or the BT.709-full fallback below never fires.
+        native_csc_attempted =
+            apply_color_space && ResolveRgaYuvColorSpace(native) != IM_COLOR_SPACE_DEFAULT;
         if (apply_color_space) {
             media::SetRgaYuvToRgbColorSpace(source, target_fd, ResolveRgaYuvColorSpace(native));
         }
@@ -855,8 +798,15 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
         return run_native_resize_once(source, false);
     };
 
-    const bool native_compatible = !native_rga_unavailable_ && native_matches &&
+    // Both guard sets are kept, they reject different things: native_layout_valid
+    // drops frames whose stride/bytes do not describe a complete image, and the
+    // full-range flag stops this node from retrying a BT.709-full CSC it already
+    // proved fails on this runtime.
+    const bool native_compatible = !native_rga_unavailable_ && native_matches && native_layout_valid &&
                                    !(full_range_nv12 && native_full_range_csc_unavailable_);
+    // Hoisted out of the import block below: the BT.709-full fallback has to
+    // retry the same imported handle from outside that scope.
+    rga_buffer_handle_t native_source_handle = 0;
     if (native_compatible) {
         bool native_success = false;
         if (!RknnForceMppDmaBufFailure() && bound_target &&
@@ -884,6 +834,7 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
             GetInferencePipelineMetrics().RecordRknnMppDmaBufImport(
                 ElapsedNanoseconds(import_started), imported);
             if (imported) {
+                native_source_handle = source_entry.handle;
                 const int native_format =
                     native.format == IMAGE_NV12 ? RK_FORMAT_YCbCr_420_SP : RK_FORMAT_YCbCr_420_P;
                 const auto source = wrapbuffer_handle_t(
@@ -901,7 +852,8 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
                     "RKNN native BT.709-full NV12 CSC failed with status {} ({}); trying NV12 resize "
                     "and CPU full-range CSC on the small host image",
                     last_status, imStrError_t(last_status));
-                if (!native_small_frame_unavailable_ && try_small_frame(native_source_handle.Get()))
+                if (!native_small_frame_unavailable_ && native_source_handle != 0 &&
+                    try_small_frame(native_source_handle))
                     return true;
                 native_small_frame_unavailable_ = true;
                 LogRgaSmallFrameFallbackOnce();
@@ -927,7 +879,8 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
     const auto host_handle = mutable_bottom.GetHandle();
     if (!host_handle.base)
         return false;
-    media::ScopedRgaBufferHandle host_source_handle(host_handle.base, source_size);
+    // No handle import here: the packed source is staged into the dma32 pair
+    // below, which is what the improcess call actually consumes.
     const int host_source_format =
         bottom_desc.image_format == IMAGE_RGB ? RK_FORMAT_RGB_888 : RK_FORMAT_BGR_888;
     // The process heap (bottom/base below) lives on physical pages above 4 GiB,
@@ -1149,6 +1102,10 @@ Status RknnResizeNode::ResizeSingle(const std::shared_ptr<Blob>& bottom, const s
     if (!bottom || !top || !top->GetHandle().base ||
         (!bottom_handle.base && !bottom_handle.native_image.Valid()))
         return Status(COSMO_NN_ERR_NULL_PARAM, "RKNN resize input or output is null");
+    // A native-only frame has no packed host pixels, so it can only fall back
+    // through ResizeNativeWithCpu. ResizeWithRga declares the same flag for its
+    // own scope; this one drives the fallback choice here.
+    const bool bottom_has_native = bottom_handle.native_image.Valid();
     const auto bottom_desc = bottom->GetBlobDesc();
     if (bottom_desc.data_type != DATA_TYPE_UINT8 || bottom_desc.data_format != DATA_FORMAT_NHWC ||
         bottom_desc.dims.size() != 4 || bottom_desc.dims[0] != 1 || bottom_desc.dims[1] <= 0 ||

@@ -107,7 +107,6 @@ void PosSaveSensitivity::CalcSensitity(AlgDataPtr algData) {
                         idData.frame_group_targets              = idData.group_targets;
                     }
                 }
-                }
             }
         }
         recSensitity.targets.push_back(recTarget);

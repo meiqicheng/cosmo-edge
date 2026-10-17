@@ -565,3 +565,6 @@ data/resource/aiboxresource_rk3588/models/prod_RK3588_7000001_qwen3_5_V1.0.0/
 build_*/
 
 tools/scenario-bench/results/
+
+# scenario-bench local素材（板端拉取的大文件，不入库）
+tools/scenario-bench/scenarios/*/LX*.mp4
