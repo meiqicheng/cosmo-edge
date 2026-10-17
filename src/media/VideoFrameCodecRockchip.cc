@@ -61,6 +61,7 @@
 
 #include "media/EncodedImageInfo.h"
 #include "media/PreviewPipelineMetrics.h"
+#include "media/RockchipMppCompat.h"
 #include "media/RockchipRgaBuffer.h"
 #include "media/VideoFrameCodecRockchipInternal.h"
 #include "util/Log.h"
@@ -138,8 +139,11 @@ namespace {
     /// board: with CACHABLE the child dies with signal 11, without it an
     /// identically sized allocation succeeds and returns a real dma-buf (fd=4).
     /// Dropping the flag costs nothing here because every access in this file is
-    /// already bracketed by mpp_buffer_sync_begin/end, which MPP turns into a
-    /// no-op on a non-cachable buffer.
+    /// already bracketed by MppBufferWriteBegin/MppBufferWriteEnd, which are
+    /// no-ops on this runtime. See RockchipMppCompat.h for why that is both
+    /// necessary and correct: the board's 1.5.0 library exports no
+    /// mpp_buffer_sync* symbol, and an uncached DRM buffer is CPU/HW coherent
+    /// with no sync at all.
     constexpr MppBufferType kFrameBufferType = MPP_BUFFER_TYPE_DRM;
     /// Budget for reaping the bring-up child: 40 slices x 25 ms = 1 s.
     constexpr int kBringUpWaitAttempts = 40;
@@ -469,9 +473,9 @@ namespace {
         if (!input_address) {
             return nullptr;
         }
-        mpp_buffer_sync_begin(input_buffer_guard.buffer);
+        MppBufferWriteBegin(input_buffer_guard.buffer);
         std::memcpy(input_address, jpeg.data(), jpeg.size());
-        mpp_buffer_sync_end(input_buffer_guard.buffer);
+        MppBufferWriteEnd(input_buffer_guard.buffer);
 
         MppBufferGroupGuard frame_group_guard;
         ret = mpp_buffer_group_get_internal(&frame_group_guard.group, kFrameBufferType);
@@ -722,10 +726,10 @@ namespace {
             // the function directly is equivalent and compiles.
             auto origin =
                 wrapbuffer_virtualaddr_t(source.GetData(), width, height, width, height, rga_format);
-            mpp_buffer_sync_begin(state.encoder_frame);
+            MppBufferWriteBegin(state.encoder_frame);
             status =
                 imcvtcolor_t(origin, target, rga_format, RK_FORMAT_YCbCr_420_SP, IM_RGB_TO_YUV_BT601_FULL, 1);
-            mpp_buffer_sync_end(state.encoder_frame);
+            MppBufferWriteEnd(state.encoder_frame);
         }
         GetPreviewPipelineMetrics().RecordRgaOperation(RockchipRgaSucceeded(status),
                                                        ElapsedNanoseconds(started));
@@ -749,7 +753,7 @@ namespace {
         const auto* u_src = y_src + static_cast<size_t>(width) * height;
         const auto* v_src = u_src + static_cast<size_t>(width / 2) * (height / 2);
 
-        mpp_buffer_sync_begin(state.encoder_frame);
+        MppBufferWriteBegin(state.encoder_frame);
         for (int row = 0; row < height; ++row) {
             std::memcpy(destination + static_cast<size_t>(row) * hor_stride,
                         y_src + static_cast<size_t>(row) * width, static_cast<size_t>(width));
@@ -764,7 +768,7 @@ namespace {
             std::memcpy(v_dst + static_cast<size_t>(row) * chroma_stride,
                         v_src + static_cast<size_t>(row) * chroma_width, chroma_width);
         }
-        mpp_buffer_sync_end(state.encoder_frame);
+        MppBufferWriteEnd(state.encoder_frame);
     }
 
     /// Prepares the encoder input frame: RGA writes the semi-planar conversion
