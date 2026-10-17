@@ -761,10 +761,22 @@ bool VideoDecoderRockchip::ConfigureFrameGroup(size_t buffer_size) {
             LOG_INFO("{} MPP decoder external frame group: {} dma32 buffers of {} bytes ({} live decoders)",
                      idx_name_, Dma32DecoderGroupBufferCount(), buffer_size, Dma32DecoderCount());
         } else {
+            // MPP_BUFFER_TYPE_DRM without MPP_BUFFER_FLAGS_CACHABLE, for the
+            // same reason VideoEncoderRockchip::InitMpp documents: this BSP's
+            // MPP (1.5.0 on kernel 5.10.198) builds the group successfully
+            // (MPP_OK) but leaves its allocator NULL for the CACHABLE
+            // combination, so the next mpp_buffer_get() faults inside
+            // mpp_buffer_create. Re-confirmed against the board's own runtime by
+            // output/agent-runs/mpp_jpeg_probe (signal 11 with the flag, a real
+            // dma-buf without it) and by the frame this crashed on:
+            //   mpp_buffer_create <- mpp_buffer_get_with_tag
+            //     <- mpp_dec_parser_thread()
+            // That last frame matters: the fault lands in MPP's own decoder
+            // thread, not on a call stack of ours, so no amount of return-code
+            // checking at the call site can contain it. Uncached DRM buffers
+            // stay CPU/HW coherent, so the cache-sync shims remain correct.
             state_->frame_group_is_dma32 = false;
-            ret                          = mpp_buffer_group_get_internal(
-                &state_->frame_group,
-                static_cast<MppBufferType>(MPP_BUFFER_TYPE_DRM | MPP_BUFFER_FLAGS_CACHABLE));
+            ret = mpp_buffer_group_get_internal(&state_->frame_group, MPP_BUFFER_TYPE_DRM);
             if (ret != MPP_OK || !state_->frame_group) {
                 LOG_WARN("{} MPP decoder frame-group allocation/reset failed: {}", idx_name_, ret);
                 return false;

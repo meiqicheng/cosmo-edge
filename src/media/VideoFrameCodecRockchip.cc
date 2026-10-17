@@ -34,6 +34,9 @@
 // output/agent-runs/mpp-headers-ref/mpp_jpeg_enc_probe8.cc, which measured
 // jpege-core +1 / rga3 +2 and a valid 32158-byte JPEG for a 640x426 frame.
 
+#include <signal.h>
+#include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -110,6 +113,38 @@ namespace {
         return frame.GetSize() >= width * height * 3 / 2;
     }
 
+    /// The buffer type every MPP frame/encoder group in this file is created
+    /// with.
+    ///
+    /// DRM is mandatory rather than cosmetic: RGA consumes the encoder buffer
+    /// through wrapbuffer_fd(), so the buffer has to be a real dma-buf. Measured
+    /// on the RK3588 Debian 11 board (output/agent-runs/mpp_jpeg_probe), the
+    /// DRM and ION groups return fd=4 while MPP_BUFFER_TYPE_NORMAL returns
+    /// fd=0, which librga would reject.
+    ///
+    /// MPP_BUFFER_FLAGS_CACHABLE is deliberately NOT set here. The engine is
+    /// built against the Rockchip media SDK's MPP 1.1.0
+    /// (tag 1.1.0, 2026-08-11, MPP_BUFFER_FLAGS_MASK 0x003f0000) but at runtime
+    /// loads whatever librockchip_mpp.so.1 the board ships, and the Debian 11
+    /// RK3588 image ships a different release line entirely: librockchip-mpp1
+    /// 1.5.0-1, a 2022-09-23 tree whose MPP_BUFFER_FLAGS_MASK is only 0xf0000
+    /// and which does not define MPP_BUFFER_FLAGS_DMA32 at all. On that library
+    /// the DRM|CACHABLE group is still created (MPP_OK) while the allocator
+    /// behind it stays NULL, and the very next mpp_buffer_get() dereferences it:
+    ///
+    ///   mpp_buffer_create <- mpp_buffer_get_with_tag <- EncodeJpeg  (SIGSEGV)
+    ///
+    /// output/agent-runs/mpp_jpeg_probe reproduces it deterministically on the
+    /// board: with CACHABLE the child dies with signal 11, without it an
+    /// identically sized allocation succeeds and returns a real dma-buf (fd=4).
+    /// Dropping the flag costs nothing here because every access in this file is
+    /// already bracketed by mpp_buffer_sync_begin/end, which MPP turns into a
+    /// no-op on a non-cachable buffer.
+    constexpr MppBufferType kFrameBufferType = MPP_BUFFER_TYPE_DRM;
+    /// Budget for reaping the bring-up child: 40 slices x 25 ms = 1 s.
+    constexpr int kBringUpWaitAttempts = 40;
+    constexpr long kBringUpWaitSliceNs = 25L * 1000L * 1000L;
+
     struct MppBufferGuard {
         MppBuffer buffer{nullptr};
         ~MppBufferGuard() {
@@ -118,6 +153,107 @@ namespace {
             }
         }
     };
+
+    /// Runs the whole risky MPP bring-up inside a throw-away child process.
+    ///
+    /// This engine is compiled against one MPP release line (the media SDK's
+    /// 1.1.0 in the build image) but loads whatever librockchip_mpp.so.1 the
+    /// board happens to ship, and those are not guaranteed to be the same line
+    /// at all -- the Debian 11 RK3588 image ships librockchip-mpp1 1.5.0-1. A
+    /// disagreement does not surface as a return code; it surfaces as a SIGSEGV
+    /// inside the library, which takes the whole engine down and lets systemd
+    /// restart it forever (observed: NRestarts=3 before the service was
+    /// stopped). Forking once converts that class of failure into a measurable
+    /// outcome: a child that dies from a signal simply means "this MPP cannot do
+    /// it", and both directions stay on the stb CPU path.
+    ///
+    /// Scope: this covers the MPP calls this file makes on its own thread. It
+    /// cannot contain a fault raised asynchronously inside MPP's own worker
+    /// threads (mpp_dec_parser_thread), so it is a safety net and not a licence
+    /// to hand MPP a combination the runtime may not implement -- the buffer
+    /// type is fixed at the source for that reason.
+    bool MppJpegBringUpSurvives() {
+        const pid_t pid = fork();
+        if (pid == 0) {
+            // Child: MPP calls and _exit() only. No logging, no C++ state, no
+            // return -- the parent's runtimes must never run in here.
+            MppCtx ctx                 = nullptr;
+            MppApi* api                = nullptr;
+            MppBufferGroup group       = nullptr;
+            MppBuffer buffer           = nullptr;
+            int verdict                = 1;
+            do {
+                if (access("/dev/mpp_service", R_OK | W_OK) != 0) {
+                    break;
+                }
+                if (mpp_check_support_format(MPP_CTX_DEC, MPP_VIDEO_CodingMJPEG) != MPP_OK) {
+                    break;
+                }
+                if (mpp_check_support_format(MPP_CTX_ENC, MPP_VIDEO_CodingMJPEG) != MPP_OK) {
+                    break;
+                }
+                if (mpp_create(&ctx, &api) != MPP_OK || !ctx || !api) {
+                    break;
+                }
+                if (mpp_init(ctx, MPP_CTX_ENC, MPP_VIDEO_CodingMJPEG) != MPP_OK) {
+                    break;
+                }
+                if (mpp_buffer_group_get_internal(&group, kFrameBufferType) != MPP_OK || !group) {
+                    break;
+                }
+                // A deliberately tiny allocation: enough to drive the allocator
+                // that segfaulted, small enough to be free on any board.
+                const size_t probe_bytes =
+                    static_cast<size_t>(kMppAlignment * 2) * (kMppAlignment * 2) * 3 / 2;
+                if (mpp_buffer_get(group, &buffer, probe_bytes) != MPP_OK || !buffer) {
+                    break;
+                }
+                // RGA needs a dma-buf; a group that hands back fd 0 is useless
+                // to this file even though the allocation "succeeded".
+                if (mpp_buffer_get_fd(buffer) <= 0) {
+                    break;
+                }
+                verdict = 0;
+            } while (false);
+            _exit(verdict);
+        }
+        if (pid < 0) {
+            return false;
+        }
+        // The child inherits a forked image of a multithreaded process, so it
+        // must not be waited on unconditionally: if some other thread happened
+        // to hold the allocator lock across the fork the child would block
+        // instead of crashing, and an unbounded waitpid() would hang the engine.
+        // Bound the wait, then make sure the child is gone either way.
+        int status = 0;
+        for (int attempt = 0; attempt < kBringUpWaitAttempts; ++attempt) {
+            const pid_t reaped = waitpid(pid, &status, WNOHANG);
+            if (reaped == pid) {
+                return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+            }
+            if (reaped < 0) {
+                return false;
+            }
+            timespec pause{0, kBringUpWaitSliceNs};
+            nanosleep(&pause, nullptr);
+        }
+        kill(pid, SIGKILL);
+        waitpid(pid, &status, 0);
+        LOG_WARN("MPP JPEG bring-up probe did not return within {} ms; keeping the CPU JPEG path",
+                 kBringUpWaitAttempts * kBringUpWaitSliceNs / 1000000);
+        return false;
+    }
+
+    /// One probe per process. A board that fails it pays for it exactly once and
+    /// then falls through to stb on every subsequent call.
+    bool MppJpegHardwareAvailable() {
+        const char* forced = getenv("COSMO_MPP_JPEG");
+        if (forced != nullptr && std::strcmp(forced, "cpu") == 0) {
+            return false;
+        }
+        static const bool available = MppJpegBringUpSurvives();
+        return available;
+    }
 
     struct MppBufferGroupGuard {
         MppBufferGroup group{nullptr};
@@ -338,9 +474,7 @@ namespace {
         mpp_buffer_sync_end(input_buffer_guard.buffer);
 
         MppBufferGroupGuard frame_group_guard;
-        ret = mpp_buffer_group_get_internal(
-            &frame_group_guard.group,
-            static_cast<MppBufferType>(MPP_BUFFER_TYPE_DRM | MPP_BUFFER_FLAGS_CACHABLE));
+        ret = mpp_buffer_group_get_internal(&frame_group_guard.group, kFrameBufferType);
         if (ret != MPP_OK || !frame_group_guard.group) {
             LogDecoderFallback("output frame group allocation failed", ret);
             return nullptr;
@@ -494,9 +628,7 @@ namespace {
         const int ver_stride     = AlignUp(height, kMppAlignment);
         const size_t frame_bytes = static_cast<size_t>(hor_stride) * ver_stride * 3 / 2;
 
-        auto ret = mpp_buffer_group_get_internal(
-            &state.encoder_group,
-            static_cast<MppBufferType>(MPP_BUFFER_TYPE_DRM | MPP_BUFFER_FLAGS_CACHABLE));
+        auto ret = mpp_buffer_group_get_internal(&state.encoder_group, kFrameBufferType);
         if (ret != MPP_OK || !state.encoder_group) {
             LogEncoderFallback("encoder buffer group allocation failed", ret);
             return false;
@@ -708,6 +840,9 @@ VideoFrameProcRockchip::~VideoFrameProcRockchip() = default;
 
 VideoFramePtr VideoFrameProcRockchip::DecodeJpeg(const std::vector<u_int8_t>& data) {
     if (IsJpegPayload(data)) {
+        if (!MppJpegHardwareAvailable()) {
+            return VideoFrameProcCpu::DecodeJpeg(data);
+        }
         EncodedImageInfo info;
         if (!InspectEncodedImage(data, info) || !IsEncodedImageWithinFrameCapability(info)) {
             // Unsupported dimensions are the shared capability boundary, not a
@@ -751,7 +886,7 @@ std::vector<u_char> VideoFrameProcRockchip::EncodeJpeg(const VideoFramePtr sourc
         if ((packed || planar) && width % 2 == 0 && height % 2 == 0 &&
             width <= std::numeric_limits<int>::max() - kMppAlignment &&
             height <= std::numeric_limits<int>::max() - kMppAlignment &&
-            (!planar || IsCompactI420(*source))) {
+            (!planar || IsCompactI420(*source)) && MppJpegHardwareAvailable()) {
             std::lock_guard<std::mutex> lock(jpeg_codec_mtx_);
             if (!jpeg_codec_) {
                 jpeg_codec_ = std::make_unique<RockchipJpegCodecState>();
