@@ -3,6 +3,7 @@
 #include <rga/im2d.h>
 
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <utility>
@@ -32,10 +33,90 @@ namespace {
                 .count());
     }
 
+    /// Diagnostic gate for the RGA staging path. The happy path is otherwise
+    /// silent, which makes it impossible to tell from a board log whether
+    /// RunRgaWithDma32Staging() ran at all -- a question that matters because
+    /// the path is only reachable through specific entry points (a decoder
+    /// frame larger than kVideoDefaultWidth x kVideoDefaultHeight, or a
+    /// BGR/RGB frame on its way to JPEG). Off by default so hot paths stay
+    /// quiet; set COSMO_RGA_PATH_PROBE=1 to log the first entry and the first
+    /// outcome of each kind.
+    bool RgaPathProbeEnabled() {
+        static const bool enabled = [] {
+            const char* configured = std::getenv("COSMO_RGA_PATH_PROBE");
+            return configured != nullptr && configured[0] != '\0' && configured[0] != '0';
+        }();
+        return enabled;
+    }
+
+    bool ClaimProbeSlot(std::atomic<bool>& slot) {
+        return !slot.exchange(true, std::memory_order_relaxed);
+    }
+
 }  // namespace
 
 VideoFrameProcRockchip::VideoFrameProcRockchip(IOsdTextRenderer& osd_service)
     : VideoFrameProcCpu(osd_service) {}
+
+template <typename RgaOp>
+bool VideoFrameProcRockchip::RunRgaWithDma32Staging(const VideoFramePtr& frame, const VideoFramePtr& output,
+                                                    const char* operation, RgaOp&& op) {
+    const auto started = std::chrono::steady_clock::now();
+    const size_t src_bytes = frame->GetSize();
+    const size_t dst_bytes = output->GetSize();
+    const bool probe    = RgaPathProbeEnabled();
+    if (probe && ClaimProbeSlot(rga_probe_enter_logged_)) {
+        LOG_INFO("[RgaPathProbe] staging path entered: op={} src={}x{} ({} B) dst={}x{} ({} B)", operation,
+                 frame->GetWidth(), frame->GetHeight(), src_bytes, output->GetWidth(), output->GetHeight(),
+                 dst_bytes);
+    }
+    // Reports the first failing outcome once, so a log can distinguish "the
+    // path never ran" from "the path ran and fell back to CPU".
+    const auto probe_failure = [&](const char* reason, uint64_t elapsed) {
+        if (probe && ClaimProbeSlot(rga_probe_failure_logged_)) {
+            LOG_INFO("[RgaPathProbe] staging path failed: op={} reason={} src={}x{} dst={}x{} elapsed={}us",
+                     operation, reason, frame->GetWidth(), frame->GetHeight(), output->GetWidth(),
+                     output->GetHeight(), elapsed / 1000);
+        }
+    };
+    Dma32Buffer src_dma;
+    Dma32Buffer dst_dma;
+    if (!src_dma.Allocate(src_bytes) || !dst_dma.Allocate(dst_bytes)) {
+        const auto elapsed = ElapsedNanoseconds(started);
+        GetPreviewPipelineMetrics().RecordRgaOperation(false, elapsed);
+        LogFallbackOnce(operation, IM_STATUS_OUT_OF_MEMORY);
+        probe_failure("dma32-allocation", elapsed);
+        return false;
+    }
+    auto* src_va = static_cast<uint8_t*>(const_cast<void*>(src_dma.Map()));
+    auto* dst_va = static_cast<uint8_t*>(const_cast<void*>(dst_dma.Map()));
+    if (!src_va || !dst_va || frame->GetData() == nullptr || output->GetData() == nullptr) {
+        const auto elapsed = ElapsedNanoseconds(started);
+        GetPreviewPipelineMetrics().RecordRgaOperation(false, elapsed);
+        LogFallbackOnce(operation, IM_STATUS_OUT_OF_MEMORY);
+        probe_failure("mapping", elapsed);
+        return false;
+    }
+    std::memcpy(src_va, frame->GetData(), src_bytes);
+
+    const std::lock_guard<std::mutex> rga_lock(media::RgaGlobalLock());
+    const auto status = op(src_dma.Fd(), dst_dma.Fd());
+    const auto elapsed = ElapsedNanoseconds(started);
+    GetPreviewPipelineMetrics().RecordRgaOperation(RockchipRgaSucceeded(status), elapsed);
+    if (!RockchipRgaSucceeded(status)) {
+        LogFallbackOnce(operation, status);
+        probe_failure("rga-status", elapsed);
+        return false;
+    }
+    std::memcpy(output->GetData(), dst_va, dst_bytes);
+    rga_consecutive_failures_.store(0, std::memory_order_relaxed);
+    fallback_warned_.store(false, std::memory_order_relaxed);
+    if (probe && ClaimProbeSlot(rga_probe_success_logged_)) {
+        LOG_INFO("[RgaPathProbe] staging path succeeded: op={} src={}x{} dst={}x{} elapsed={}us", operation,
+                 frame->GetWidth(), frame->GetHeight(), output->GetWidth(), output->GetHeight(), elapsed / 1000);
+    }
+    return true;
+}
 
 VideoFramePtr VideoFrameProcRockchip::BGR2I420(VideoFramePtr frame) {
     auto converted = ConvertWithRga(frame, PixelFormat::PIXEL_I420, RK_FORMAT_BGR_888, RK_FORMAT_YCbCr_420_P,
@@ -86,40 +167,13 @@ VideoFramePtr VideoFrameProcRockchip::ConvertWithRga(const VideoFramePtr& frame,
     }
     output->SetStreamIndex(frame->GetStreamIndex());
 
-    const auto started = std::chrono::steady_clock::now();
-    const size_t src_bytes = frame->GetSize();
-    const size_t dst_bytes = output->GetSize();
-    Dma32Buffer src_dma;
-    Dma32Buffer dst_dma;
-    if (!src_dma.Allocate(src_bytes) || !dst_dma.Allocate(dst_bytes)) {
-        const auto elapsed = ElapsedNanoseconds(started);
-        GetPreviewPipelineMetrics().RecordRgaOperation(false, elapsed);
-        LogFallbackOnce(operation, IM_STATUS_OUT_OF_MEMORY);
+    if (!RunRgaWithDma32Staging(frame, output, operation, [&](int src_fd, int dst_fd) {
+            const auto src = RgaFdBuffer(src_fd, width, height, src_rga_format);
+            const auto dst = RgaFdBuffer(dst_fd, width, height, dst_rga_format);
+            return imcvtcolor_t(src, dst, src_rga_format, dst_rga_format, color_mode, 1);
+        })) {
         return nullptr;
     }
-    auto* src_va = static_cast<uint8_t*>(const_cast<void*>(src_dma.Map()));
-    auto* dst_va = static_cast<uint8_t*>(const_cast<void*>(dst_dma.Map()));
-    if (!src_va || !dst_va || frame->GetData() == nullptr || output->GetData() == nullptr) {
-        const auto elapsed = ElapsedNanoseconds(started);
-        GetPreviewPipelineMetrics().RecordRgaOperation(false, elapsed);
-        LogFallbackOnce(operation, IM_STATUS_OUT_OF_MEMORY);
-        return nullptr;
-    }
-    std::memcpy(src_va, frame->GetData(), src_bytes);
-
-    const auto src = RgaFdBuffer(src_dma.Fd(), width, height, src_rga_format);
-    const auto dst = RgaFdBuffer(dst_dma.Fd(), width, height, dst_rga_format);
-    std::lock_guard<std::mutex> rga_lock(media::RgaGlobalLock());
-    const auto status  = imcvtcolor_t(src, dst, src_rga_format, dst_rga_format, color_mode, 1);
-    const auto elapsed = ElapsedNanoseconds(started);
-    GetPreviewPipelineMetrics().RecordRgaOperation(RockchipRgaSucceeded(status), elapsed);
-    if (!RockchipRgaSucceeded(status)) {
-        LogFallbackOnce(operation, status);
-        return nullptr;
-    }
-    std::memcpy(output->GetData(), dst_va, dst_bytes);
-    rga_consecutive_failures_.store(0, std::memory_order_relaxed);
-    fallback_warned_.store(false, std::memory_order_relaxed);
     return output;
 }
 
@@ -147,40 +201,13 @@ VideoFramePtr VideoFrameProcRockchip::ResizeWithRga(const VideoFramePtr& frame, 
     }
     output->SetStreamIndex(frame->GetStreamIndex());
 
-    const auto started = std::chrono::steady_clock::now();
-    const size_t src_bytes = frame->GetSize();
-    const size_t dst_bytes = output->GetSize();
-    Dma32Buffer src_dma;
-    Dma32Buffer dst_dma;
-    if (!src_dma.Allocate(src_bytes) || !dst_dma.Allocate(dst_bytes)) {
-        const auto elapsed = ElapsedNanoseconds(started);
-        GetPreviewPipelineMetrics().RecordRgaOperation(false, elapsed);
-        LogFallbackOnce(operation, IM_STATUS_OUT_OF_MEMORY);
+    if (!RunRgaWithDma32Staging(frame, output, operation, [&](int src_fd, int dst_fd) {
+            const auto src = RgaFdBuffer(src_fd, src_width, src_height, RK_FORMAT_YCbCr_420_P);
+            const auto dst = RgaFdBuffer(dst_fd, dst_width, dst_height, RK_FORMAT_YCbCr_420_P);
+            return imresize_t(src, dst, 0.0, 0.0, INTER_LINEAR, 1);
+        })) {
         return nullptr;
     }
-    auto* src_va = static_cast<uint8_t*>(const_cast<void*>(src_dma.Map()));
-    auto* dst_va = static_cast<uint8_t*>(const_cast<void*>(dst_dma.Map()));
-    if (!src_va || !dst_va || frame->GetData() == nullptr || output->GetData() == nullptr) {
-        const auto elapsed = ElapsedNanoseconds(started);
-        GetPreviewPipelineMetrics().RecordRgaOperation(false, elapsed);
-        LogFallbackOnce(operation, IM_STATUS_OUT_OF_MEMORY);
-        return nullptr;
-    }
-    std::memcpy(src_va, frame->GetData(), src_bytes);
-
-    const auto src = RgaFdBuffer(src_dma.Fd(), src_width, src_height, RK_FORMAT_YCbCr_420_P);
-    const auto dst = RgaFdBuffer(dst_dma.Fd(), dst_width, dst_height, RK_FORMAT_YCbCr_420_P);
-    std::lock_guard<std::mutex> rga_lock(media::RgaGlobalLock());
-    const auto status  = imresize_t(src, dst, 0.0, 0.0, INTER_LINEAR, 1);
-    const auto elapsed = ElapsedNanoseconds(started);
-    GetPreviewPipelineMetrics().RecordRgaOperation(RockchipRgaSucceeded(status), elapsed);
-    if (!RockchipRgaSucceeded(status)) {
-        LogFallbackOnce(operation, status);
-        return nullptr;
-    }
-    std::memcpy(output->GetData(), dst_va, dst_bytes);
-    rga_consecutive_failures_.store(0, std::memory_order_relaxed);
-    fallback_warned_.store(false, std::memory_order_relaxed);
     return output;
 }
 

@@ -142,7 +142,6 @@ private:
     Status PrepareInput(const Blob& blob, std::vector<float>& nhwc, int& height, int& width) const;
     Status PrepareNativeCompatibilityInput(const Blob& blob, std::vector<float>& nhwc, int& height,
                                            int& width) const;
-    std::vector<int> TensorShape(const rknn_tensor_attr& attr) const;
     size_t TensorElementCount(const rknn_tensor_attr& attr) const;
     bool TryBindNativeInputMemory(const BlobDesc& desc, std::string& reason);
     bool TryBindRgaInputMemory(int height, int width, std::string& reason);

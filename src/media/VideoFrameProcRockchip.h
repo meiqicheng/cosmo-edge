@@ -47,7 +47,27 @@ private:
                                 const char* operation);
     void LogFallbackOnce(const char* operation, int status);
 
+    /// Runs one synchronous RGA operation on a frame staged through the dma32
+    /// heap. Frames handed in through the generic VideoFrame API are owned by
+    /// the host memory pool, whose pages can sit above 4 GiB, where RGA's
+    /// 32-bit MMU cannot import them; the source is therefore copied into a
+    /// physically-low dma32 pair, op runs against the staged dma-buf fds, and
+    /// the result is copied back into the caller's heap buffer. op returns the
+    /// RGA status and must not take any lock of its own: the staging helper
+    /// holds the backend-wide RGA lock across the operation, the metrics
+    /// record and the copy back, exactly as the two callers did before this
+    /// preamble was factored out.
+    template <typename RgaOp>
+    bool RunRgaWithDma32Staging(const VideoFramePtr& frame, const VideoFramePtr& output, const char* operation,
+                                RgaOp&& op);
+
     std::atomic<bool> fallback_warned_{false};
+    /// Set once the first probe line (see RunRgaWithDma32Staging) has been
+    /// emitted, so enabling COSMO_RGA_PATH_PROBE produces one line per
+    /// outcome instead of one per frame.
+    std::atomic<bool> rga_probe_enter_logged_{false};
+    std::atomic<bool> rga_probe_success_logged_{false};
+    std::atomic<bool> rga_probe_failure_logged_{false};
     /// Consecutive failed RGA operations; the cooldown only arms after
     /// kRgaCooldownAfterFailures in a row so that isolated failures (a frame
     /// that landed on a malloc-backed pool block) do not suppress the hardware

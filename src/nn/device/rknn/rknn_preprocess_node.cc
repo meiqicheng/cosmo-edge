@@ -695,6 +695,18 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
         GetInferencePipelineMetrics().RecordRknnRgaFailure();
         return false;
     }
+    // Both success exits below (the native MPP path and the host staging path)
+    // hand the freshly resized frame to the detector graph waiting on the bound
+    // input target; keep the publish in one place so the two paths cannot drift.
+    const auto publish_bound_frame_ready = [this, bound_target]() {
+        if (!bound_target)
+            return;
+        auto& bound_input = shared_resource->rknn_bound_input_target;
+        if (bound_input.owner == shared_resource->rknn_bound_input_provider &&
+            bound_input.generation == rga_bound_target_generation_) {
+            bound_input.frame_ready.store(true, std::memory_order_release);
+        }
+    };
     void* target_va         = top_handle.base;
     int target_width_stride = out_width_;
     if (bound_target) {
@@ -864,13 +876,7 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
             GetInferencePipelineMetrics().RecordRknnMppDmaBufFallback();
         }
         if (native_success) {
-            if (bound_target) {
-                auto& bound_input = shared_resource->rknn_bound_input_target;
-                if (bound_input.owner == shared_resource->rknn_bound_input_provider &&
-                    bound_input.generation == rga_bound_target_generation_) {
-                    bound_input.frame_ready.store(true, std::memory_order_release);
-                }
-            }
+            publish_bound_frame_ready();
             return true;
         }
     }
@@ -955,13 +961,7 @@ bool RknnResizeNode::ResizeWithRga(const Blob& bottom, Blob& top, bool allow_bou
         LogRgaFallbackOnce(last_status);
         return false;
     }
-    if (bound_target) {
-        auto& bound_input = shared_resource->rknn_bound_input_target;
-        if (bound_input.owner == shared_resource->rknn_bound_input_provider &&
-            bound_input.generation == rga_bound_target_generation_) {
-            bound_input.frame_ready.store(true, std::memory_order_release);
-        }
-    }
+    publish_bound_frame_ready();
     return true;
 }
 

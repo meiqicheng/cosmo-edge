@@ -950,17 +950,6 @@ size_t RknnNetNode::TensorElementCount(const rknn_tensor_attr& attr) const {
     return count;
 }
 
-std::vector<int> RknnNetNode::TensorShape(const rknn_tensor_attr& attr) const {
-    std::vector<int> shape;
-    shape.reserve(attr.n_dims);
-    for (uint32_t index = 0; index < attr.n_dims; ++index) {
-        if (attr.dims[index] > static_cast<uint32_t>(std::numeric_limits<int>::max()))
-            return {};
-        shape.push_back(static_cast<int>(attr.dims[index]));
-    }
-    return shape;
-}
-
 Status RknnNetNode::QueryTensorAttributes() {
     int result = rknn_query(context_, RKNN_QUERY_IN_OUT_NUM, &io_count_, sizeof(io_count_));
     if (result != RKNN_SUCC)
@@ -989,7 +978,7 @@ Status RknnNetNode::QueryTensorAttributes() {
             rknn_query(context_, RKNN_QUERY_OUTPUT_ATTR, &output_attrs_[index], sizeof(output_attrs_[index]));
         if (result != RKNN_SUCC)
             return RknnError("RKNN_QUERY_OUTPUT_ATTR", result);
-        auto shape = TensorShape(output_attrs_[index]);
+        auto shape = TensorAttrShape(output_attrs_[index]);
         if (shape.empty() || TensorElementCount(output_attrs_[index]) == 0)
             return Status(COSMO_NN_ERR_UNSUPPORT_NET, "RKNN model contains an invalid output shape");
         output_shapes.push_back(std::move(shape));
@@ -1172,7 +1161,7 @@ Status RknnNetNode::InferTopShapes() {
         return COSMO_NN_OK;
     }
     for (const auto& attr : output_attrs_) {
-        auto shape = TensorShape(attr);
+        auto shape = TensorAttrShape(attr);
         if (shape.empty())
             return Status(COSMO_NN_ERR_UNSUPPORT_NET, "RKNN output shape cannot be represented");
         top_blob_shapes.push_back(std::move(shape));
@@ -1551,7 +1540,7 @@ Status RknnNetNode::Forward(std::vector<std::shared_ptr<Blob>>& bottom_blobs,
                         Status(COSMO_NN_ERR_NET, "RKNN returned an invalid native YOLOv8 output buffer"));
                 }
                 heads.push_back({static_cast<const int8_t*>(outputs[index].buf), outputs[index].size,
-                                 TensorShape(output_attrs_[index]), output_attrs_[index].zp,
+                                 TensorAttrShape(output_attrs_[index]), output_attrs_[index].zp,
                                  output_attrs_[index].scale});
             }
             if (direct_yolov8_candidates) {
@@ -1588,7 +1577,7 @@ Status RknnNetNode::Forward(std::vector<std::shared_ptr<Blob>>& bottom_blobs,
                         Status(COSMO_NN_ERR_NET, "RKNN returned an invalid YOLOv8 output buffer"));
                 }
                 heads.push_back({static_cast<const float*>(outputs[index].buf),
-                                 outputs[index].size / sizeof(float), TensorShape(output_attrs_[index])});
+                                 outputs[index].size / sizeof(float), TensorAttrShape(output_attrs_[index])});
             }
             if (!ReconstructRknnYolov8(heads, input_height, input_width,
                                        static_cast<float*>(top_blobs[0]->GetHandle().base), top_count,
