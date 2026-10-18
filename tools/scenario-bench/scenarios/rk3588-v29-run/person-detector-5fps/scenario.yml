@@ -1,5 +1,5 @@
-name: rk3588-detect-classify
-displayName: RK3588 检测+分类管线回归验证 (算法 7463, 1通道)
+name: rk3588-capacity-person-detector-5fps
+displayName: RK3588 单任务容量矩阵 人员检测 5FPS
 sampleIntervalSec: 3
 
 channels:
@@ -7,15 +7,15 @@ channels:
   repeatCount: 0
   sources:
     - name: no-helmet-01
-      file: LX0000000007.mp4
+      file: ../LX0000000007.mp4
 
 tasks:
-  - id: detect-classify
-    displayName: 未戴安全帽检测(检测+分类)
+  - id: person-detector
+    displayName: 人员检测
     type: cv
     algorithmId: "7463"
     scheduleId: "e89c6c6385e5454b35cde0d1653vg"
-    template: algorithm-template.json
+    template: ../algorithm-template-7463.json
     targetFps: 5
     taskConfig:
       params:
@@ -29,15 +29,18 @@ tasks:
           value: "1"
         - key: param.detectionDuration
           value: "3600"
-
 loadProfile:
-  - channels: 1
-    holdSec: 90
+  - channels: 64
+    holdSec: 30
 
 thresholds:
   pass:
-    maxCriticalPathLatencyMs: 500
-    maxDetectorLatencyMs: 400
-    avgDiscardRate: 0.10
+    maxCriticalPathLatencyMs: 200
+    maxDetectorLatencyMs: 150
+    avgDiscardRate: 0.05
     maxPacketDiscardRate: 0.01
     maxDiskUsedPercent: 90
+  taskTypes:
+    cv:
+      minFpsRatio: 0.8
+      maxMissingRate: 0

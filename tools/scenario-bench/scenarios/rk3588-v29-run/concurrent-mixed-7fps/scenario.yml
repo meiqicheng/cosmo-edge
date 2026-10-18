@@ -40,7 +40,7 @@ tasks:
       params: []
 
 loadProfile:
-  - channels: 32
+  - channels: 64
     holdSec: 30
 
 thresholds:

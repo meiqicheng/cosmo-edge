@@ -1,0 +1,51 @@
+name: rk3588-rga-capture-7463-1ch
+displayName: RK3588 RGA回归 抓图路径(告警触发→JPEG编码→帧转换) 1通道 5FPS
+sampleIntervalSec: 3
+
+channels:
+  mode: local
+  repeatCount: 0
+  sources:
+    - name: no-helmet-01
+      file: ../LX0000000007.mp4
+
+tasks:
+  - id: person-detector
+    displayName: 人员检测
+    type: cv
+    algorithmId: "7463"
+    scheduleId: "e89c6c6385e5454b35cde0d1653vg"
+    template: ../algorithm-template-7463.json
+    targetFps: 5
+    taskConfig:
+      params:
+        # 与 accept-7463-1ch 的差异：让告警真正产生，以驱动 TaskAlarmPicture
+        # 的抓图/JPEG 编码链路（EncodeJpeg -> CopyJpegSrcFrame -> 帧转换）。
+        #   targetAlarmInterval 36000 -> 2（两次告警间隔）
+        #   detectionDuration  3600  -> 2（目标需持续被检测的秒数；accept
+        #   场景设 3600 是为了压测时屏蔽告警，这也是 alarmCount=0 的真正原因）
+        - key: param.targetAlarmInterval
+          value: "2"
+        - key: param.targetAlarmCount
+          value: "1"
+        - key: param.restrainSwitch
+          value: "1"
+        - key: param.sensitivity
+          value: "1"
+        - key: param.detectionDuration
+          value: "2"
+loadProfile:
+  - channels: 1
+    holdSec: 90
+
+thresholds:
+  pass:
+    maxCriticalPathLatencyMs: 200
+    maxDetectorLatencyMs: 150
+    avgDiscardRate: 0.05
+    maxPacketDiscardRate: 0.01
+    maxDiskUsedPercent: 90
+  taskTypes:
+    cv:
+      minFpsRatio: 0.8
+      maxMissingRate: 0

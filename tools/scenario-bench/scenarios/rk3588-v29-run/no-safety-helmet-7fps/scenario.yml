@@ -30,7 +30,7 @@ tasks:
         - key: param.detectionDuration
           value: "3600"
 loadProfile:
-  - channels: 32
+  - channels: 64
     holdSec: 30
 
 thresholds:
