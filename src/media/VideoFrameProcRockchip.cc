@@ -264,23 +264,18 @@ bool ToRgaFillColor(PixelFormat format, const Color& color, int* out) {
             *out = (color.blue << 16) | (color.green << 8) | color.red;
             return true;
         case PixelFormat::PIXEL_I420:
-        case PixelFormat::PIXEL_NV12: {
-            // YUV fills only touch luma, so the annotation renders as a
-            // luminance patch: a saturated colour would need the chroma planes
-            // written too, and rga_buffer_t describes a single plane (one
-            // vir_addr, one stride, one format), so imfill cannot reach the UV
-            // plane of an NV12 buffer in the same operation.
+        case PixelFormat::PIXEL_NV12:
+            // RGB, not a precomputed luma: librga converts the fill colour into
+            // the target's own colourspace. Measured on librga 1.8.1 against an
+            // NV12 buffer -- 0x0000FF lands as Y=82 U=90 V=240, 0xFF0000 as
+            // Y=41 U=240 V=110, 0x000000 as Y=16 U=128 V=128 -- so imfill
+            // writes all three planes itself.
             //
-            // Accepted limitation, not a bug: the viewer path converts to I420
-            // or BGR before drawing (see StreamViewerEncoder), so annotations
-            // are colour there. Reaching NV12 drawing in colour would need two
-            // fills against a UV-offset pseudo-buffer per rectangle — worth
-            // doing only if the viewer path ever draws straight on NV12.
-            const int luma = static_cast<int>(0.299 * color.red + 0.587 * color.green + 0.114 * color.blue);
-            const int clamped = luma < 0 ? 0 : (luma > 255 ? 255 : luma);
-            *out = clamped;
+            // The earlier luma-only assumption was wrong, and it justified a
+            // chroma pre-pass that turned out to be unnecessary work: one fill
+            // already produces the correct tint.
+            *out = (color.red << 16) | (color.green << 8) | color.blue;
             return true;
-        }
         default:
             return false;
     }
@@ -425,6 +420,7 @@ bool VideoFrameProcRockchip::FillRectsInPlace(const VideoFramePtr& frame,
             LogFallbackOnce(operation, status);
             return false;
         }
+
     }
 
     std::memcpy(frame->GetData(), staged_va, bytes);
