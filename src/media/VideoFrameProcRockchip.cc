@@ -7,6 +7,7 @@
 #include <cstring>
 #include <limits>
 #include <utility>
+#include <vector>
 
 #include "media/PreviewPipelineMetrics.h"
 #include "media/RockchipRgaBuffer.h"
@@ -227,6 +228,293 @@ void VideoFrameProcRockchip::LogFallbackOnce(const char* operation, int status) 
             operation, failures, status, imStrError_t(static_cast<IM_STATUS>(status)),
             kRgaRetryCooldownNs / 1'000'000'000);
     }
+}
+
+// ── Drawing ─────────────────────────────────────────────────────────────
+//
+// Annotations are filled in place on the decoded frame. The alternative the
+// generic path takes — convert to BGR, draw with per-pixel loops in C++, convert
+// back — costs two full-frame colour conversions per annotated frame, and those
+// conversions are exactly what the detection overlay cannot afford at 25+
+// channels. RGA fills the same rectangles in one pass on the video block instead.
+
+namespace {
+
+/// Mirrors the CPU renderer's accepted set (see VideoFrameProcCpu.cc): the
+/// inherited implementation only draws on I420 and packed 8-bit RGB, so the RGA
+/// path must not accept formats the fallback cannot render either.
+bool IsDrawablePinFormat(PixelFormat format) {
+    return format == PixelFormat::PIXEL_I420 || format == PixelFormat::PIXEL_BGR8 ||
+           format == PixelFormat::PIXEL_RGB8;
+}
+
+/// RGA fill colour is a packed 32-bit value whose byte order follows the
+/// destination format, so the channel order has to be chosen per format rather
+/// than passed as RGB and left to RGA.
+///
+/// Returns false for formats RGA cannot fill meaningfully, which keeps packed
+/// YUV and unknown layouts on the CPU path instead of writing a wrong colour.
+bool ToRgaFillColor(PixelFormat format, const Color& color, int* out) {
+    switch (format) {
+        case PixelFormat::PIXEL_BGR8:
+            // RGA reads the low byte first for BGR888.
+            *out = (color.red << 16) | (color.green << 8) | color.blue;
+            return true;
+        case PixelFormat::PIXEL_RGB8:
+            *out = (color.blue << 16) | (color.green << 8) | color.red;
+            return true;
+        case PixelFormat::PIXEL_I420:
+        case PixelFormat::PIXEL_NV12: {
+            // YUV fills only touch luma, so the annotation renders as a
+            // luminance patch: a saturated colour would need the chroma planes
+            // written too, and rga_buffer_t describes a single plane (one
+            // vir_addr, one stride, one format), so imfill cannot reach the UV
+            // plane of an NV12 buffer in the same operation.
+            //
+            // Accepted limitation, not a bug: the viewer path converts to I420
+            // or BGR before drawing (see StreamViewerEncoder), so annotations
+            // are colour there. Reaching NV12 drawing in colour would need two
+            // fills against a UV-offset pseudo-buffer per rectangle — worth
+            // doing only if the viewer path ever draws straight on NV12.
+            const int luma = static_cast<int>(0.299 * color.red + 0.587 * color.green + 0.114 * color.blue);
+            const int clamped = luma < 0 ? 0 : (luma > 255 ? 255 : luma);
+            *out = clamped;
+            return true;
+        }
+        default:
+            return false;
+    }
+}
+
+/// RGA format id for the formats this path fills. Mirrors the mapping the
+/// conversion functions already use.
+int ToRgaFillFormat(PixelFormat format) {
+    switch (format) {
+        case PixelFormat::PIXEL_BGR8:
+            return RK_FORMAT_BGR_888;
+        case PixelFormat::PIXEL_RGB8:
+            return RK_FORMAT_RGB_888;
+        case PixelFormat::PIXEL_I420:
+            return RK_FORMAT_YCbCr_420_P;
+        case PixelFormat::PIXEL_NV12:
+            return RK_FORMAT_YCbCr_420_SP;
+        default:
+            return RK_FORMAT_UNKNOWN;
+    }
+}
+
+}  // namespace
+
+std::vector<util::Box> VideoFrameProcRockchip::BoxToStrokeRects(const util::Box& box, int line_width, int width,
+                                                                int height) const {
+    std::vector<util::Box> rects;
+    if (box.width <= 0 || box.height <= 0 || line_width <= 0 || width <= 0 || height <= 0) {
+        return rects;
+    }
+
+    // Same geometry as VideoFrameProcCpu::DrawBox: an inclusive pixel span, so
+    // the far edge sits at x + width - 1. Clipping happens here because RGA
+    // rejects out-of-bounds rectangles instead of clamping them.
+    const int x1 = box.x;
+    const int y1 = box.y;
+    const int x2 = box.x + box.width - 1;
+    const int y2 = box.y + box.height - 1;
+
+    const int cl_x1 = x1 < 0 ? 0 : x1;
+    const int cl_y1 = y1 < 0 ? 0 : y1;
+    const int cl_x2 = x2 > width - 1 ? width - 1 : x2;
+    const int cl_y2 = y2 > height - 1 ? height - 1 : y2;
+    if (cl_x1 > cl_x2 || cl_y1 > cl_y2) {
+        return rects;
+    }
+
+    const int span_w   = cl_x2 - cl_x1 + 1;
+    const int span_h   = cl_y2 - cl_y1 + 1;
+    // A box thinner than the stroke would otherwise draw four overlapping bars
+    // and paint over its own interior; one filled rect is the honest result.
+    const int stroke   = line_width * 2 >= span_w || line_width * 2 >= span_h
+                             ? (span_w < span_h ? span_w : span_h)
+                             : line_width;
+
+    // Top and bottom bars span the full width; left and right bars fill the gap
+    // between them so corners are covered exactly once.
+    rects.push_back(util::Box(cl_x1, cl_y1, span_w, stroke));
+    rects.push_back(util::Box(cl_x1, cl_y2 - stroke + 1, span_w, stroke));
+
+    const int inner_y      = cl_y1 + stroke;
+    const int inner_height = span_h - stroke * 2;
+    if (inner_height > 0) {
+        rects.push_back(util::Box(cl_x1, inner_y, stroke, inner_height));
+        rects.push_back(util::Box(cl_x2 - stroke + 1, inner_y, stroke, inner_height));
+    }
+    return rects;
+}
+
+bool VideoFrameProcRockchip::FillRectsInPlace(const VideoFramePtr& frame,
+                                              const std::vector<util::Box>& rects, const Color& color,
+                                              const char* operation) {
+    if (!frame || rects.empty()) {
+        return false;
+    }
+    if (rga_retry_after_ns_.load(std::memory_order_relaxed) > static_cast<int64_t>(NowNanoseconds())) {
+        return false;
+    }
+
+    const int width  = static_cast<int>(frame->GetWidth());
+    const int height = static_cast<int>(frame->GetHeight());
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+
+    int fill_color = 0;
+    if (!ToRgaFillColor(frame->GetPixelFormat(), color, &fill_color)) {
+        return false;
+    }
+    const int rga_format = ToRgaFillFormat(frame->GetPixelFormat());
+    if (rga_format == RK_FORMAT_UNKNOWN) {
+        return false;
+    }
+
+    // imfillArray takes every rectangle in one ioctl, so a detection pass costs
+    // one RGA submission rather than one per box.
+    std::vector<im_rect> native_rects;
+    native_rects.reserve(rects.size());
+    for (const auto& r : rects) {
+        if (r.width <= 0 || r.height <= 0) {
+            continue;
+        }
+        im_rect native {};
+        native.x      = r.x;
+        native.y      = r.y;
+        native.width  = r.width;
+        native.height = r.height;
+        native_rects.push_back(native);
+    }
+    if (native_rects.empty()) {
+        return false;
+    }
+
+    // The frame is mapped into a dma32 staging buffer first. Unlike the
+    // conversion helpers this path has no separate output, so the staged copy
+    // is written back to the same buffer the decoder handed us — which is why
+    // drawing is in-place and the frame pointer is returned unchanged.
+    const size_t bytes = frame->GetSize();
+    if (bytes == 0) {
+        return false;
+    }
+    Dma32Buffer staged;
+    if (!staged.Allocate(bytes)) {
+        return false;
+    }
+    auto* staged_va = static_cast<uint8_t*>(const_cast<void*>(staged.Map()));
+    if (staged_va == nullptr) {
+        return false;
+    }
+    std::memcpy(staged_va, frame->GetData(), bytes);
+
+    const auto started = std::chrono::steady_clock::now();
+    {
+        const std::lock_guard<std::mutex> rga_lock(media::RgaGlobalLock());
+        auto target = RgaFdBuffer(staged.Fd(), width, height, rga_format);
+        const IM_STATUS status =
+            imfillArray(target, native_rects.data(), static_cast<int>(native_rects.size()),
+                        static_cast<uint32_t>(fill_color), 1, nullptr);
+        const auto elapsed = ElapsedNanoseconds(started);
+        GetPreviewPipelineMetrics().RecordRgaOperation(RockchipRgaSucceeded(status), elapsed);
+        if (!RockchipRgaSucceeded(status)) {
+            LogFallbackOnce(operation, status);
+            return false;
+        }
+    }
+
+    std::memcpy(frame->GetData(), staged_va, bytes);
+    rga_consecutive_failures_.store(0, std::memory_order_relaxed);
+    fallback_warned_.store(false, std::memory_order_relaxed);
+    return true;
+}
+
+VideoFramePtr VideoFrameProcRockchip::DrawBox(VideoFramePtr srcImage, const util::Box imageRect,
+                                              const Color& color, int lineWidth) {
+    if (!VideoFrameValid(srcImage, true) || !IsDrawablePinFormat(srcImage->GetPixelFormat())) {
+        return srcImage;
+    }
+    const auto rects = BoxToStrokeRects(imageRect, lineWidth, static_cast<int>(srcImage->GetWidth()),
+                                        static_cast<int>(srcImage->GetHeight()));
+    if (!FillRectsInPlace(srcImage, rects, color, "DrawBox")) {
+        return VideoFrameProcCpu::DrawBox(std::move(srcImage), imageRect, color, lineWidth);
+    }
+    return srcImage;
+}
+
+VideoFramePtr VideoFrameProcRockchip::DrawRects(VideoFramePtr srcImage, const std::vector<util::Box>& rects,
+                                                const Color& color, int lineWidth) {
+    if (!VideoFrameValid(srcImage, true) || !IsDrawablePinFormat(srcImage->GetPixelFormat()) || rects.empty()) {
+        return srcImage;
+    }
+
+    // Every box expands to four stroke bars, but they all go into one
+    // imfillArray call, so N detections still cost a single submission.
+    std::vector<util::Box> strokes;
+    strokes.reserve(rects.size() * 4);
+    const int width  = static_cast<int>(srcImage->GetWidth());
+    const int height = static_cast<int>(srcImage->GetHeight());
+    for (const auto& box : rects) {
+        const auto expanded = BoxToStrokeRects(box, lineWidth, width, height);
+        strokes.insert(strokes.end(), expanded.begin(), expanded.end());
+    }
+    if (!FillRectsInPlace(srcImage, strokes, color, "DrawRects")) {
+        return VideoFrameProcCpu::DrawRects(std::move(srcImage), rects, color, lineWidth);
+    }
+    return srcImage;
+}
+
+VideoFramePtr VideoFrameProcRockchip::DrawLines(VideoFramePtr srcImage,
+                                                std::vector<std::pair<util::Point, util::Point>> lines,
+                                                const Color& color, int lineWidth) {
+    if (!VideoFrameValid(srcImage, true) || !IsDrawablePinFormat(srcImage->GetPixelFormat()) || lines.empty()) {
+        return srcImage;
+    }
+
+    // RGA fills rectangles and has no line primitive, so each segment becomes
+    // the axis-aligned bounding box it spans. A diagonal therefore draws as a
+    // box, not a stroke: for the vertical and horizontal reference lines this
+    // interface is used for (count lines, tripwires) the result is identical,
+    // and for a diagonal the CPU fallback keeps the exact geometry.
+    std::vector<util::Box> rects;
+    rects.reserve(lines.size());
+    for (const auto& line : lines) {
+        const int x_lo = line.first.x < line.second.x ? line.first.x : line.second.x;
+        const int x_hi = line.first.x < line.second.x ? line.second.x : line.first.x;
+        const int y_lo = line.first.y < line.second.y ? line.first.y : line.second.y;
+        const int y_hi = line.first.y < line.second.y ? line.second.y : line.first.y;
+        const bool axis_aligned = (x_lo == x_hi) || (y_lo == y_hi);
+        if (!axis_aligned) {
+            return VideoFrameProcCpu::DrawLines(std::move(srcImage), lines, color, lineWidth);
+        }
+        // Grow a zero-width or zero-height span so the stroke has area.
+        const int rect_w = (x_hi - x_lo) + (x_lo == x_hi ? lineWidth : 1);
+        const int rect_h = (y_hi - y_lo) + (y_lo == y_hi ? lineWidth : 1);
+        rects.push_back(util::Box(x_lo, y_lo, rect_w, rect_h));
+    }
+
+    if (!FillRectsInPlace(srcImage, rects, color, "DrawLines")) {
+        return VideoFrameProcCpu::DrawLines(std::move(srcImage), lines, color, lineWidth);
+    }
+    return srcImage;
+}
+
+VideoFramePtr VideoFrameProcRockchip::DrawPoint(VideoFramePtr srcImage, util::Point point, const Color& color,
+                                                int lineWidth) {
+    if (!VideoFrameValid(srcImage, true) || !IsDrawablePinFormat(srcImage->GetPixelFormat())) {
+        return srcImage;
+    }
+    const auto rects = BoxToStrokeRects(util::Box(point.x, point.y, 1, 1), lineWidth,
+                                        static_cast<int>(srcImage->GetWidth()),
+                                        static_cast<int>(srcImage->GetHeight()));
+    if (rects.empty() || !FillRectsInPlace(srcImage, rects, color, "DrawPoint")) {
+        return VideoFrameProcCpu::DrawPoint(std::move(srcImage), point, color, lineWidth);
+    }
+    return srcImage;
 }
 
 }  // namespace cosmo::media

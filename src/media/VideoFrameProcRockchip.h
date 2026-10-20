@@ -40,12 +40,47 @@ public:
     std::vector<u_char> EncodeJpeg(const VideoFramePtr srcPicture) override;
     VideoFramePtr DecodeJpeg(const std::vector<u_int8_t>& data) override;
 
+    // ── Drawing ─────────────────────────────────────────────────────────
+    //
+    // RGA fills the annotation rectangles in place, so the frame stays in its
+    // decoded format instead of being converted to BGR, drawn on by the CPU,
+    // and converted back. That round trip is the single most expensive thing a
+    // detection overlay does per frame.
+    //
+    // Only fill-based primitives are offloaded. Text is composed from glyph
+    // bitmaps already built by the CPU renderer, so it keeps the inherited
+    // implementation: moving it would trade a memcpy for a much larger RGA
+    // staging cost and lose the font raster.
+    VideoFramePtr DrawBox(VideoFramePtr srcImage, const util::Box imageRect, const Color& color,
+                          int lineWidth) override;
+    VideoFramePtr DrawRects(VideoFramePtr srcImage, const std::vector<util::Box>& rects, const Color& color,
+                            int lineWidth) override;
+    VideoFramePtr DrawLines(VideoFramePtr srcImage,
+                            std::vector<std::pair<util::Point, util::Point>> lines, const Color& color,
+                            int lineWidth) override;
+    VideoFramePtr DrawPoint(VideoFramePtr srcImage, util::Point point, const Color& color,
+                            int lineWidth) override;
+
 private:
     VideoFramePtr ConvertWithRga(const VideoFramePtr& frame, PixelFormat dst_format, int src_rga_format,
                                  int dst_rga_format, int color_mode, const char* operation);
     VideoFramePtr ResizeWithRga(const VideoFramePtr& frame, int dst_height, int dst_width,
                                 const char* operation);
     void LogFallbackOnce(const char* operation, int status);
+
+    /// Fills `rects` on the frame through RGA, in place. Returns false when RGA
+    /// cannot serve the request (unsupported pixel format, import failure, or a
+    /// non-OK status), so the caller can fall back to the CPU implementation
+    /// with the frame untouched.
+    ///
+    /// Clip rectangles to the frame before they reach here: RGA rejects
+    /// out-of-bounds coordinates rather than clamping them.
+    bool FillRectsInPlace(const VideoFramePtr& frame, const std::vector<util::Box>& rects, const Color& color,
+                          const char* operation);
+    /// Converts a util::Box stroke into the four filled rectangles the CPU
+    /// implementation would draw, clipped to the frame. Returns an empty vector
+    /// when the box lies entirely outside or degenerates after clipping.
+    std::vector<util::Box> BoxToStrokeRects(const util::Box& box, int line_width, int width, int height) const;
 
     /// Runs one synchronous RGA operation on a frame staged through the dma32
     /// heap. Frames handed in through the generic VideoFrame API are owned by

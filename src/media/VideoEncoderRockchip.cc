@@ -515,6 +515,129 @@ VideoPacketPtr VideoEncoderRockchip::SendYUVFrame(void* data) {
     return output;
 }
 
+VideoPacketPtr VideoEncoderRockchip::SendNV12Planes(const NV12Planes& planes) {
+    if (fallback_) {
+        // The software encoder has no plane entry point; the inherited default
+        // repacks and delegates, which is correct though not free.
+        return VideoEncoder::SendNV12Planes(planes);
+    }
+    if (!state_ || !state_->context || !state_->api || !state_->frame_buffer) {
+        return nullptr;
+    }
+    if (planes.y == nullptr || planes.uv == nullptr || planes.width <= 0 || planes.height <= 0) {
+        return nullptr;
+    }
+    if (planes.width != static_cast<int>(width_) || planes.height != static_cast<int>(height_)) {
+        LOG_WARN("MPP NV12 input mismatch: expected {}x{}, got {}x{}", width_, height_, planes.width,
+                 planes.height);
+        return nullptr;
+    }
+
+    const auto started = std::chrono::steady_clock::now();
+    const auto fail    = [&]() -> VideoPacketPtr {
+        GetPreviewPipelineMetrics().RecordMppEncode(false, ElapsedNanoseconds(started));
+        return nullptr;
+    };
+
+    auto* destination = static_cast<uint8_t*>(mpp_buffer_get_ptr(state_->frame_buffer));
+    if (!destination) {
+        return fail();
+    }
+
+    // MPP stores NV12 as Y then interleaved UV, at the buffer's own strides.
+    // Both planes are copied with the source stride honoured, so padded decoder
+    // output is handled without assuming stride == width.
+    MppBufferWriteBegin(state_->frame_buffer);
+    {
+        const int y_stride  = planes.y_stride > 0 ? planes.y_stride : planes.width;
+        const int uv_stride = planes.uv_stride > 0 ? planes.uv_stride : planes.width;
+        for (size_t row = 0; row < height_; ++row) {
+            std::memcpy(destination + row * state_->horizontal_stride,
+                        planes.y + row * static_cast<size_t>(y_stride), static_cast<size_t>(width_));
+        }
+        uint8_t* uv_dst = destination + state_->horizontal_stride * state_->vertical_stride;
+        // The interleaved plane is copied row by row: consecutive rows in the
+        // MPP buffer are horizontal_stride apart, not uv_stride apart.
+        const size_t uv_rows = height_ / 2;
+        const size_t row_bytes = width_;
+        for (size_t row = 0; row < uv_rows; ++row) {
+            std::memcpy(uv_dst + row * state_->horizontal_stride,
+                        planes.uv + row * static_cast<size_t>(uv_stride), row_bytes);
+        }
+    }
+    MppBufferWriteEnd(state_->frame_buffer);
+
+    MppFrame frame = nullptr;
+    auto ret       = mpp_frame_init(&frame);
+    if (ret != MPP_OK || !frame) {
+        return fail();
+    }
+    mpp_frame_set_width(frame, static_cast<RK_S32>(width_));
+    mpp_frame_set_height(frame, static_cast<RK_S32>(height_));
+    mpp_frame_set_hor_stride(frame, static_cast<RK_S32>(state_->horizontal_stride));
+    mpp_frame_set_ver_stride(frame, static_cast<RK_S32>(state_->vertical_stride));
+    // The whole point: the encoder consumes the buffer as YUV420SP (NV12), so
+    // no deinterleave to I420 happens anywhere on this path.
+    mpp_frame_set_fmt(frame, MPP_FMT_YUV420SP);
+    mpp_frame_set_pts(frame, state_->frame_pts++);
+    mpp_frame_set_buffer(frame, state_->frame_buffer);
+
+    MppPacket packet = nullptr;
+    ret              = mpp_packet_init_with_buffer(&packet, state_->packet_buffer);
+    if (ret != MPP_OK || !packet) {
+        mpp_frame_deinit(&frame);
+        return fail();
+    }
+    mpp_packet_set_length(packet, 0);
+    auto meta = mpp_frame_get_meta(frame);
+    mpp_meta_set_packet(meta, KEY_OUTPUT_PACKET, packet);
+
+    ret = state_->api->encode_put_frame(state_->context, frame);
+    mpp_frame_deinit(&frame);
+    if (ret != MPP_OK) {
+        LOG_WARN("MPP encode_put_frame (NV12) failed: {}", ret);
+        mpp_packet_deinit(&packet);
+        return fail();
+    }
+    ret = state_->api->encode_get_packet(state_->context, &packet);
+    if (ret != MPP_OK || !packet) {
+        LOG_WARN("MPP encode_get_packet (NV12) failed: {}", ret);
+        if (packet) {
+            mpp_packet_deinit(&packet);
+        }
+        return fail();
+    }
+
+    const auto* bytes      = static_cast<const uint8_t*>(mpp_packet_get_pos(packet));
+    const auto length      = mpp_packet_get_length(packet);
+    RK_S32 output_intra    = 0;
+    const auto packet_meta = mpp_packet_has_meta(packet) ? mpp_packet_get_meta(packet) : nullptr;
+    if (packet_meta) {
+        mpp_meta_get_s32(packet_meta, KEY_OUTPUT_INTRA, &output_intra);
+    }
+    const bool is_intra =
+        output_intra != 0 || (codec_type_ == VideoCodecType::kH264 && ContainsH264Idr(bytes, length));
+    if (!bytes || length == 0) {
+        mpp_packet_deinit(&packet);
+        return fail();
+    }
+
+    auto output        = std::make_shared<VideoPacket>();
+    output->is_i_frame = is_intra;
+    output->pts        = mpp_packet_get_pts(packet);
+    if (is_intra && codec_type_ == VideoCodecType::kH264 && !ContainsH264ParameterSet(bytes, length)) {
+        output->data.reserve(state_->codec_header.size() + length);
+        output->data.insert(output->data.end(), state_->codec_header.begin(), state_->codec_header.end());
+    } else {
+        output->data.reserve(length);
+    }
+    output->data.insert(output->data.end(), bytes, bytes + length);
+    mpp_packet_deinit(&packet);
+
+    GetPreviewPipelineMetrics().RecordMppEncode(true, ElapsedNanoseconds(started));
+    return output;
+}
+
 void VideoEncoderRockchip::CleanMpp() {
     if (!state_) {
         return;
