@@ -298,6 +298,64 @@ int ToRgaFillFormat(PixelFormat format) {
     }
 }
 
+/// YUV420 stores chroma at half resolution, so librga rejects a fill rectangle
+/// whose origin or extent is odd ("Error yuv not align to 2"). The annotation
+/// geometry is not chroma aware — a horizontal tripwire is one or three pixels
+/// tall and an arbitrary detection edge can land on an odd coordinate — so the
+/// rectangle is grown outward to the next even boundary before submission.
+///
+/// Growing rather than shrinking keeps the marker covering the pixels the caller
+/// asked for, and the few extra chroma-aligned pixels are invisible on a
+/// two-by-two block. The result is clipped to the frame, which can only be an
+/// issue for a one-pixel marker on the last row or column; such a rectangle
+/// collapses to nothing and is dropped, exactly as an off-frame rect already is.
+bool AlignRectToChromaGrid(int width, int height, im_rect* rect) {
+    if (rect == nullptr || width <= 0 || height <= 0) {
+        return false;
+    }
+
+    int x0 = rect->x < 0 ? 0 : rect->x;
+    int y0 = rect->y < 0 ? 0 : rect->y;
+    int x1 = static_cast<int>(rect->x) + static_cast<int>(rect->width);
+    int y1 = static_cast<int>(rect->y) + static_cast<int>(rect->height);
+    x1     = x1 > width ? width : x1;
+    y1     = y1 > height ? height : y1;
+    if (x0 >= x1 || y0 >= y1) {
+        return false;
+    }
+
+    // Round the exclusive far edge up, then the inclusive origin down, so the box
+    // only ever grows. The frame's own extent may be odd (a 1081-line buffer), so
+    // re-clipping can land back on an odd edge: that edge is then pulled one step
+    // inward, which shrinks the box by a single pixel rather than sending librga
+    // an unaligned rectangle.
+    x1 = (x1 + 1) & ~1;
+    y1 = (y1 + 1) & ~1;
+    x0 &= ~1;
+    y0 &= ~1;
+    if (x1 > width) {
+        x1 = width & ~1;
+    }
+    if (y1 > height) {
+        y1 = height & ~1;
+    }
+    if (x0 >= x1 || y0 >= y1) {
+        return false;
+    }
+
+    rect->x      = x0;
+    rect->y      = y0;
+    rect->width  = x1 - x0;
+    rect->height = y1 - y0;
+    return rect->width > 0 && rect->height > 0;
+}
+
+/// True when the RGA format stores chroma at half resolution in both axes.
+bool RgaFormatNeedsChromaAlignment(int rga_format) {
+    return rga_format == RK_FORMAT_YCbCr_420_P || rga_format == RK_FORMAT_YCbCr_420_SP;
+}
+
+
 }  // namespace
 
 std::vector<util::Box> VideoFrameProcRockchip::BoxToStrokeRects(const util::Box& box, int line_width, int width,
@@ -372,6 +430,7 @@ bool VideoFrameProcRockchip::FillRectsInPlace(const VideoFramePtr& frame,
 
     // imfillArray takes every rectangle in one ioctl, so a detection pass costs
     // one RGA submission rather than one per box.
+    const bool needs_alignment = RgaFormatNeedsChromaAlignment(rga_format);
     std::vector<im_rect> native_rects;
     native_rects.reserve(rects.size());
     for (const auto& r : rects) {
@@ -383,6 +442,9 @@ bool VideoFrameProcRockchip::FillRectsInPlace(const VideoFramePtr& frame,
         native.y      = r.y;
         native.width  = r.width;
         native.height = r.height;
+        if (needs_alignment && !AlignRectToChromaGrid(width, height, &native)) {
+            continue;
+        }
         native_rects.push_back(native);
     }
     if (native_rects.empty()) {
