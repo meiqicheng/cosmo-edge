@@ -3,19 +3,193 @@
 
 #include "flow/classify/AiClassifier.h"
 
+#include <algorithm>
+
 #include "flow/common/AlgDataRecord.h"
 #include "flow/common/FlowTaskUtil.h"
+#include "nn/core/inference_pipeline_metrics.h"
 #include "service/detail/ServiceRegistry.h"
 #include "service/system/IConfigReadService.h"
+#include "util/Keys.h"
 #include "util/Log.h"
+#include "util/SafeParse.h"
 
 namespace cosmo {
+
+namespace {
+constexpr int64_t kCacheTtlMsMin       = 0;
+constexpr int64_t kCacheTtlMsMax       = 600000;  // 10 min hard ceiling
+constexpr size_t  kCacheMaxEntriesMin  = 1;
+constexpr size_t  kCacheMaxEntriesMax  = 4096;
+constexpr size_t  kCacheLogEveryNLookups = 500;
+}  // namespace
 
 AiClassifier::AiClassifier(const std::string& taskId, ActionNode& action)
     : AiClassifierBase(AlgActionType::AlgActionAiClassify, taskId, action, "AI-CLASSIFIER ",
                        "classify_" + action.atomicCode) {
     batch_count_ = 1;
+    LoadCacheParams(action);
     LOG_INFO("{}[{} {} {}] Init ", log_tag_, GetTaskId(), GetName(), uuid);
+}
+
+// Read the classifyCache* parameters. Unknown / out-of-range values fall back
+// to the defaults so a bad config can never change runtime behaviour silently.
+void AiClassifier::LoadCacheParams(ActionNode& action) {
+    for (auto& el : action.configObject.params) {
+        if (key::classify_cache::ENABLED == el.key.ToString()) {
+            cache_enabled_ = (util::ParseInt(el.value, 0) != 0);
+        } else if (key::classify_cache::TTL_MS == el.key.ToString()) {
+            const auto v = util::ParseInt<int64_t>(el.value, cache_ttl_ms_);
+            cache_ttl_ms_ = std::clamp(v, kCacheTtlMsMin, kCacheTtlMsMax);
+        } else if (key::classify_cache::MIN_CONFIDENCE == el.key.ToString()) {
+            const auto v = util::ParseFloat(el.value, cache_min_confidence_);
+            if (v >= 0.0f && v <= 1.0f) {
+                cache_min_confidence_ = v;
+            }
+        } else if (key::classify_cache::MIN_MARGIN == el.key.ToString()) {
+            const auto v = util::ParseFloat(el.value, cache_min_margin_);
+            if (v >= 0.0f && v <= 1.0f) {
+                cache_min_margin_ = v;
+            }
+        } else if (key::classify_cache::STABLE_IOU == el.key.ToString()) {
+            const auto v = util::ParseFloat(el.value, cache_stable_iou_);
+            if (v >= 0.0f && v <= 1.0f) {
+                cache_stable_iou_ = v;
+            }
+        } else if (key::classify_cache::MAX_ENTRIES == el.key.ToString()) {
+            const auto v =
+                static_cast<size_t>(util::ParseInt<int64_t>(el.value, static_cast<int64_t>(cache_max_entries_)));
+            cache_max_entries_ = std::clamp(v, kCacheMaxEntriesMin, kCacheMaxEntriesMax);
+        }
+    }
+    LOG_INFO("{}[{} {} {}] ClassifyCache enabled:{} ttlMs:{} minConf:{} minMargin:{} stableIou:{} maxEntries:{}",
+             log_tag_, GetTaskId(), GetName(), uuid, cache_enabled_, cache_ttl_ms_, cache_min_confidence_,
+             cache_min_margin_, cache_stable_iou_, cache_max_entries_);
+}
+
+// The boxes the classifier crops the model input from. Mirrors
+// AiClassifierUnify::CollectBoxOrLandmarkData / ClassifyMultSub so the IoU
+// guard compares exactly what the model would have seen.
+std::vector<util::Box> AiClassifier::CropBoxes(const AiDetectRstEl& el, bool mult_related) {
+    std::vector<util::Box> boxes;
+    if (mult_related) {
+        boxes.reserve(el.relatedEls.size());
+        for (const auto& sub : el.relatedEls) {
+            boxes.push_back(sub.box);
+        }
+        return boxes;
+    }
+    boxes.push_back(el.relatedEl.bActive ? el.relatedEl.box : el.box);
+    return boxes;
+}
+
+// A result is cached only when it is decisive: the top-1 confidence clears
+// min_confidence and the gap to the runner-up clears min_margin. With the
+// default (both 0) every non-empty result is cached.
+bool AiClassifier::IsConfidentResult(const std::vector<AiConfidence>& rst, float min_confidence,
+                                     float min_margin) {
+    if (rst.empty()) {
+        return false;
+    }
+    float top1 = -1.0f;
+    float top2 = -1.0f;
+    for (const auto& c : rst) {
+        if (c.confidence > top1) {
+            top2 = top1;
+            top1 = c.confidence;
+        } else if (c.confidence > top2) {
+            top2 = c.confidence;
+        }
+    }
+    if (top1 < min_confidence) {
+        return false;
+    }
+    if (top2 >= 0.0f && (top1 - top2) < min_margin) {
+        return false;
+    }
+    return true;
+}
+
+bool AiClassifier::TryReuseCachedResult(AiDetectRstEl& el, bool mult_related) {
+    // No tracking identity ⇒ no safe way to bind a cached result to this
+    // target. Fall through to the normal classification path.
+    if (!cache_enabled_ || el.trackIdInfo.empty()) {
+        return false;
+    }
+
+    const auto boxes = CropBoxes(el, mult_related);
+    const auto now   = std::chrono::steady_clock::now();
+    bool hit         = false;
+
+    {
+        std::lock_guard<std::mutex> lock(cache_mtx_);
+        ++cache_lookups_;
+        auto it = cache_.find(el.trackIdInfo);
+        if (it != cache_.end()) {
+            const auto& entry = it->second.second;
+            const auto age_ms =
+                std::chrono::duration_cast<std::chrono::milliseconds>(now - entry.updated_at).count();
+            bool fresh = (age_ms >= 0) && (age_ms <= cache_ttl_ms_);
+            bool stable = boxes.size() == entry.boxes.size();
+            for (size_t k = 0; stable && k < boxes.size(); k++) {
+                if (util::IntersectionUnionRatio(boxes[k], entry.boxes[k]) < cache_stable_iou_) {
+                    stable = false;
+                }
+            }
+            if (fresh && stable) {
+                cache_lru_.splice(cache_lru_.begin(), cache_lru_, it->second.first);
+                el.classifyRst = entry.classify_rst;
+                if (el.relatedEls.size() == entry.related_els_rst.size()) {
+                    for (size_t k = 0; k < el.relatedEls.size(); k++) {
+                        el.relatedEls[k].classifyRst = entry.related_els_rst[k];
+                    }
+                }
+                el.relatedEl.classifyRst = entry.related_el_rst;
+                ++cache_hits_;
+                hit = true;
+            }
+        }
+        if (0 == cache_lookups_ % kCacheLogEveryNLookups) {
+            LOG_INFO("{}[{} {} {}] ClassifyCache lookups:{} hits:{} size:{}", log_tag_, GetTaskId(),
+                     GetName(), uuid, cache_lookups_, cache_hits_, cache_.size());
+        }
+    }
+
+    cosmo::nn::GetInferencePipelineMetrics().RecordClassifierCacheLookup(hit);
+    return hit;
+}
+
+void AiClassifier::UpdateClassifyCache(const AiDetectRstEl& el, bool mult_related) {
+    if (!cache_enabled_ || el.trackIdInfo.empty()) {
+        return;
+    }
+    if (!IsConfidentResult(el.classifyRst, cache_min_confidence_, cache_min_margin_)) {
+        return;
+    }
+
+    ClassifyCacheEntry entry;
+    entry.boxes            = CropBoxes(el, mult_related);
+    entry.classify_rst     = el.classifyRst;
+    entry.related_el_rst   = el.relatedEl.classifyRst;
+    entry.related_els_rst.reserve(el.relatedEls.size());
+    for (const auto& sub : el.relatedEls) {
+        entry.related_els_rst.push_back(sub.classifyRst);
+    }
+    entry.updated_at = std::chrono::steady_clock::now();
+
+    std::lock_guard<std::mutex> lock(cache_mtx_);
+    auto it = cache_.find(el.trackIdInfo);
+    if (it != cache_.end()) {
+        it->second.second = std::move(entry);
+        cache_lru_.splice(cache_lru_.begin(), cache_lru_, it->second.first);
+        return;
+    }
+    cache_lru_.push_front(el.trackIdInfo);
+    cache_.emplace(el.trackIdInfo, std::make_pair(cache_lru_.begin(), std::move(entry)));
+    while (cache_.size() > cache_max_entries_) {
+        cache_.erase(cache_lru_.back());
+        cache_lru_.pop_back();
+    }
 }
 
 bool AiClassifier::CheckDataAvailable(AlgDataPtr algData) {
@@ -152,6 +326,13 @@ void AiClassifier::HandFramesEx(std::vector<AlgDataPtr> alg_datas) {
                 classify_result->targets.push_back(targets[j]);
                 continue;
             }
+            // L2 dedup — reuse a still-valid classification for the same
+            // tracked target instead of re-running the model. Targets with no
+            // tracking identity and forced targets always fall through.
+            if ((!targets[j].bForceClassify) && TryReuseCachedResult(targets[j], target_have_mult_related)) {
+                classify_result->targets.push_back(targets[j]);
+                continue;
+            }
             io_puts_el.push_back(targets[j]);
         }
 
@@ -171,6 +352,7 @@ void AiClassifier::HandFramesEx(std::vector<AlgDataPtr> alg_datas) {
         auto classify_result = alg_out_datas[img_record[out]]->GetTaskResult(AlgDataType::TaskDataClassify);
         if (classify_result) {
             for (const auto& el : io_puts[out]) {
+                UpdateClassifyCache(el, target_have_mult_related);
                 classify_result->targets.push_back(el);
             }
         }

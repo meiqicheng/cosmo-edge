@@ -294,11 +294,58 @@ function summarizeMediaStages(ticks, inferMs) {
     return value != null && value >= 0 ? value : null;
   };
   const nodeStages = summarizeNodeStages(ticks);
+  // Second-stage classifier. `classifierGraphForwardMs / classifierForwardCalls`
+  // is the wall clock of a single graph execution (queueing included), while
+  // `classifierTargets / classifierForwardCalls` is the effective batch size —
+  // together they show whether batching can pay off.
+  const classifierForwardCalls = counterDelta('classifierForwardCalls');
+  const classifierTargets = counterDelta('classifierGraphForwardFrames');
+  const classifierBatchSize =
+    classifierForwardCalls > 0 && classifierTargets != null
+      ? round(classifierTargets / classifierForwardCalls, 3)
+      : null;
+  // L2 cross-frame dedup. `classifierCacheHits / (hits + misses)` is the share
+  // of per-target classification work that reused a previous result instead of
+  // running the model — i.e. the call reduction actually achieved by dedup.
+  // Both counters stay at 0 while the cache is disabled, which makes a
+  // cache-off run easy to tell apart from a cache-on run.
+  const classifierCacheHits = counterDelta('classifierCacheHits');
+  const classifierCacheMisses = counterDelta('classifierCacheMisses');
+  const classifierCacheHitRate =
+    classifierCacheHits != null &&
+    classifierCacheMisses != null &&
+    classifierCacheHits + classifierCacheMisses > 0
+      ? round(classifierCacheHits / (classifierCacheHits + classifierCacheMisses), 4)
+      : null;
 
   return {
     preprocessAvgMs: nodeStages.preprocess,
     inferAvgMs: inferMs,
     postprocessAvgMs: nodeStages.postprocess,
+    classifierClassifyCalls: counterDelta('classifierClassifyCalls'),
+    classifierCacheHits,
+    classifierCacheMisses,
+    classifierCacheHitRate,
+    classifierForwardCalls,
+    classifierTargets,
+    classifierBatchSize,
+    classifierBlobConvertAvgMs: counterAverage(
+      'classifierBlobConvertMs',
+      'classifierBlobConvertFrames',
+    ),
+    classifierGraphForwardAvgMs: counterAverage(
+      'classifierGraphForwardMs',
+      'classifierForwardCalls',
+    ),
+    classifierGraphForwardMsPerTarget: counterAverage(
+      'classifierGraphForwardMs',
+      'classifierGraphForwardFrames',
+    ),
+    classifierGraphForwardFailures: counterDelta('classifierGraphForwardFailures'),
+    classifierResultParseAvgMs: counterAverage(
+      'classifierResultParseMs',
+      'classifierResultParseFrames',
+    ),
     colorConvertAvgMs: counterAverage('colorConvertMs', 'colorConvertFrames'),
     blobConvertAvgMs: counterAverage('blobConvertMs', 'blobConvertFrames'),
     graphForwardAvgMs: counterAverage('graphForwardMs', 'graphForwardFrames'),

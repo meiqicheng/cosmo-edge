@@ -1,0 +1,59 @@
+name: rk3588-l2-dedup-no-safety-helmet-5fps-cache-on
+displayName: RK3588 未戴安全帽分析 5FPS — L2 分类结果缓存开启（对照）
+sampleIntervalSec: 3
+
+# A/B counterpart of ../no-safety-helmet-5fps/scenario.yml.
+# Identical except the algorithm template, which adds these params to the
+# classify action (AA_00002, helmet atomicCode 7982161):
+#   classifyCacheEnabled     = 1
+#   classifyCacheTtlMs       = 1000
+#   classifyCacheStableIou   = 0.5
+#   classifyCacheMinConfidence = 0.7   (A6 measured: only 2.1% of samples below)
+#   classifyCacheMinMargin     = 0.3   (A6 measured: only ~1.7% of samples below)
+# The two gates keep coin-flip labels out of the cache; measured cost on the
+# hit rate is ~3 percentage points (72.7% -> ~70%).
+# Everything else (source, fps, alarm config, thresholds) is unchanged so the
+# runs are directly comparable.
+
+channels:
+  mode: local
+  repeatCount: 0
+  sources:
+    - name: no-helmet-01
+      file: ../LX0000000007.mp4
+
+tasks:
+  - id: no-safety-helmet
+    displayName: 未戴安全帽分析
+    type: cv
+    algorithmId: "7463002"
+    scheduleId: "e89c6c6385e5454b35cde0d1653vg"
+    template: ../algorithm-template-7463002-cache.json
+    targetFps: 5
+    taskConfig:
+      params:
+        - key: param.targetAlarmInterval
+          value: "1"
+        - key: param.targetAlarmCount
+          value: "1"
+        - key: param.restrainSwitch
+          value: "0"
+        - key: param.sensitivity
+          value: "1"
+        - key: param.detectionDuration
+          value: "5"
+loadProfile:
+  - channels: 1
+    holdSec: 180
+
+thresholds:
+  pass:
+    maxCriticalPathLatencyMs: 200
+    maxDetectorLatencyMs: 150
+    avgDiscardRate: 0.05
+    maxPacketDiscardRate: 0.01
+    maxDiskUsedPercent: 90
+  taskTypes:
+    cv:
+      minFpsRatio: 0.8
+      maxMissingRate: 0

@@ -139,4 +139,16 @@ namespace diagnosis {
     inline constexpr std::string_view THRESHOLD_EXT{"videoDiagnosisThresholdExt"};
 }  // namespace diagnosis
 
+// Second-stage classifier result cache (L2 cross-frame dedup).
+// Reuses a previous classification for the same tracked target instead of
+// re-running the model on every frame. All knobs default to "off".
+namespace classify_cache {
+    inline constexpr std::string_view ENABLED{"classifyCacheEnabled"};
+    inline constexpr std::string_view TTL_MS{"classifyCacheTtlMs"};
+    inline constexpr std::string_view MIN_CONFIDENCE{"classifyCacheMinConfidence"};
+    inline constexpr std::string_view MIN_MARGIN{"classifyCacheMinMargin"};
+    inline constexpr std::string_view STABLE_IOU{"classifyCacheStableIou"};
+    inline constexpr std::string_view MAX_ENTRIES{"classifyCacheMaxEntries"};
+}  // namespace classify_cache
+
 }  // namespace cosmo::key

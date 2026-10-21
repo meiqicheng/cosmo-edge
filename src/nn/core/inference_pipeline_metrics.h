@@ -21,6 +21,30 @@ struct InferencePipelineMetricsSnapshot {
     uint64_t result_parse_frames{0};
     uint64_t result_parse_nanoseconds{0};
     uint64_t result_parse_failures{0};
+    // Second-stage classifier. Kept separate from the generic blob_convert /
+    // graph_forward / result_parse counters above so existing detector
+    // baselines (and every recorded benchmark) stay comparable.
+    //   classify_calls        : AiClassifierUnify::Classify() entries, i.e. the
+    //                           per-target invocations issued by ClassifyMultSub.
+    //   forward_calls         : graph executions (one RKNN run each today).
+    //   graph_forward_frames  : targets pushed through the graph, so
+    //                           frames/calls is the effective batch size and
+    //                           nanoseconds/frames is the per-target cost.
+    uint64_t classifier_classify_calls{0};
+    // L2 cross-frame dedup lookups on the classification cache. `hits` are the
+    // targets that reused a previous result instead of running the model, so
+    // hits / (hits + misses) is the call-reduction rate achieved by dedup.
+    uint64_t classifier_cache_hits{0};
+    uint64_t classifier_cache_misses{0};
+    uint64_t classifier_forward_calls{0};
+    uint64_t classifier_blob_convert_frames{0};
+    uint64_t classifier_blob_convert_nanoseconds{0};
+    uint64_t classifier_graph_forward_frames{0};
+    uint64_t classifier_graph_forward_nanoseconds{0};
+    uint64_t classifier_graph_forward_failures{0};
+    uint64_t classifier_result_parse_frames{0};
+    uint64_t classifier_result_parse_nanoseconds{0};
+    uint64_t classifier_result_parse_failures{0};
     uint64_t rknn_forwards{0};
     uint64_t rknn_forward_nanoseconds{0};
     uint64_t rknn_forward_failures{0};
@@ -145,6 +169,13 @@ public:
     void RecordBlobConvert(uint64_t nanoseconds, uint64_t frames);
     void RecordGraphForward(uint64_t nanoseconds, uint64_t frames, bool success);
     void RecordResultParse(uint64_t nanoseconds, uint64_t frames, bool success);
+    // Second-stage classifier instrumentation (see the snapshot fields above).
+    void RecordClassifierClassifyCall();
+    void RecordClassifierCacheLookup(bool hit);
+    void RecordClassifierForwardCall(uint64_t targets);
+    void RecordClassifierBlobConvert(uint64_t nanoseconds, uint64_t frames);
+    void RecordClassifierGraphForward(uint64_t nanoseconds, uint64_t frames, bool success);
+    void RecordClassifierResultParse(uint64_t nanoseconds, uint64_t frames, bool success);
     void RecordRknnForward(uint64_t nanoseconds, bool success, RknnModelScope scope = RknnModelScope::Other);
     void RecordRknnPrepare(uint64_t nanoseconds, RknnModelScope scope = RknnModelScope::Other);
     void RecordRknnInputsSet(uint64_t nanoseconds, RknnModelScope scope = RknnModelScope::Other);
@@ -210,6 +241,18 @@ private:
     std::atomic<uint64_t> result_parse_frames_{0};
     std::atomic<uint64_t> result_parse_nanoseconds_{0};
     std::atomic<uint64_t> result_parse_failures_{0};
+    std::atomic<uint64_t> classifier_classify_calls_{0};
+    std::atomic<uint64_t> classifier_cache_hits_{0};
+    std::atomic<uint64_t> classifier_cache_misses_{0};
+    std::atomic<uint64_t> classifier_forward_calls_{0};
+    std::atomic<uint64_t> classifier_blob_convert_frames_{0};
+    std::atomic<uint64_t> classifier_blob_convert_nanoseconds_{0};
+    std::atomic<uint64_t> classifier_graph_forward_frames_{0};
+    std::atomic<uint64_t> classifier_graph_forward_nanoseconds_{0};
+    std::atomic<uint64_t> classifier_graph_forward_failures_{0};
+    std::atomic<uint64_t> classifier_result_parse_frames_{0};
+    std::atomic<uint64_t> classifier_result_parse_nanoseconds_{0};
+    std::atomic<uint64_t> classifier_result_parse_failures_{0};
     std::atomic<uint64_t> rknn_forwards_{0};
     std::atomic<uint64_t> rknn_forward_nanoseconds_{0};
     std::atomic<uint64_t> rknn_forward_failures_{0};

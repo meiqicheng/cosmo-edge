@@ -1,10 +1,28 @@
 // AiClassifierForward.cc — Forward inference for AiClassifierUnify.
 // Split from AiClassifierUnify.cc to reduce file size (DEBT-007).
+//
+// Every graph execution funnels through one of the three Classify/Forward
+// entry points below, so the second-stage classifier is instrumented here:
+// blob convert / graph forward / result parse are recorded per call together
+// with the number of targets pushed into the graph. That makes the effective
+// batch size (targets / calls) and the per-target cost directly observable in
+// the accelerator metrics without touching the detector counters.
+
+#include <chrono>
 
 #include "infer/AiClassifierUnify.h"
+#include "nn/core/inference_pipeline_metrics.h"
 #include "util/Log.h"
 
 namespace cosmo {
+namespace {
+    using MetricsClock = std::chrono::steady_clock;
+
+    uint64_t ElapsedNanoseconds(MetricsClock::time_point started_at) {
+        return static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(MetricsClock::now() - started_at).count());
+    }
+}  // namespace
 
 util::ErrorEnum AiClassifierUnify::Classify(const VideoFramePtr& image_base, const VideoFramePtr& image,
                                             AiDetectRstEl& io_rst) {
@@ -16,17 +34,25 @@ util::ErrorEnum AiClassifierUnify::Classify(const VideoFramePtr& image_base, con
         return util::ErrorEnum::Success;
     }
 
-    auto image_base_blob = ConvertImageToBlob(image_base);
-    auto image_blob      = ConvertImageToBlob(image);
+    auto& metrics           = cosmo::nn::GetInferencePipelineMetrics();
+    const auto blob_started = MetricsClock::now();
+    auto image_base_blob    = ConvertImageToBlob(image_base);
+    auto image_blob         = ConvertImageToBlob(image);
+    metrics.RecordClassifierBlobConvert(ElapsedNanoseconds(blob_started), 1);
 
+    const auto forward_started = MetricsClock::now();
+    metrics.RecordClassifierForwardCall(1);
     auto status = classifier_->Forward({{image_base_blob}, {image_blob}});
+    metrics.RecordClassifierGraphForward(ElapsedNanoseconds(forward_started), 1, bool(status));
     if (!bool(status)) {
         LOG_ERRO("Forward Failed.({})", status.description());
         return util::ErrorEnum::AI_FORWARD_FAILED;
     }
 
     std::vector<std::vector<cosmo::nn::ObjectInfoV1>> outputs;
-    status = classifier_->ParseOutput<cosmo::nn::ObjectInfoV1>(outputs);
+    const auto parse_started = MetricsClock::now();
+    status                   = classifier_->ParseOutput<cosmo::nn::ObjectInfoV1>(outputs);
+    metrics.RecordClassifierResultParse(ElapsedNanoseconds(parse_started), 1, bool(status));
     if (!bool(status)) {
         LOG_ERRO("ParseOutput Failed.({})", status.description());
         return util::ErrorEnum::AI_PARSE_OUTPUT_FAILED;
@@ -69,28 +95,38 @@ util::ErrorEnum AiClassifierUnify::Classify(const std::vector<VideoFramePtr>& im
         return util::ErrorEnum::InvalidParam;
     }
 
+    auto& metrics = cosmo::nn::GetInferencePipelineMetrics();
+    const auto targets      = static_cast<uint64_t>(images_base.size());
+    const auto blob_started = MetricsClock::now();
     std::vector<std::shared_ptr<cosmo::nn::Blob>> images_base_blobs{};
     auto ret = ConvertImagesToBlobs(images_base, images_base_blobs);
     if (util::ErrorEnum::Success != ret) {
+        metrics.RecordClassifierBlobConvert(ElapsedNanoseconds(blob_started), targets);
         LOG_ERRO("ConvertImagesToBlobs (images_base) Failed. Ret:{}", ret);
         return ret;
     }
 
     std::vector<std::shared_ptr<cosmo::nn::Blob>> images_blobs{};
     ret = ConvertImagesToBlobs(images, images_blobs);
+    metrics.RecordClassifierBlobConvert(ElapsedNanoseconds(blob_started), targets);
     if (util::ErrorEnum::Success != ret) {
         LOG_ERRO("ConvertImagesToBlobs (images) Failed. Ret:{}", ret);
         return ret;
     }
 
+    const auto forward_started = MetricsClock::now();
+    metrics.RecordClassifierForwardCall(targets);
     auto status = classifier_->Forward({images_base_blobs, images_blobs});
+    metrics.RecordClassifierGraphForward(ElapsedNanoseconds(forward_started), targets, bool(status));
     if (!bool(status)) {
         LOG_ERRO("Forward Failed.({})", status.description());
         return util::ErrorEnum::AI_FORWARD_FAILED;
     }
 
     std::vector<std::vector<cosmo::nn::ObjectInfoV1>> outputs;
-    status = classifier_->ParseOutput<cosmo::nn::ObjectInfoV1>(outputs);
+    const auto parse_started = MetricsClock::now();
+    status                   = classifier_->ParseOutput<cosmo::nn::ObjectInfoV1>(outputs);
+    metrics.RecordClassifierResultParse(ElapsedNanoseconds(parse_started), targets, bool(status));
     if (!bool(status)) {
         LOG_ERRO("ParseOutput Failed.({})", status.description());
         return util::ErrorEnum::AI_PARSE_OUTPUT_FAILED;
@@ -131,7 +167,15 @@ util::ErrorEnum AiClassifierUnify::Forward(const std::vector<VideoFramePtr>& ima
                                            bool use_box,
                                            const std::vector<media::NativeVideoBufferPtr>& native_buffers) {
     std::vector<std::shared_ptr<cosmo::nn::Blob>> image_blobs{};
-    auto ret = ConvertImagesToBlobs(images, native_buffers, image_blobs);
+    auto& metrics = cosmo::nn::GetInferencePipelineMetrics();
+    // Effective batch size: one entry in `datas` per target pushed to the graph.
+    uint64_t batch = 0;
+    for (const auto& per_image : datas) {
+        batch += static_cast<uint64_t>(per_image.size());
+    }
+    const auto blob_started = MetricsClock::now();
+    auto ret                = ConvertImagesToBlobs(images, native_buffers, image_blobs);
+    metrics.RecordClassifierBlobConvert(ElapsedNanoseconds(blob_started), batch);
     if (util::ErrorEnum::Success != ret) {
         LOG_ERRO("ConvertImagesToBlobs Failed. Ret:{}", ret);
         return ret;
@@ -148,13 +192,18 @@ util::ErrorEnum AiClassifierUnify::Forward(const std::vector<VideoFramePtr>& ima
         return ret;
     }
 
+    const auto forward_started = MetricsClock::now();
+    metrics.RecordClassifierForwardCall(batch);
     auto status = classifier_->Forward({image_blobs, data_blobs});
+    metrics.RecordClassifierGraphForward(ElapsedNanoseconds(forward_started), batch, bool(status));
     if (!bool(status)) {
         LOG_ERRO("Forward Failed.({})", status.description());
         return util::ErrorEnum::AI_FORWARD_FAILED;
     }
 
-    status = classifier_->ParseOutput<cosmo::nn::ObjectInfoV1>(outputs);
+    const auto parse_started = MetricsClock::now();
+    status                   = classifier_->ParseOutput<cosmo::nn::ObjectInfoV1>(outputs);
+    metrics.RecordClassifierResultParse(ElapsedNanoseconds(parse_started), batch, bool(status));
     if (!bool(status)) {
         LOG_ERRO("ParseOutput Failed.({})", status.description());
         return util::ErrorEnum::AI_PARSE_OUTPUT_FAILED;

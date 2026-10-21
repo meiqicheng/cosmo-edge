@@ -726,15 +726,18 @@ endif()
 #Unit Tests(optional, cmake - DBUILD_TESTS = ON)
 ##########################################################
 if(BUILD_TESTS)
-    file(GLOB TEST_SRC "test/*.cc" "test/*.cpp" "test/mock/*.cc")
+    # CONFIGURE_DEPENDS makes CMake re-evaluate the glob on every build, so a
+    # newly added test file is picked up by an incremental build instead of
+    # silently staying out of the target. APP_SRC above already has it.
+    file(GLOB TEST_SRC CONFIGURE_DEPENDS "test/*.cc" "test/*.cpp" "test/mock/*.cc")
     # Excluded until their missing dependency exists. Both files were authored
     # on codex/rk3588-debian11 and include "mock/MockServiceRegistry.h", which
     # is absent from every branch (main, debian11, debian12) — they never
-    # compiled anywhere. They stayed invisible because this GLOB has no
-    # CONFIGURE_DEPENDS, so a build directory configured before they were added
-    # never picks them up; a clean configure does. Excluding them here is the
-    # honest option: stubbing an empty registry would let them compile but
-    # silently turn the cases into no-ops.
+    # compiled anywhere. They stayed invisible precisely because this glob used
+    # to have no CONFIGURE_DEPENDS, so a build directory configured before they
+    # were added never picked them up; a clean configure did. Excluding them
+    # here is the honest option: stubbing an empty registry would let them
+    # compile but silently turn the cases into no-ops.
     list(FILTER TEST_SRC EXCLUDE REGEX
         ".*ReleaseBootstrapVerifierStandaloneTest\\.cc$")
     list(FILTER TEST_SRC EXCLUDE REGEX

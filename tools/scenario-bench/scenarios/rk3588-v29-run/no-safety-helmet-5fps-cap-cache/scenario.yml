@@ -1,0 +1,56 @@
+name: rk3588-capacity-no-safety-helmet-5fps-cache-on
+displayName: RK3588 单任务容量矩阵 未戴安全帽分析 5FPS — L2 分类缓存开启
+sampleIntervalSec: 3
+
+# Capacity ladder identical to ../no-safety-helmet-5fps/scenario.yml except the
+# algorithm template, which turns on the L2 classification-result cache on the
+# classify action (AA_00002, helmet atomicCode 7982161):
+#   classifyCacheEnabled  = 1
+#   classifyCacheTtlMs    = 1000
+#   classifyCacheStableIou= 0.5
+# Everything else (source, fps, alarm config, thresholds, 64-channel ladder)
+# is byte-identical so maxStableChannels is directly comparable with the
+# 2026-10-17 baseline (25 channels, fused at 26 on critical-path latency).
+
+channels:
+  mode: local
+  repeatCount: 0
+  sources:
+    - name: no-helmet-01
+      file: ../LX0000000007.mp4
+
+tasks:
+  - id: no-safety-helmet
+    displayName: 未戴安全帽分析
+    type: cv
+    algorithmId: "7463002"
+    scheduleId: "e89c6c6385e5454b35cde0d1653vg"
+    template: ../algorithm-template-7463002-cache.json
+    targetFps: 5
+    taskConfig:
+      params:
+        - key: param.targetAlarmInterval
+          value: "36000"
+        - key: param.targetAlarmCount
+          value: "1"
+        - key: param.restrainSwitch
+          value: "1"
+        - key: param.sensitivity
+          value: "1"
+        - key: param.detectionDuration
+          value: "3600"
+loadProfile:
+  - channels: 64
+    holdSec: 30
+
+thresholds:
+  pass:
+    maxCriticalPathLatencyMs: 200
+    maxDetectorLatencyMs: 150
+    avgDiscardRate: 0.05
+    maxPacketDiscardRate: 0.01
+    maxDiskUsedPercent: 90
+  taskTypes:
+    cv:
+      minFpsRatio: 0.8
+      maxMissingRate: 0

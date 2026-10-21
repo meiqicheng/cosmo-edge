@@ -28,6 +28,40 @@ void InferencePipelineMetrics::RecordResultParse(uint64_t nanoseconds, uint64_t 
         result_parse_failures_.fetch_add(1, std::memory_order_relaxed);
 }
 
+void InferencePipelineMetrics::RecordClassifierClassifyCall() {
+    classifier_classify_calls_.fetch_add(1, std::memory_order_relaxed);
+}
+
+void InferencePipelineMetrics::RecordClassifierCacheLookup(bool hit) {
+    if (hit)
+        classifier_cache_hits_.fetch_add(1, std::memory_order_relaxed);
+    else
+        classifier_cache_misses_.fetch_add(1, std::memory_order_relaxed);
+}
+
+void InferencePipelineMetrics::RecordClassifierForwardCall(uint64_t targets) {
+    classifier_forward_calls_.fetch_add(1, std::memory_order_relaxed);
+    classifier_graph_forward_frames_.fetch_add(targets, std::memory_order_relaxed);
+}
+
+void InferencePipelineMetrics::RecordClassifierBlobConvert(uint64_t nanoseconds, uint64_t frames) {
+    RecordStage(classifier_blob_convert_frames_, classifier_blob_convert_nanoseconds_, frames, nanoseconds);
+}
+
+void InferencePipelineMetrics::RecordClassifierGraphForward(uint64_t nanoseconds, uint64_t frames,
+                                                            bool success) {
+    RecordStage(classifier_graph_forward_frames_, classifier_graph_forward_nanoseconds_, frames, nanoseconds);
+    if (!success)
+        classifier_graph_forward_failures_.fetch_add(1, std::memory_order_relaxed);
+}
+
+void InferencePipelineMetrics::RecordClassifierResultParse(uint64_t nanoseconds, uint64_t frames,
+                                                           bool success) {
+    RecordStage(classifier_result_parse_frames_, classifier_result_parse_nanoseconds_, frames, nanoseconds);
+    if (!success)
+        classifier_result_parse_failures_.fetch_add(1, std::memory_order_relaxed);
+}
+
 void InferencePipelineMetrics::RecordRknnForward(uint64_t nanoseconds, bool success, RknnModelScope scope) {
     RecordStage(rknn_forwards_, rknn_forward_nanoseconds_, 1, nanoseconds);
     if (!success)
@@ -282,6 +316,18 @@ InferencePipelineMetricsSnapshot InferencePipelineMetrics::Snapshot() const {
     SNAPSHOT_FIELD(result_parse_frames);
     SNAPSHOT_FIELD(result_parse_nanoseconds);
     SNAPSHOT_FIELD(result_parse_failures);
+    SNAPSHOT_FIELD(classifier_classify_calls);
+    SNAPSHOT_FIELD(classifier_cache_hits);
+    SNAPSHOT_FIELD(classifier_cache_misses);
+    SNAPSHOT_FIELD(classifier_forward_calls);
+    SNAPSHOT_FIELD(classifier_blob_convert_frames);
+    SNAPSHOT_FIELD(classifier_blob_convert_nanoseconds);
+    SNAPSHOT_FIELD(classifier_graph_forward_frames);
+    SNAPSHOT_FIELD(classifier_graph_forward_nanoseconds);
+    SNAPSHOT_FIELD(classifier_graph_forward_failures);
+    SNAPSHOT_FIELD(classifier_result_parse_frames);
+    SNAPSHOT_FIELD(classifier_result_parse_nanoseconds);
+    SNAPSHOT_FIELD(classifier_result_parse_failures);
     SNAPSHOT_FIELD(rknn_forwards);
     SNAPSHOT_FIELD(rknn_forward_nanoseconds);
     SNAPSHOT_FIELD(rknn_forward_failures);

@@ -1,0 +1,54 @@
+name: rk3588-l2-dedup-no-safety-helmet-5fps-baseline
+displayName: RK3588 未戴安全帽分析 5FPS — L2 基线（缓存关闭）
+sampleIntervalSec: 3
+
+# A/B baseline for the L2 classification-result cache.
+# Single channel (the 64-channel variant ../no-safety-helmet-5fps is a capacity
+# probe and saturates the board; dedup is a per-target, cross-frame effect so
+# one channel is enough to measure it).
+# Uses the stock template ../algorithm-template-7463002.json — no cache params,
+# and the cache defaults to off anyway — so this is the current production
+# behaviour.
+
+channels:
+  mode: local
+  repeatCount: 0
+  sources:
+    - name: no-helmet-01
+      file: ../LX0000000007.mp4
+
+tasks:
+  - id: no-safety-helmet
+    displayName: 未戴安全帽分析
+    type: cv
+    algorithmId: "7463002"
+    scheduleId: "e89c6c6385e5454b35cde0d1653vg"
+    template: ../algorithm-template-7463002.json
+    targetFps: 5
+    taskConfig:
+      params:
+        - key: param.targetAlarmInterval
+          value: "1"
+        - key: param.targetAlarmCount
+          value: "1"
+        - key: param.restrainSwitch
+          value: "0"
+        - key: param.sensitivity
+          value: "1"
+        - key: param.detectionDuration
+          value: "5"
+loadProfile:
+  - channels: 1
+    holdSec: 180
+
+thresholds:
+  pass:
+    maxCriticalPathLatencyMs: 200
+    maxDetectorLatencyMs: 150
+    avgDiscardRate: 0.05
+    maxPacketDiscardRate: 0.01
+    maxDiskUsedPercent: 90
+  taskTypes:
+    cv:
+      minFpsRatio: 0.8
+      maxMissingRate: 0

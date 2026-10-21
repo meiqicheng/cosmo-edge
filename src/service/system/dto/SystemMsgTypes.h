@@ -95,6 +95,19 @@ struct MsgGpuInfo {
     uint64_t resultParseFrames{0};
     double resultParseMs{0.0};
     uint64_t resultParseFailures{0};
+    // Second-stage classifier (kept separate from the detector totals above).
+    uint64_t classifierClassifyCalls{0};
+    uint64_t classifierCacheHits{0};
+    uint64_t classifierCacheMisses{0};
+    uint64_t classifierForwardCalls{0};
+    uint64_t classifierBlobConvertFrames{0};
+    double classifierBlobConvertMs{0.0};
+    uint64_t classifierGraphForwardFrames{0};
+    double classifierGraphForwardMs{0.0};
+    uint64_t classifierGraphForwardFailures{0};
+    uint64_t classifierResultParseFrames{0};
+    double classifierResultParseMs{0.0};
+    uint64_t classifierResultParseFailures{0};
     uint64_t rknnForwards{0};
     double rknnForwardMs{0.0};
     uint64_t rknnForwardFailures{0};

@@ -6,6 +6,7 @@
 #include <iterator>
 #include <numeric>
 
+#include "nn/core/inference_pipeline_metrics.h"
 #include "util/Log.h"
 
 namespace cosmo {
@@ -173,6 +174,9 @@ util::ErrorEnum AiClassifierUnify::ClassifyMultSub(
                 std::vector<AiDetectRstEl> io_puts;
                 io_puts.push_back(el);
 
+                // mult_sub classifies one target per call: this counter is the
+                // invocation count a batching/dedup change would reduce.
+                cosmo::nn::GetInferencePipelineMetrics().RecordClassifierClassifyCall();
                 auto ret = Classify(imageInputs, io_puts, use_box, nativeInputs);
                 if (util::ErrorEnum::Success != ret) {
                     LOG_INFO("{}", "Classify Fail");
@@ -230,6 +234,7 @@ util::ErrorEnum AiClassifierUnify::Classify(const std::vector<VideoFramePtr>& im
         return util::ErrorEnum::InvalidParam;
     }
 
+    cosmo::nn::GetInferencePipelineMetrics().RecordClassifierClassifyCall();
     std::vector<VideoFramePtr> input_images;
     std::vector<media::NativeVideoBufferPtr> input_native_buffers;
     std::vector<std::vector<std::vector<int>>> input_datas;
