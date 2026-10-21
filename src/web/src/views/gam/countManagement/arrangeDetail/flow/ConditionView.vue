@@ -65,6 +65,7 @@ defineOptions({ name: 'RecursiveCondition' })
 
 // Props
 const props = defineProps({
+  flowData: { type: Array, default: () => [] },
   condition: {
     type: Object,
     default: () => null
@@ -94,7 +95,6 @@ const tasksArr = computed(() => (editor?.customMetadata?.value || []).map(obj =>
 const thresholdArr = ref([])
 const categoriesLabelListObj = ref({})
 const categoriesLabelListArr = ref([])
-const flowData = ref([])
 
 const handleKeyChange = (newVal) => {
   if (!props.condition || props.condition.keyL === newVal) return
@@ -117,7 +117,7 @@ const handleKeyChange = (newVal) => {
       props.condition.rightType = 'select2'
     } else {
       const result = _.find(tasksArr.value, { key: newVal })
-      props.condition.rightType = result ? result.type : 'select'
+      props.condition.rightType = result ? result.type : 'text'
     }
   } else if (props.condition) {
     props.condition.rightType = 'select'
@@ -162,7 +162,7 @@ const handleLeftData = () => {
   leftData.value = []
   categoriesLabelListArr.value = []
   categoriesLabelListObj.value = {}
-  if (props.atomicList.length !== 0 && props.atomicList[0]?.labelList?.length > 0) {
+  if (props.atomicList.some(item => item?.labelList?.length > 0)) {
     leftData.value = [
       {
         label: t('glossary.algConfidence'),
@@ -172,7 +172,7 @@ const handleLeftData = () => {
     ]
     props.atomicList.forEach((item, index) => {
       const children = []
-      if (item?.labelList.length > 0) {
+      if (item?.labelList?.length > 0) {
         item.labelList.forEach((obj) => {
           children.push({
             id: `aiOut.${obj.class_name}.threshold`,
@@ -219,6 +219,18 @@ const handleLeftData = () => {
     })
   }
 
+  if (props.flowData.some(node => String(node.actionId).startsWith('P'))) {
+    leftData.value.push({ label: t('imageAnalysis.workflowResults'), id: -4, children: [
+      { id: 'picture.count', label: t('imageAnalysis.pictureCount'), type: 'text' },
+      { id: 'picture.matchedCount', label: t('imageAnalysis.pictureMatchedCount'), type: 'text' },
+      { id: 'match.score', label: t('imageAnalysis.matchScore'), type: 'text' },
+      { id: 'match.matched', label: t('imageAnalysis.matchResult'), type: 'text' },
+      { id: 'ocr.text', label: t('imageAnalysis.ocrText'), type: 'text' },
+      ...props.flowData.filter(node => ['PB_90001', 'PB_90003', 'PB_90002', 'PB_00006', 'PDA_00003'].includes(node.actionId)).map(node => ({
+        id: `node.${node.flowActionId}`, label: `${node.actionName} (${node.flowActionId})`, type: 'text'
+      }))
+    ] })
+  }
   if (tasksArr.value.length !== 0) {
     leftData.value.push({
       label: t('glossary.taskParams'),
@@ -279,8 +291,8 @@ const rightData = computed(() => {
 })
 
 watch(
-  [atomicListRef, tasksArr],
-  handleLeftData,
+  [atomicListRef, tasksArr, () => props.flowData],
+  () => { handleTaskData(); handleLeftData() },
   { deep: true, immediate: true }
 )
 
@@ -339,7 +351,7 @@ const onClick = (obj) => {
   padding-left: 5px;
   margin-bottom: 5px;
   box-sizing: border-box;
-  border-left: 2px solid #1890ff;
+  border-left: 2px solid var(--primary-color);
   border-top-left-radius: 5%;
   border-bottom-left-radius: 5%;
 }
@@ -368,7 +380,7 @@ const onClick = (obj) => {
   height: 0;
   border-top: 5px solid transparent;
   border-bottom: 5px solid transparent;
-  border-right: 5px solid #1890ff; /* 可以根据需要设置三角形的颜色 */
+  border-right: 5px solid var(--primary-color); /* 可以根据需要设置三角形的颜色 */
   margin-left: 5px; /* 可以根据需要调整三角形与按钮之间的距离 */
 }
 
@@ -380,12 +392,12 @@ const onClick = (obj) => {
     border: none;
     padding: 0;
     margin: 0;
-    color: #499df3;
+    color: var(--primary-color);
     font-size: 22px;
   }
 
   .close-icon {
-    color: red;
+    color: var(--danger-color);
   }
 }
 
@@ -408,7 +420,7 @@ const onClick = (obj) => {
   .el-icon-plus {
     padding: 5px;
     font-size: 22px;
-    color: #1890ff;
+    color: var(--primary-color);
     cursor: pointer;
   }
 }

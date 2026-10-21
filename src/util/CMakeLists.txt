@@ -8,6 +8,7 @@ add_library(cosmo_util OBJECT
     ErrorCode.cc         ErrorCode.h
     Exception.cc         Exception.h
     Exec.cc              Exec.h
+    FeatureComparison.cc FeatureComparison.h
     FileUtil.cc          FileUtil.h
     FpsCalc.cc           FpsCalc.h
     FpsCtrl.cc           FpsCtrl.h
@@ -59,6 +60,7 @@ add_library(cosmo_util OBJECT
     dto/TaskMsgTypes.cc
     dto/TaskMsgTypes_TaskCreate.cc
     dto/TaskMsgTypes_PicTask.cc
+    dto/PictureWorkflow.cc
     dto/OverviewTypes.cc
     dto/AlgorithmPacketDto.cc
     dto/AlgorithmMsgTypes.cc

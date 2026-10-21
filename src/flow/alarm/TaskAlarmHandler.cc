@@ -7,6 +7,7 @@
 #include "flow/alarm/AlarmVisualState.h"
 #include "flow/alarm/TaskAlarm.h"
 #include "flow/alarm/TaskAlarmInternalTypes.h"
+#include "flow/common/AlarmPrivacySnapshot.h"
 #include "flow/common/AlgDataRecord.h"
 #include "flow/common/LlmYesNoJudge.h"
 #include "media/VideoFrame.h"
@@ -230,6 +231,7 @@ void TaskAlarm::HandFrame(AlgDataPtr algData) {
     if (!algData->taskDataAlarm.alarmData) {
         return;
     }
+    PublishAlarmPrivacySnapshot(*algData, GetTaskId());
 
     // Resolve dimensions through the unified frame-identity resolver so the
     // native-only (DMA-BUF) path — where chanDataDec.frame is null but meta is

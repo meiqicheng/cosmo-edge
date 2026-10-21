@@ -6,6 +6,10 @@
  * 测试策略: 不调用 InitCameraEntities（需要文件系统和DI），
  * 仅测试不依赖外部状态的纯逻辑路径。
  */
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <unistd.h>
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -38,6 +42,98 @@ struct CameraServiceDependencies {
 };
 
 }  // namespace
+
+TEST_CASE("CameraServiceImpl: source errors survive serialization and clear after URL repair",
+          "[CameraService][diagnostics]") {
+    struct Socket {
+        int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+        ~Socket() {
+            if (fd >= 0)
+                ::close(fd);
+        }
+        std::string Bind(bool listening) {
+            REQUIRE(fd >= 0);
+            sockaddr_in address{};
+            address.sin_family      = AF_INET;
+            address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+            REQUIRE(::bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0);
+            socklen_t length = sizeof(address);
+            REQUIRE(::getsockname(fd, reinterpret_cast<sockaddr*>(&address), &length) == 0);
+            if (listening)
+                REQUIRE(::listen(fd, 8) == 0);
+            return "rtsp://127.0.0.1:" + std::to_string(ntohs(address.sin_port)) + "/source";
+        }
+    } refused, available;
+    const auto unavailable_url = refused.Bind(false);
+    const auto available_url   = available.Bind(true);
+    const auto base            = "/tmp/cosmo_camera_diagnostics_" +
+                      std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    std::filesystem::create_directories(base);
+    cosmo::test::ScopedPathOverride paths(base, base);
+    struct TaskService : cosmo::test::MockTaskService {
+        MsgCameraAttr current;
+        bool GetChannelAttr(const std::string&, MsgCameraAttr& output) override {
+            output = current;
+            return true;
+        }
+    } tasks;
+    cosmo::test::NamedExpectations expectations;
+    cosmo::test::AllowTaskMutationSuccess(tasks, expectations);
+    cosmo::test::ScopedServiceOverride<ITaskLifecycle> lifecycle(tasks);
+    cosmo::test::ScopedServiceOverride<ITaskChannel> channel(tasks);
+    CameraServiceImpl svc;
+    MsgCameraInfo config;
+    config.channelName = "diagnostics";
+    config.url         = unavailable_url;
+    config.channelType = MsgCameraType::MsgCameraTypeLive;
+    std::string id;
+    REQUIRE(svc.Add(config, id) == util::ErrorEnum::Success);
+    const auto query = [&]() {
+        size_t total = 0;
+        auto rows    = svc.Query("diagnostics", -1, 1, 10, total);
+        REQUIRE(rows.size() == 1);
+        return rows.front();
+    };
+    auto result = query();
+    REQUIRE(result.channelStatus == ChannelStatus::ChannelStatusOffline);
+    REQUIRE(result.statusReason == "connection_refused");
+    const nlohmann::json encoded = static_cast<const MsgCameraAttr&>(result);
+    REQUIRE(encoded.get<MsgCameraAttr>().statusReason == "connection_refused");
+    REQUIRE_FALSE(encoded.contains("url"));
+    REQUIRE(nlohmann::json::object().get<MsgCameraAttr>().statusReason.empty());
+
+    config.videoChannelId = id;
+    config.url            = available_url;
+    REQUIRE(svc.Update(config) == util::ErrorEnum::Success);
+    result = query();
+    REQUIRE(result.channelStatus == ChannelStatus::ChannelStatusOnline);
+    REQUIRE(result.statusReason.empty());
+
+    // A reachable TCP port must not hide the actual demux failure.
+    tasks.current.dataStatus = static_cast<int>(cosmo::service::camera::AlgDemuxStatus::AlgDemuxOpenFailed);
+    result                   = query();
+    REQUIRE(result.channelStatus == ChannelStatus::ChannelStatusOffline);
+    REQUIRE(result.statusReason == "stream_open_failed");
+    size_t total = 0;
+    REQUIRE(svc.Query("", static_cast<int>(ChannelStatus::ChannelStatusOnline), 1, 10, total).empty());
+
+    // Old dimensions from the previous source must not appear on the failed address.
+    tasks.current.dataStatus = static_cast<int>(cosmo::service::camera::AlgDemuxStatus::AlgDemuxInit);
+    tasks.current.width      = 1920;
+    tasks.current.height     = 1080;
+    tasks.current.fps        = 25;
+    config.url               = unavailable_url;
+    REQUIRE(svc.Update(config) == util::ErrorEnum::Success);
+    result = query();
+    REQUIRE(result.statusReason == "connection_refused");
+    REQUIRE(result.width == 0);
+    REQUIRE(result.height == 0);
+    REQUIRE(result.fps == 0);
+    REQUIRE(result.codec.empty());
+    REQUIRE(svc.Delete(id) == util::ErrorEnum::Success);
+    svc.Stop();
+    std::filesystem::remove_all(base);
+}
 
 // ============================================================
 // 构造 / 析构安全

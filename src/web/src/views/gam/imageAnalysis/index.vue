@@ -1,14 +1,27 @@
 <template>
-  <div class="image-analysis-page">
+  <div class="image-analysis-page ui-admin-page">
+    <div class="analysis-page-heading">
+      <h1>{{ $t('nav.imageAnalysis') }}</h1>
+      <p>{{ $t('glossary.imageAnalysisSubtitle') }}</p>
+    </div>
+    <ol class="analysis-steps" :aria-label="$t('imageAnalysis.workflow')">
+      <li v-for="(step, index) in analysisSteps" :key="step" :class="{ 'is-current': analysisStage === index, 'is-past': analysisStage > index }" :aria-current="analysisStage === index ? 'step' : undefined">
+        <span class="analysis-step-number">{{ index + 1 }}</span>
+        <span>{{ $t(step) }}</span>
+      </li>
+    </ol>
     <!-- 顶部工具栏 -->
     <div class="toolbar-section">
       <div class="toolbar-left">
+        <span class="task-select-label" id="analysis-task-label">{{ $t('event.sceneTask') }}</span>
         <el-select
           v-model="selectedAlgorithm"
+          :disabled="analyzing"
           :placeholder="$t('imageAnalysis.selectAlgorithmPlaceholder')"
           filterable
           size="default"
           class="algorithm-select"
+          aria-labelledby="analysis-task-label"
           @change="handleAlgorithmChange"
         >
           <el-option
@@ -19,44 +32,69 @@
           />
         </el-select>
         <el-upload
+          v-if="!pairMode"
           ref="uploadRef"
           action="#"
           :auto-upload="false"
+          :disabled="analyzing"
           :show-file-list="false"
           :on-change="handleFileChange"
           accept="image/*"
           multiple
         >
-          <el-button type="primary" :icon="Upload">{{ $t('imageAnalysis.uploadImage') }}</el-button>
+          <el-button :icon="Upload">{{ $t('imageAnalysis.uploadImage') }}</el-button>
         </el-upload>
         <el-button
-          type="success"
+          type="primary"
           :icon="VideoPlay"
           :loading="analyzing"
-          :disabled="!selectedAlgorithm || uploadedFiles.length === 0"
+          :disabled="!selectedAlgorithm || loadingParameters || (pairMode ? !pairFiles.every(Boolean) : uploadedFiles.length === 0)"
           @click="startAnalysis"
         >
           {{ analyzing ? $t('imageAnalysis.analyzing') : $t('imageAnalysis.startAnalysis') }}
         </el-button>
         <el-button
-          v-if="uploadedFiles.length > 0"
-          type="danger"
-          plain
+          v-if="pairMode ? pairFiles.some(Boolean) : uploadedFiles.length > 0"
+          class="clear-images"
           :icon="Delete"
+          :disabled="analyzing"
           @click="clearAll"
         >
           {{ $t('action.clear') }}
         </el-button>
       </div>
       <div class="toolbar-right">
-        <span class="file-count" v-if="uploadedFiles.length > 0">
-          {{ $t('imageAnalysis.selectedImages', { n: uploadedFiles.length }) }}
+        <el-switch v-model="debugResults" :disabled="analyzing" :active-text="$t('imageAnalysis.debugResults')" />
+        <span class="file-count" v-if="pairMode ? pairFiles.some(Boolean) : uploadedFiles.length > 0">
+          {{ $t('imageAnalysis.selectedImages', { n: pairMode ? pairFiles.filter(Boolean).length : uploadedFiles.length }) }}
         </span>
       </div>
+      <p class="analysis-toolbar-hint">{{ $t('imageAnalysis.workflowHint') }}</p>
     </div>
 
+    <el-collapse v-if="parameterFields.length" class="parameter-panel">
+      <el-collapse-item :title="$t('imageAnalysis.parameters')" name="parameters">
+        <el-form label-position="top" :disabled="analyzing" class="parameter-grid">
+          <el-form-item v-for="field in parameterFields" :key="field.key" :label="resolveI18nText(field)">
+            <LibrarySelect
+              v-if="getLibraryType(field)"
+              v-model="parameterValues[field.key]"
+              :type="getLibraryType(field)"
+              :disabled="analyzing"
+            />
+            <el-select v-else-if="field.options?.length" v-model="parameterValues[field.key]" clearable>
+              <el-option v-for="option in field.options" :key="option.value" :value="String(option.value)" :label="resolveI18nOptionLabel(option)" />
+            </el-select>
+            <el-input v-else v-model="parameterValues[field.key]" :placeholder="String(field.defaultValue ?? '')" clearable />
+          </el-form-item>
+        </el-form>
+      </el-collapse-item>
+    </el-collapse>
+    <PairComparisonPanel v-if="pairMode" :files="pairFiles" :result="pairResult" :error="pairError"
+      :busy="analyzing" :debug="debugResults" @file-change="handlePairFileChange" />
     <!-- 内容区域 -->
-    <div class="content-section" v-if="uploadedFiles.length > 0 || results.length > 0">
+    <div class="content-section" v-else-if="uploadedFiles.length > 0 || results.length > 0">
+      <h2 class="analysis-results-heading">{{ $t('imageAnalysis.results') }}</h2>
       <!-- 图片预览 / 结果网格 -->
       <div class="image-grid">
         <div
@@ -64,7 +102,12 @@
           :key="index"
           class="image-card"
           :class="{ 'has-result': item.result }"
+          role="button"
+          tabindex="0"
+          :aria-label="`${$t('imageAnalysis.imagePreview')}: ${item.name}`"
           @click="openPreview(index)"
+          @keydown.enter="openPreview(index)"
+          @keydown.space.prevent="openPreview(index)"
         >
           <div class="image-wrapper">
             <!-- 原始图 -->
@@ -84,13 +127,20 @@
           <div class="image-footer">
             <div class="image-name" :title="item.name">{{ item.name }}</div>
             <div class="image-status">
-              <el-tag v-if="item.analyzing" type="warning" size="small" effect="dark">{{ $t('imageAnalysis.analyzingStatus') }}</el-tag>
-              <el-tag v-else-if="item.result" type="success" size="small" effect="dark">{{ $t('imageAnalysis.completed') }}</el-tag>
-              <el-tag v-else type="info" size="small" effect="plain">{{ $t('imageAnalysis.pending') }}</el-tag>
+              <span v-if="item.analyzing" class="analysis-status is-analyzing">{{ $t('imageAnalysis.analyzingStatus') }}</span>
+              <span v-else-if="item.result?.error" class="analysis-status is-failed">{{ $t('imageAnalysis.failed') }}</span>
+              <span v-else-if="item.result" class="analysis-status is-completed">{{ $t('imageAnalysis.completed') }}</span>
+              <span v-else class="analysis-status is-pending">{{ $t('imageAnalysis.pending') }}</span>
             </div>
           </div>
           <!-- 结果信息面板 -->
           <div v-if="item.result" class="result-panel">
+            <div v-for="output in item.result.outputs || []" :key="output.nodeId" class="result-label">
+              {{ output.name || resolveResourceAlgorithmName(selectedAlgorithmInfo) }}: {{ decisionLabel(output.decision) }} ({{ output.matchedCount }})
+              <div v-if="output.decision === 'unknown'" class="decision-reason">{{ decisionReason(output) }}</div>
+            </div>
+            <LibraryMatchResults :targets="getTargets(item.result)" />
+            <VlmResults :results="item.result.vlmResults" />
             <!-- 检测类结果 -->
             <div v-if="getTargetCount(item.result) > 0" class="result-section">
               <div class="result-label">{{ $t('imageAnalysis.detectedTargets') }}</div>
@@ -108,8 +158,8 @@
               </div>
             </div>
             <!-- 无结果 -->
-            <div v-else class="result-section">
-              <div class="result-label empty-result">{{ $t('imageAnalysis.noTargetsDetected') }}</div>
+            <div v-else-if="!item.result.vlmResults?.length" class="result-section">
+              <div class="result-label empty-result">{{ emptyResultLabel(item.result) }}</div>
             </div>
           </div>
         </div>
@@ -121,12 +171,10 @@
       <el-empty :description="$t('imageAnalysis.emptyDescription')">
         <template #image>
           <div class="empty-icon">
-            <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
-              <rect x="10" y="25" width="100" height="70" rx="8" fill="none" stroke="var(--primary-color)" stroke-width="2" opacity="0.4"/>
-              <circle cx="40" cy="52" r="10" fill="none" stroke="var(--primary-color)" stroke-width="2" opacity="0.5"/>
-              <polygon points="25,85 55,55 75,75 95,50 105,65 105,85" fill="var(--primary-color)" opacity="0.15"/>
-              <rect x="42" y="4" width="36" height="18" rx="4" fill="var(--primary-color)" opacity="0.2"/>
-              <text x="60" y="16" text-anchor="middle" fill="var(--primary-color)" font-size="9" opacity="0.6">AI</text>
+            <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="7" y="11" width="50" height="42" rx="4" />
+              <circle cx="22" cy="25" r="5" />
+              <path d="m8 46 15-14 11 10 11-15 11 12" />
             </svg>
           </div>
         </template>
@@ -139,7 +187,7 @@
       :title="previewItem?.name || $t('imageAnalysis.imagePreview')"
       width="80%"
       top="5vh"
-      class="preview-dialog"
+      class="preview-dialog ui-admin-dialog"
       destroy-on-close
     >
       <div class="preview-body" v-if="previewItem">
@@ -158,11 +206,27 @@
             />
           </div>
         </div>
-        <div v-if="previewItem.result" class="preview-details">
+        <el-alert v-if="previewItem.result?.error" :title="$t('imageAnalysis.failed')" type="error" :closable="false" show-icon />
+        <div v-else-if="previewItem.result" class="preview-details">
           <el-descriptions :column="2" border size="small">
             <el-descriptions-item :label="$t('field.algorithmName')">{{ previewItem.result.algorithmCode || resolveResourceAlgorithmName(selectedAlgorithmInfo) }}</el-descriptions-item>
             <el-descriptions-item :label="$t('imageAnalysis.detectionCount')">{{ getTargetCount(previewItem.result) }}</el-descriptions-item>
           </el-descriptions>
+          <el-table v-if="previewItem.result.outputs?.length" :data="previewItem.result.outputs" border size="small">
+            <el-table-column prop="name" :label="$t('imageAnalysis.workflowResults')" />
+            <el-table-column :label="$t('imageAnalysis.logicResult')"><template #default="{ row }">{{ decisionLabel(row.decision) }}</template></el-table-column>
+            <el-table-column prop="matchedCount" :label="$t('imageAnalysis.detectionCount')" />
+          </el-table>
+          <div v-for="output in previewItem.result.outputs || []" :key="output.nodeId">
+            <p v-if="output.decision === 'unknown'">{{ decisionReason(output) }}</p>
+          </div>
+          <LibraryMatchResults :targets="getTargets(previewItem.result)" />
+          <VlmResults :results="previewItem.result.vlmResults" />
+          <el-collapse v-if="previewItem.result.nodes?.length">
+            <el-collapse-item :title="$t('imageAnalysis.executionDetails')" name="trace">
+              <pre class="execution-json">{{ JSON.stringify(previewItem.result, null, 2) }}</pre>
+            </el-collapse-item>
+          </el-collapse>
           <div v-if="getTargetCount(previewItem.result) > 0" class="preview-targets">
             <div class="preview-targets-title">{{ $t('imageAnalysis.detectionDetails') }}</div>
             <el-table :data="getTargets(previewItem.result)" border size="small" max-height="300">
@@ -184,7 +248,7 @@
               <el-table-column :label="$t('imageAnalysis.logicResult')" width="80">
                 <template #default="{ row }">
                   <el-tag :type="row.bLogicResult ? 'danger' : 'success'" size="small">
-                    {{ row.bLogicResult ? $t('imageAnalysis.hit') : $t('status.normal') }}
+                    {{ decisionLabel(row.decision) }}
                   </el-tag>
                 </template>
               </el-table-column>
@@ -211,12 +275,19 @@ export default {
 </script>
 
 <script setup>
-import { ref, computed, getCurrentInstance, nextTick, onUnmounted, onDeactivated } from 'vue'
+import { ref, computed, getCurrentInstance, nextTick, onUnmounted, onDeactivated, onActivated } from 'vue'
 import { t } from '@/i18n'
+import { v4 as uuid } from 'uuid'
 import { ElMessage } from 'element-plus'
 import { Upload, VideoPlay, Delete } from '@element-plus/icons-vue'
-import { resolveResourceAlgorithmName } from '@/utils/i18nResource'
+import { resolveResourceAlgorithmName, resolveI18nText, resolveI18nOptionLabel } from '@/utils/i18nResource'
 import { uploadFileInChunks, UploadPurpose } from '@/utils/chunkUpload'
+import LibrarySelect from '@/views/gam/countManagement/arrangeDetail/flow/LibrarySelect.vue'
+import { filterPictureLibraryParams, isPairPictureWorkflow } from '@/views/gam/countManagement/arrangeDetail/flow/nodeState'
+import LibraryMatchResults from './LibraryMatchResults.vue'
+import VlmResults from '@/components/VlmResults.vue'
+import PairComparisonPanel from './PairComparisonPanel.vue'
+import { normalizeApiError } from '@/utils/apiError'
 import { drawTargetGeometry } from '@/utils/targetGeometry'
 
 const { proxy } = getCurrentInstance()
@@ -230,6 +301,28 @@ const uploadedFiles = ref([])
 const results = ref([])
 const analyzing = ref(false)
 const taskCreated = ref(false)
+const taskId = ref(uuid())
+const debugResults = ref(false)
+const parameterFields = ref([])
+const parameterValues = ref({})
+const loadingParameters = ref(false)
+const pairMode = ref(false)
+const pairFiles = ref([null, null])
+const pairResult = ref(null)
+const pairError = ref(null)
+// Legacy scenes may label library bindings as text; their keys remain stable.
+const getLibraryType = field => {
+  if (field?.key === 'param.faceSet' || field?.type === 'faceSet') return 'faceSet'
+  if (field?.key === 'param.workClothesSet' || field?.type === 'workClothesSet') return 'workClothesSet'
+  return ''
+}
+let stopped = false
+const decisionLabel = (decision) => ({
+  matched: t('imageAnalysis.matched'),
+  not_matched: t('imageAnalysis.notMatched'),
+  unknown: t('imageAnalysis.unknownDecision'),
+  not_evaluated: t('imageAnalysis.notEvaluated')
+}[decision] || t('imageAnalysis.notEvaluated'))
 const previewVisible = ref(false)
 const previewItem = ref(null)
 const previewIndex = ref(-1)
@@ -239,6 +332,20 @@ const uploadRef = ref(null)
 const overlayCanvasRefs = ref([])
 
 // Computed
+const analysisSteps = ['imageAnalysis.selectTask', 'imageAnalysis.uploadImage', 'imageAnalysis.startAnalysis', 'imageAnalysis.viewResults']
+const analysisStage = computed(() => {
+  if (analyzing.value) return 2
+  if (!selectedAlgorithm.value) return 0
+  if (pairMode.value) {
+    if (!pairFiles.value.every(Boolean)) return 1
+    return pairResult.value || pairError.value ? 3 : 2
+  }
+  if (uploadedFiles.value.length === 0) return 1
+  const allImagesHaveResults = results.value.length === uploadedFiles.value.length &&
+    uploadedFiles.value.every((_, index) => Boolean(results.value[index]))
+  return allImagesHaveResults ? 3 : 2
+})
+
 const displayItems = computed(() => {
   return uploadedFiles.value.map((file, idx) => {
     const res = results.value[idx];
@@ -273,13 +380,24 @@ const loadAlgorithms = () => {
   })
 }
 loadAlgorithms()
+let firstActivation = true
+onActivated(() => {
+  if (firstActivation) firstActivation = false
+  else loadAlgorithms()
+})
 
 // Handlers
 const handleAlgorithmChange = async (val) => {
+  loadingParameters.value = true
+  pairMode.value = false
+  pairResult.value = null
+  pairError.value = null
+  results.value = []
   if (taskCreated.value && selectedAlgorithmInfo.value) {
     // 切换前销毁旧的任务，释放显存
     const cancelParams = {
       mvDebug: 'Cosmo-Debug',
+      taskId: taskId.value,
       algorithmCode: selectedAlgorithmInfo.value.algorithmId
     }
     await $API.pTaskCancle(cancelParams).catch(e => console.error(e))
@@ -287,12 +405,29 @@ const handleAlgorithmChange = async (val) => {
   const alg = algorithmList.value.find(a => a.algorithmId === val)
   selectedAlgorithmInfo.value = alg || null
   taskCreated.value = false
+  taskId.value = uuid()
+  parameterFields.value = []
+  parameterValues.value = {}
+  if (alg) {
+    try {
+      const detail = await $API.algorithmLayoutDetail({ id: alg.algorithmId })
+      if (selectedAlgorithm.value !== val) return
+      pairMode.value = isPairPictureWorkflow(detail?.resData?.algorithmProcessdata)
+      const raw = detail?.resData?.algorithmMetadata
+      const metadata = typeof raw === 'string' ? JSON.parse(raw) : raw
+      parameterFields.value = filterPictureLibraryParams(metadata?.params || [], detail?.resData?.algorithmProcessdata)
+        .filter(field => field.key && field.key !== 'atomicCode')
+      parameterValues.value = Object.fromEntries(parameterFields.value.map(field => [field.key, String(field.defaultValue ?? '')]))
+    } catch (error) { console.error('Image parameter loading failed', error) }
+    finally { if (selectedAlgorithm.value === val) loadingParameters.value = false }
+  }
 }
 
 const cleanupBackend = async () => {
   if (taskCreated.value && selectedAlgorithmInfo.value) {
     const cancelParams = {
       mvDebug: 'Cosmo-Debug',
+      taskId: taskId.value,
       algorithmCode: selectedAlgorithmInfo.value.algorithmId
     }
     await $API.pTaskCancle(cancelParams).catch(e => console.error(e))
@@ -302,10 +437,11 @@ const cleanupBackend = async () => {
 
 // 页面离开时，销毁任务释放显存
 onUnmounted(async () => {
+  stopped = true;
   await cleanupBackend()
   releasePreviews()
 })
-onDeactivated(cleanupBackend)
+onDeactivated(() => { stopped = true; return cleanupBackend() })
 
 const handleFileChange = (file) => {
   const raw = file?.raw
@@ -327,7 +463,7 @@ const handleFileChange = (file) => {
 }
 
 const releasePreviews = () => {
-  uploadedFiles.value.forEach(file => {
+  [...uploadedFiles.value, ...pairFiles.value.filter(Boolean)].forEach(file => {
     if (file.preview?.startsWith('blob:')) {
       URL.revokeObjectURL(file.preview)
     }
@@ -338,6 +474,9 @@ const clearAll = () => {
   releasePreviews()
   uploadedFiles.value = []
   results.value = []
+  pairFiles.value = [null, null]
+  pairResult.value = null
+  pairError.value = null
 }
 
 // 确保图片任务已创建并同步最新参数
@@ -350,6 +489,7 @@ const ensureTaskCreated = async () => {
   try {
     const createParams = {
       mvDebug: 'Cosmo-Debug',
+      taskId: taskId.value,
       algorithmCode: alg.algorithmId,
       algorithmUpdateTime: alg.algorithmUpdateTime || String(Date.now())
     }
@@ -365,6 +505,7 @@ const ensureTaskCreated = async () => {
     try {
       const cancelParams = {
         mvDebug: 'Cosmo-Debug',
+      taskId: taskId.value,
         algorithmCode: alg.algorithmId
       }
       await $API.pTaskCancle(cancelParams)
@@ -374,7 +515,68 @@ const ensureTaskCreated = async () => {
   }
 }
 
+const handlePairFileChange = (file, index) => {
+  if (analyzing.value) return
+  const raw = file?.raw
+  if (!raw || !['image/jpeg', 'image/png', 'image/bmp'].includes(raw.type)) {
+    ElMessage.error(t('basePic.photoFormatError')); return
+  }
+  if (!Number.isSafeInteger(raw.size) || raw.size <= 0) {
+    ElMessage.error(t('api.error.UpLoadDataEmpty')); return
+  }
+  if (pairFiles.value[index]?.preview) URL.revokeObjectURL(pairFiles.value[index].preview)
+  pairFiles.value[index] = { name: file.name, raw, preview: URL.createObjectURL(raw) }
+  pairResult.value = null
+  pairError.value = null
+}
+
+const requestParameters = () => Object.entries(parameterValues.value)
+  .filter(([key, value]) => value !== '' || key === 'pair.threshold' || getLibraryType(parameterFields.value.find(field => field.key === key)))
+  .map(([key, value]) => ({ key, value }))
+
+const startPairAnalysis = async () => {
+  if (!pairFiles.value.every(Boolean)) { ElMessage.warning(t('imageAnalysis.pairNeedsTwo')); return }
+  stopped = false
+  analyzing.value = true
+  pairResult.value = null
+  pairError.value = null
+  const uploads = []
+  let side = 'A'
+  try {
+    if (!await ensureTaskCreated()) return
+    for (let index = 0; index < 2; index++) {
+      side = index ? 'B' : 'A'
+      uploads.push(await uploadFileInChunks(pairFiles.value[index].raw, {
+        purpose: UploadPurpose.IMAGE,
+        uploadChunk: formData => $API.uploadAtomicModelTemp(formData),
+        cancelUpload: data => $API.cancelAtomicModelUpload(data),
+        getCapabilities: () => $API.getUploadCapabilities()
+      }))
+      if (stopped) return
+    }
+    side = 'both'
+    const response = await $API.imageAnalysis({
+      algorithmCode: selectedAlgorithm.value, taskId: taskId.value, requestId: uuid(),
+      resultMode: debugResults.value ? 'debug' : 'business', taskConfig: { params: requestParameters() },
+      uploadId: uploads[0].uploadId, referenceImage: { uploadId: uploads[1].uploadId }, needRetImg: true
+    })
+    if (!stopped) pairResult.value = response?.resData || {}
+  } catch (error) {
+    const normalized = normalizeApiError(error)
+    if (!stopped) pairError.value = {
+      side: normalized.payload?.resData?.errorSide || side,
+      message: normalized.messageKey ? t(normalized.messageKey) : normalized.message || t('imageAnalysis.failed')
+    }
+  } finally {
+    for (const upload of uploads) await $API.cancelAtomicModelUpload({ uploadId: upload.uploadId }).catch(() => {})
+    await cleanupBackend()
+    analyzing.value = false
+  }
+}
+
 const startAnalysis = async () => {
+  if (analyzing.value || loadingParameters.value) return
+  if (pairMode.value) return startPairAnalysis()
   if (!selectedAlgorithm.value) {
     ElMessage.warning(t('imageAnalysis.selectAlgorithmFirst'))
     return
@@ -384,6 +586,7 @@ const startAnalysis = async () => {
     return
   }
 
+  stopped = false
   analyzing.value = true
   results.value = new Array(uploadedFiles.value.length).fill(null)
 
@@ -395,6 +598,7 @@ const startAnalysis = async () => {
 
   // 2. 逐张分析图片
   for (let i = 0; i < uploadedFiles.value.length; i++) {
+    if (stopped) break
     uploadedFiles.value[i].analyzing = true
     let stagedUpload
     try {
@@ -406,6 +610,12 @@ const startAnalysis = async () => {
       })
       const params = {
         algorithmCode: selectedAlgorithm.value,
+        taskId: taskId.value,
+        requestId: uuid(),
+        resultMode: debugResults.value ? 'debug' : 'business',
+        taskConfig: {
+          params: requestParameters()
+        },
         uploadId: stagedUpload.uploadId,
         needRetImg: true
       }
@@ -432,6 +642,7 @@ const startAnalysis = async () => {
   try {
     const cancelParams = {
       mvDebug: 'Cosmo-Debug',
+      taskId: taskId.value,
       algorithmCode: selectedAlgorithmInfo.value.algorithmId
     }
     await $API.pTaskCancle(cancelParams)
@@ -465,7 +676,7 @@ const drawOverlay = (index) => {
   const colors = ['#3182ce', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#4299e1', '#06b6d4']
 
   targets.forEach((target, tIdx) => {
-    if (!target.box) return
+    if (!target.box || target.filtered) return
     const color = colors[tIdx % colors.length]
     // 后端返回的是像素坐标
     const { x, y, width: bw, height: bh } = target.box
@@ -499,29 +710,27 @@ const drawOverlay = (index) => {
       ctx.fillStyle = '#00ff00'
       target.landmark.forEach(pt => {
         ctx.beginPath()
-        ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2)
+        ctx.arc(pt.xRatio ?? pt.x, pt.yRatio ?? pt.y, 3, 0, Math.PI * 2)
         ctx.fill()
       })
     }
   })
 }
 
+// Unknown means insufficient evidence, not a negative match or an empty detector.
+const decisionReason = output => output.reason === 'no_comparable_samples'
+  ? t('imageAnalysis.noComparableSamples') : t('imageAnalysis.insufficientEvidence')
+const emptyResultLabel = result => {
+  if (result?.error) return t('imageAnalysis.failed')
+  if (result?.outputs?.some(output => output.decision === 'unknown')) return t('imageAnalysis.insufficientEvidence')
+  return result?.schemaVersion >= 2 ? t('imageAnalysis.noQualifyingTargets') : t('imageAnalysis.noTargetsDetected')
+}
+
 // Result helpers
 const getTargets = (result) => {
   if (!result) return []
-  // Merge areaList targets and top-level targetList
-  const targets = []
-  if (result.areaList) {
-    result.areaList.forEach(area => {
-      if (area.targetList) {
-        area.targetList.forEach(t => targets.push(t))
-      }
-    })
-  }
-  if (result.targetList) {
-    result.targetList.forEach(t => targets.push(t))
-  }
-  return targets
+  if (Array.isArray(result.targetList)) return result.targetList
+  return (result.areaList || []).flatMap(area => area.targetList || [])
 }
 
 const getTargetCount = (result) => {
@@ -529,6 +738,7 @@ const getTargetCount = (result) => {
 }
 
 const getTargetLabel = (target) => {
+  if (target?.texts?.length) return target.texts.join(' / ')
   if (!target?.confidence?.length) return t('common.unknown')
   const top = target.confidence.reduce((a, b) =>
     (b.confidence || 0) > (a.confidence || 0) ? b : a
@@ -571,7 +781,7 @@ const drawPreviewOverlay = () => {
     const colors = ['#3182ce', '#ec4899', '#f59e0b', '#10b981', '#3b82f6', '#ef4444', '#4299e1', '#06b6d4']
 
     targets.forEach((target, tIdx) => {
-      if (!target.box) return
+      if (!target.box || target.filtered) return
       const color = colors[tIdx % colors.length]
       const { x, y, width: bw, height: bh } = target.box
       // 跳过无效的零尺寸框的矩形绘制（如 Qwen3VL 纯文本结果 box={0,0,0,0}）
@@ -609,7 +819,7 @@ const drawPreviewOverlay = () => {
         ctx.fillStyle = '#00ff00'
         target.landmark.forEach(pt => {
           ctx.beginPath()
-          ctx.arc(pt.x, pt.y, radius, 0, Math.PI * 2)
+          ctx.arc(pt.xRatio ?? pt.x, pt.yRatio ?? pt.y, radius, 0, Math.PI * 2)
           ctx.fill()
         })
       }
@@ -623,13 +833,54 @@ const onPreviewImageLoad = () => {
 </script>
 
 <style lang="scss" scoped>
+.parameter-panel { margin: 0 0 16px; padding: 0 16px; background: var(--bg-white); }
+.parameter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.execution-json { max-height: 400px; overflow: auto; white-space: pre-wrap; }
+
 .image-analysis-page {
   display: flex;
   flex-direction: column;
   height: 100%;
-  padding: 16px;
-  gap: 16px;
+  padding: 0;
+  min-height: 0;
+  gap: 12px;
   overflow: hidden;
+}
+
+.analysis-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px 26px;
+  flex: none;
+  margin: 0;
+  padding: 12px 18px;
+  list-style: none;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-white);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.analysis-steps li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  line-height: 1.5;
+  &:not(:last-child)::after { content: ''; display: block; width: 54px; height: 1px; margin-left: 16px; background: var(--border-color); }
+  &.is-current { color: var(--primary-color); font-weight: 600; }
+  &.is-current .analysis-step-number { background: var(--primary-color); border-color: var(--primary-color); color: var(--primary-button-text, #fff); }
+  &.is-past .analysis-step-number { border-color: var(--primary-color); color: var(--primary-color); }
+}
+
+.analysis-step-number { display: grid; place-items: center; width: 27px; height: 27px; flex: none; border: 1px solid var(--border-color); border-radius: 50%; font-variant-numeric: tabular-nums; font-size: 12px; }
+
+.analysis-page-heading {
+  flex-shrink: 0;
+  h1 { margin: 0; font-size: 24px; line-height: 32px; font-weight: 650; letter-spacing: -0.4px; }
+  p { margin: 4px 0 0; color: var(--text-secondary); font-size: 13px; }
 }
 
 /* ─ Toolbar ─ */
@@ -637,23 +888,32 @@ const onPreviewImageLoad = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 20px;
+  padding: 12px 16px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   background: var(--bg-white);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md, 8px);
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
   flex-shrink: 0;
 }
 
 .toolbar-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  .el-button + .el-button { margin-left: 0; }
 }
 
 .algorithm-select {
-  width: 280px;
+  width: 240px;
+  max-width: 100%;
 }
+
+.task-select-label { color: var(--text-secondary); font-size: 13px; }
+.analysis-toolbar-hint { flex-basis: 100%; margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
 
 .toolbar-right {
   display: flex;
@@ -663,50 +923,61 @@ const onPreviewImageLoad = () => {
 .file-count {
   font-size: 13px;
   color: var(--text-secondary);
-  padding: 4px 12px;
-  background: var(--bg-secondary);
-  border-radius: 12px;
+  padding: 4px 0;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ─ Content ─ */
 .content-section {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding-bottom: 16px;
+  padding: 14px;
+  background: var(--bg-white);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
 }
+
+.analysis-results-heading { display: flex; align-items: center; gap: 9px; margin: 0 0 12px; font-size: 15px; line-height: 20px; font-weight: 600; }
+.analysis-results-heading::before { content: ''; width: 3px; height: 16px; border-radius: 2px; background: var(--primary-color); }
 
 .image-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
 }
 
 .image-card {
+  display: flex;
+  flex-direction: column;
   background: var(--bg-white);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-md, 8px);
+  border-radius: 6px;
+  padding: 7px 7px 0;
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
-  transition: all 0.25s ease;
+  box-shadow: none;
+  transition: border-color 0.15s;
   cursor: pointer;
 
   &:hover {
-    border-color: var(--primary-color);
-    box-shadow: 0 4px 16px rgba(49, 130, 206, 0.15);
-    transform: translateY(-2px);
+    border-color: var(--border-hover);
   }
+  &:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
 
   &.has-result {
-    border-color: rgba(16, 185, 129, 0.3);
+    border-color: var(--border-color);
   }
 }
 
 .image-wrapper {
   position: relative;
   width: 100%;
-  height: 240px;
-  background: #f8f9fb;
+  aspect-ratio: 16 / 9;
+  border-radius: 3px;
+  background: var(--theme-surface-soft, #f8f9fb);
   overflow: hidden;
+  flex: none;
 }
 
 .analysis-image {
@@ -721,6 +992,7 @@ const onPreviewImageLoad = () => {
   left: 0;
   width: 100%;
   height: 100%;
+  object-fit: contain;
   pointer-events: none;
 }
 
@@ -728,8 +1000,8 @@ const onPreviewImageLoad = () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  border-top: 1px solid var(--border-color);
+  gap: 8px;
+  padding: 9px 3px;
 }
 
 .image-name {
@@ -738,32 +1010,43 @@ const onPreviewImageLoad = () => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 200px;
+  min-width: 0;
+  flex: 1;
 }
 
 .image-status {
   flex-shrink: 0;
 }
 
+.analysis-status { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
+.analysis-status::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.analysis-status.is-completed { color: var(--success-color); }
+.analysis-status.is-analyzing { color: var(--warning-color); }
+.analysis-status.is-failed { color: var(--danger-color); }
+
 /* ─ Result Panel ─ */
 .result-panel {
-  padding: 10px 14px;
-  border-top: 1px solid var(--border-color);
-  background: linear-gradient(135deg, rgba(49, 130, 206, 0.03) 0%, rgba(16, 185, 129, 0.03) 100%);
+  padding: 7px 3px 10px;
+  border-top: 1px solid var(--border-light);
+  background: var(--bg-white);
 }
 
 .result-section {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   .result-label {
     font-size: 12px;
     font-weight: 600;
     color: var(--text-secondary);
-    margin-bottom: 6px;
+    margin-bottom: 0;
+    flex: none;
 
     &.empty-result {
-      color: var(--text-tertiary, #c0c4cc);
+      color: var(--text-tertiary, var(--text-muted));
       font-weight: 400;
-      text-align: center;
-      padding: 4px 0;
+      padding: 2px 0;
+      margin-bottom: 0;
     }
   }
 }
@@ -785,13 +1068,24 @@ const onPreviewImageLoad = () => {
   align-items: center;
   justify-content: center;
   background: var(--bg-white);
-  border: 1px dashed var(--border-color);
+  min-height: 220px;
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-md, 8px);
 }
 
 .empty-icon {
-  width: 120px;
-  height: 120px;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto;
+  color: var(--text-muted);
+}
+
+.image-analysis-page .empty-icon svg {
+  color: var(--text-muted);
+  fill: none;
+  stroke: var(--text-muted);
+
+  * { fill: none; }
 }
 
 /* ─ Preview Dialog ─ */
@@ -811,7 +1105,7 @@ const onPreviewImageLoad = () => {
 
 .preview-image-wrap {
   text-align: center;
-  background: #f8f9fb;
+  background: var(--theme-surface-soft, #f8f9fb);
   border-radius: var(--radius-sm, 4px);
   padding: 8px;
   display: flex;
@@ -862,6 +1156,19 @@ const onPreviewImageLoad = () => {
 }
 
 .feature-preview-empty {
-  color: var(--text-tertiary, #c0c4cc);
+  color: var(--text-tertiary, var(--text-muted));
+}
+
+@media (max-width: 1100px) {
+  .image-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .analysis-steps { gap: 8px 18px; justify-content: flex-start; }
+  .analysis-steps li:not(:last-child)::after { width: 24px; margin-left: 4px; }
+}
+@media (max-width: 760px) {
+  .image-grid { grid-template-columns: minmax(0, 1fr); }
+  .analysis-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .analysis-steps li:not(:last-child)::after { display: none; }
+  .algorithm-select { width: min(240px, 100%); }
+  .toolbar-left { width: 100%; }
 }
 </style>

@@ -618,29 +618,47 @@ std::vector<service::camera::CameraTaskDto> CameraServiceImpl::GetTasks(const st
     if (!camera) {
         return {};
     }
-    std::lock_guard<std::mutex> command_lock(camera->command_mtx_);
-    if (camera->deleting_) {
-        return {};
-    }
     std::vector<service::camera::CameraTaskDto> taskInfos;
-    std::shared_lock<std::shared_mutex> lock(camera->task_mtx_);
-    for (auto& task : camera->tasks_) {
-        service::camera::CameraTaskDto taskInfo;
-        taskInfo.taskId        = task->task_id_;
-        taskInfo.algorithmCode = task->algorithm_code_;
-        taskInfo.algorithmName = task->algorithm_name_;
-        taskInfo.scheduleId    = task->schedule_id_;
-        taskInfo.scheduleName  = task->schedule_name_;
-        taskInfo.enable        = task->is_enabled_;
-        taskInfo.ready         = task->task_ && task->task_->IsReady();
-        const auto status      = task->status_.load(std::memory_order_acquire);
-        taskInfo.runtimeState  = status == CameraTaskStatus::kAbnormal ? "failed"
-                                 : status == CameraTaskStatus::kInService
-                                     ? (taskInfo.enable ? "running" : "stopping")
-                                 : !taskInfo.enable                   ? "stopped"
-                                 : status == CameraTaskStatus::kPause ? "scheduled"
-                                                                      : "starting";
-        taskInfos.push_back(taskInfo);
+    std::vector<std::string> running_task_ids;
+    {
+        std::lock_guard<std::mutex> command_lock(camera->command_mtx_);
+        if (camera->deleting_) {
+            return {};
+        }
+        std::shared_lock<std::shared_mutex> lock(camera->task_mtx_);
+        for (auto& task : camera->tasks_) {
+            service::camera::CameraTaskDto taskInfo;
+            taskInfo.taskId        = task->task_id_;
+            taskInfo.algorithmCode = task->algorithm_code_;
+            taskInfo.algorithmName = task->algorithm_name_;
+            taskInfo.scheduleId    = task->schedule_id_;
+            taskInfo.scheduleName  = task->schedule_name_;
+            taskInfo.enable        = task->is_enabled_;
+            taskInfo.ready         = task->task_ && task->task_->IsReady();
+            const auto status      = task->status_.load(std::memory_order_acquire);
+            taskInfo.runtimeState  = status == CameraTaskStatus::kAbnormal ? "failed"
+                                     : status == CameraTaskStatus::kInService
+                                         ? (taskInfo.enable ? "running" : "stopping")
+                                     : !taskInfo.enable                   ? "stopped"
+                                     : status == CameraTaskStatus::kPause ? "scheduled"
+                                                                          : "starting";
+            if (taskInfo.runtimeState == "running") {
+                running_task_ids.push_back(taskInfo.taskId);
+            }
+            taskInfos.push_back(taskInfo);
+        }
+    }
+    if (!running_task_ids.empty()) {
+        const auto statuses = ServiceRegistry::Instance().Get<ITaskQuery>().GetTaskStatus(running_task_ids);
+        for (const auto& status : statuses) {
+            if (!HasTaskInitializationFailure(status))
+                continue;
+            for (auto& task : taskInfos) {
+                if (task.taskId == status.taskId && task.runtimeState == "running") {
+                    task.runtimeState = "failed";
+                }
+            }
+        }
     }
     return taskInfos;
 }

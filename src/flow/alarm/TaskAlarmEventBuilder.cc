@@ -79,9 +79,9 @@ bool TaskAlarm::ShouldFilterTargetAlarm(const AlgDataPtr& algData, const DataAla
     }
 
     // Position-based suppression
-    auto& suppression = stagedSuppression ? *stagedSuppression : *this;
-    if (!suppression.CheckReportAlarm(alarmUnit.box, m_param.restrainSwitch, m_param.overlapRate,
-                                      m_param.restrainTime * 3600)) {
+    TaskAlarmSuppression* suppression = stagedSuppression ? stagedSuppression : this;
+    if (!suppression->CheckReportAlarm(alarmUnit.box, m_param.restrainSwitch, m_param.overlapRate,
+                                       m_param.restrainTime * 3600)) {
         recAlarmData.filterPosition = true;
         recordFilter();
         return true;
@@ -474,6 +474,10 @@ bool TaskAlarm::FillAlarmData(AlgDataPtr algData) {
         AttachAlarmMedia(eventData, algData, alarmUnit);
         auto& idData = targetState(alarmUnit.trackId);
         FillEventProperty(eventData, algData, alarmUnit, idData);
+        if (!alarmUnit.vlmResults.empty()) {
+            eventData.bHaveProperty       = true;
+            eventData.property.vlmResults = alarmUnit.vlmResults;
+        }
         if (!alarmUnit.visualJudgments.empty()) {
             eventData.bHaveProperty            = true;
             eventData.property.visualJudgments = alarmUnit.visualJudgments;

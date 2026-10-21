@@ -68,6 +68,7 @@ public:
 
     mutable std::mutex attr_mtx_;
     MsgCameraAttr cached_attr_{};  // Cached resolution/codec/fps
+    std::string probed_error_;     // Protected by attr_mtx_, together with probe status publication.
     // Serializes commands that schedule/join switch_thread_ and destructive
     // per-camera operations. deleting_ is protected by this mutex.
     std::mutex command_mtx_;
@@ -177,7 +178,6 @@ private:
     std::string GetVideoFileName(const std::string& id, const std::string& url);
     bool ResolveSourceUrl(MsgCameraType sourceType, const std::string& source, std::string& logicalUrl,
                           std::string& mediaUrl) const;
-    bool IsCameraSourceOnline(const CameraEntityPtr& camera);
 
     CameraEntityPtr GetCamera(const std::string& cameraId);
     CameraEntityPtr GetCamera(const std::string& cameraId) const;

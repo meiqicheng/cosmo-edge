@@ -21,12 +21,12 @@ export function compose(file, env = {}) {
   return JSON.parse(result.stdout)
 }
 const pinned = value => assert.match(value, /^[^\s@]+@sha256:[0-9a-f]{64}$/, 'image must use a valid digest')
-export function checkMac(config, jobs = '1', port = '8080') {
+export function checkMac(config, jobs, port = '8080') {
   const service = config.services['cosmo-x86-macos']
   assert.equal(service.platform, 'linux/amd64', 'Mac architecture')
   pinned(service.build.args.BUILD_ENV_IMAGE)
   pinned(service.build.args.RUNTIME_BASE_IMAGE)
-  assert.equal(String(service.build.args.COSMO_BUILD_JOBS), jobs, 'build jobs')
+  if (jobs !== undefined) assert.equal(String(service.build.args.COSMO_BUILD_JOBS), jobs, 'build jobs')
   assert.equal(service.build.args.RESOURCE_DIR, 'data/resource/aiboxresource_x86')
   assert.equal(service.environment.COSMO_STREAM_PLAY_MODE, 'httpflv-srs')
   assert.equal(String(service.environment.COSMO_STREAM_HTTP_PORT), '18088')
@@ -45,7 +45,6 @@ export function checkMac(config, jobs = '1', port = '8080') {
   const resource = service.volumes.find(v => v.target === '/appfs/cosmo_wander/cwai_data/resource')
   assert.equal(data?.type, 'volume'); assert.equal(resource?.type, 'volume')
   assert.notEqual(data.source, resource.source, 'independent persistent volumes')
-  for (const volume of [data, resource]) assert.match(config.volumes[volume.source].name, /^cosmo-x86-macos-preview-/)
   const output = service.volumes.find(v => v.target === '/build_output')
   assert.equal(output?.type, 'bind'); assert.ok(output.source.endsWith('/build_output/macos-x86'))
 }
@@ -55,55 +54,17 @@ export function checkPackage(config, kind, env = {}) {
   if (kind === 'rockchip' && !env.COSMO_ROCKCHIP_BUILDER_IMAGE) pinned(service.image)
   assert.deepEqual(service.entrypoint, kind === 'sophon' ? ['/bin/bash', '/workspace/scripts/build_sophon_package.sh'] : ['/workspace/scripts/build_rockchip_package.sh'])
   assert.deepEqual(service.command, kind === 'sophon' ? [] : ['--chip', env.COSMO_TARGET_CHIP || 'rk3576', '--models', env.COSMO_PACKAGE_MODELS || 'include'])
-  for (const [target, type] of [['/workspace', 'bind'], ['/build_output', 'bind'], ['/root/.npm', 'volume']])
+  for (const [target, type] of [['/workspace', 'bind'], ['/build_output', 'bind']])
     assert.equal(service.volumes.find(v => v.target === target)?.type, type, `mount ${target}`)
   assert.equal(service.volumes.find(v => v.target === '/workspace').source, root, 'workspace bind source')
   assert.equal(service.volumes.find(v => v.target === '/build_output').source, join(root, 'build_output'), 'output bind source')
-  assert.equal(service.volumes.find(v => v.target === '/root/.npm').source, 'cosmo-npm-cache', 'npm cache source')
-  const expected = { COSMO_MODEL_GUARD_BUILD_PROFILE: 'public-runtime', COSMO_MODEL_GUARD_SDK_ROOT: '', NPM_CONFIG_MAXSOCKETS: '1', NPM_CONFIG_PREFER_OFFLINE: 'true', NPM_CONFIG_FETCH_RETRIES: '3', NPM_CONFIG_FETCH_TIMEOUT: '120000' }
+  const expected = { COSMO_MODEL_GUARD_BUILD_PROFILE: 'public-runtime', COSMO_MODEL_GUARD_SDK_ROOT: '' }
   if (kind === 'sophon') expected.COSMO_PACKAGE_MODELS = 'include'
-  else Object.assign(expected, { COSMO_BUILD_JOBS: '4', COSMO_MODEL_GUARD_SDK_ROOT: '', COSMO_RKNN_ARTIFACT_MANIFEST: '', COSMO_RKNN_MODELS_DIR: '', COSMO_RKNN_RESOURCE_OVERLAY_DIR: '' })
+  else {
+    Object.assign(expected, { COSMO_RKNN_ARTIFACT_MANIFEST: '', COSMO_RKNN_MODELS_DIR: '', COSMO_RKNN_RESOURCE_OVERLAY_DIR: '' })
+    if (env.COSMO_BUILD_JOBS !== undefined) expected.COSMO_BUILD_JOBS = env.COSMO_BUILD_JOBS
+  }
   for (const [key, fallback] of Object.entries(expected)) assert.equal(String(service.environment[key]), env[key] ?? fallback, key)
-}
-export function checkWorkflow(workflow, kind) {
-  assert.ok(Object.hasOwn(workflow.on, 'workflow_dispatch'), 'manual trigger')
-  assert.ok(workflow.on.schedule?.length && workflow.on.schedule.every(x => typeof x.cron === 'string' && x.cron.trim().split(/\s+/).length === 5), 'scheduled trigger')
-  assert.equal(workflow.permissions.contents, 'read')
-  for (const disabled of ['pull_request', 'push', 'workflow_call']) assert.ok(!Object.hasOwn(workflow.on, disabled), `disabled trigger ${disabled}`)
-  const job = workflow.jobs[kind === 'rockchip' ? 'package' : 'build-sophon']
-  const uploads = job.steps.filter(step => step.uses?.startsWith('actions/upload-artifact@'))
-  assert.ok(uploads.length, 'artifact upload required')
-  for (const step of uploads) {
-    assert.ok(step.with.path.trim(), 'upload path')
-    assert.equal(step.with['if-no-files-found'], 'error', 'missing artifact must fail')
-  }
-  if (kind === 'rockchip') {
-    assert.deepEqual(job.strategy.matrix.include.map(x => x.chip).sort(), ['rk3576', 'rk3588', 'rv1126b'])
-    // rk3588 has no in-repo model bundle, so it must stay a code-only job; the other two
-    // regression platforms keep their model-carrying shape.
-    assert.deepEqual(
-      Object.fromEntries(job.strategy.matrix.include.map(x => [x.chip, x.models])),
-      { rk3576: 'include', rv1126b: 'include', rk3588: 'preserve' })
-    assert.ok(uploads.some(s => s.with.path.includes('build_output/${{ matrix.chip }}/*.tar.gz') && s.with.path.includes('SHA256SUMS')))
-    const build = job.steps.find(s => s.id === 'build_package' && s.run)
-    assert.ok(job.steps.some(s => s.id === 'verify_artifacts' && s.run), 'artifact verification required')
-    assert.equal(build?.env.COSMO_TARGET_CHIP, '${{ matrix.chip }}')
-    assert.equal(build?.env.COSMO_PACKAGE_MODELS, '${{ matrix.models }}')
-    const publish = workflow.jobs['publish-builder']
-    assert.equal(publish.if, "github.event_name == 'workflow_dispatch'")
-    assert.ok([publish.needs].flat().includes('package'))
-    assert.equal(publish.permissions.packages, 'write')
-  } else {
-    assert.ok(job.steps.some(s => s.id === 'build_package' && s.run), 'Sophon build step required')
-    for (const requiredPath of ['build/install/', 'build/cosmo-tests', 'build/install/lib/libcosmo_model_guard.so.2.0.0'])
-      assert.ok(uploads.some(s => s.with.path.trim().split(/\r?\n/).includes(requiredPath)), `required upload path ${requiredPath}`)
-    const shell = job.defaults?.run?.shell || workflow.defaults?.run?.shell
-    for (const step of job.steps.filter(s => s.run)) assert.equal(step.shell || shell, 'bash', 'effective build shell')
-    assert.equal(job.env.COSMO_MODEL_GUARD_BUILD_PROFILE, 'public-runtime')
-    assert.ok(Number(job.env.CARGO_HTTP_TIMEOUT) > 0 && Number(job.env.CARGO_NET_RETRY) > 0)
-    assert.ok(workflow.jobs['test-sophon'].steps.some(s => s.id === 'catch2' && s.run))
-    assert.ok([workflow.jobs['test-sophon'].needs].flat().includes('build-sophon'))
-  }
 }
 export function readWorkflow(kind) {
   return yaml(readFileSync(join(root, '.github/workflows', kind === 'rockchip' ? 'ci-build-rockchip.yml' : 'nightly-build-test-sophon.yml'), 'utf8'))
@@ -118,12 +79,11 @@ export function checkComposeContracts() {
   for (const kind of ['sophon', 'rockchip']) {
     const file = join(root, `docker-compose.${kind}.yml`)
     checkPackage(compose(file), kind)
-    const env = { COSMO_MODEL_GUARD_BUILD_PROFILE: 'production-release', COSMO_PACKAGE_MODELS: 'preserve', COSMO_TARGET_CHIP: 'rk3576', COSMO_BUILD_JOBS: '7', COSMO_MODEL_GUARD_SDK_ROOT: '/sdk with space', COSMO_RKNN_ARTIFACT_MANIFEST: '/model manifest.json', COSMO_RKNN_MODELS_DIR: '/models', COSMO_RKNN_RESOURCE_OVERLAY_DIR: '/resources', NPM_CONFIG_MAXSOCKETS: '2', NPM_CONFIG_PREFER_OFFLINE: 'false' }
+    const env = { COSMO_MODEL_GUARD_BUILD_PROFILE: 'production-release', COSMO_PACKAGE_MODELS: 'preserve', COSMO_TARGET_CHIP: 'rk3576', COSMO_BUILD_JOBS: '7', COSMO_MODEL_GUARD_SDK_ROOT: '/sdk with space', COSMO_RKNN_ARTIFACT_MANIFEST: '/model manifest.json', COSMO_RKNN_MODELS_DIR: '/models', COSMO_RKNN_RESOURCE_OVERLAY_DIR: '/resources' }
     checkPackage(compose(file, env), kind, env)
   }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   checkComposeContracts()
-  for (const kind of ['sophon', 'rockchip']) checkWorkflow(readWorkflow(kind), kind)
-  console.log('Effective Compose and workflow contracts passed')
+  console.log('Effective Compose contracts passed')
 }

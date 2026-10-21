@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <atomic>
 #include <memory>
 #include <string>
@@ -11,8 +12,16 @@
 #include "service/camera/impl/CameraTaskUnit.h"
 #include "util/dto/CosmoFwd.h"
 #include "util/dto/TaskCreateTypes.h"
+#include "util/dto/TaskStatusDto.h"
 
 namespace cosmo {
+
+inline bool HasTaskInitializationFailure(const TaskStatus& status) {
+    return std::any_of(status.queStatus.begin(), status.queStatus.end(), [](const auto& action) {
+        return action.actionStatus == util::ErrorEnum::AI_INST_CREATEFAILED ||
+               action.actionStatus == util::ErrorEnum::AI_INIT_PARAMERR;
+    });
+}
 
 enum class CameraTaskOpStatus {
     kNone = 0,

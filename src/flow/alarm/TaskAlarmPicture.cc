@@ -1,8 +1,10 @@
 // TaskAlarmPicture.cc — Alarm picture generation.
 // Implementation partition of TaskAlarm (declared in flow/alarm/TaskAlarm.h).
 
+#include <exception>
 #include <filesystem>
 
+#include "flow/alarm/AlarmImagePrivacy.h"
 #include "flow/alarm/TaskAlarm.h"
 #include "flow/alarm/TaskAlarmInternalTypes.h"
 #include "flow/common/AreaLineUtil.h"
@@ -24,7 +26,9 @@ static constexpr const char* kTag = "TaskAlarm ";
 
 namespace cosmo {
 
-void TaskAlarm::HandBestInfoPicture(CMsgOnEventsReq& msg, AlgDataPtr /*algData*/, DataAlarmUnit& alarmUnit) {
+void TaskAlarm::HandBestInfoPicture(CMsgOnEventsReq& msg, AlgDataPtr /*algData*/, DataAlarmUnit& alarmUnit,
+                                    const util::AlarmImagePrivacy& privacy,
+                                    const std::vector<std::string>& expectedDetectors) {
     media::Color box_color{0, 0, 0};
     int lineWidth = 2;
 
@@ -36,9 +40,11 @@ void TaskAlarm::HandBestInfoPicture(CMsgOnEventsReq& msg, AlgDataPtr /*algData*/
             person.box.width  = bestInfo.box.width;
             person.box.height = bestInfo.box.height;
 
-            auto origImg =
-                service::ServiceRegistry::Instance().Get<service::IVideoFrameOSD>().CopyJpegSrcFrame(
-                    bestInfo.bestFrame);
+            auto origImg = PrepareAlarmImage(bestInfo.bestFrame, GetTaskId(), privacy, expectedDetectors);
+            if (!VideoFrameValid(origImg)) {
+                msg.property.persons.push_back(person);
+                continue;
+            }
             auto origJpeg =
                 service::ServiceRegistry::Instance().Get<service::IVideoFrameCodec>().EncodeJpeg(origImg);
             if (origJpeg.empty()) {
@@ -69,11 +75,11 @@ void TaskAlarm::HandBestInfoPicture(CMsgOnEventsReq& msg, AlgDataPtr /*algData*/
             util::Box roi;
             TargetScalerParam scaleParam;
             scaleParam.scale_side = m_param.faceScaleParam;
-            roi                   = DoScaleBox(bestInfo.box, scaleParam, m_width, m_height);
+            roi = DoScaleBox(bestInfo.box, scaleParam, origImg->GetWidth(), origImg->GetHeight());
 
             if (!roi.empty()) {
                 auto cutImg = service::ServiceRegistry::Instance().Get<service::IVideoFrameTransform>().Crop(
-                    bestInfo.bestFrame, roi);
+                    origImg, roi);
                 auto cutJpeg =
                     service::ServiceRegistry::Instance().Get<service::IVideoFrameCodec>().EncodeJpeg(cutImg);
                 if (!cutJpeg.empty()) {
@@ -96,17 +102,39 @@ void TaskAlarm::HandBestInfoPicture(CMsgOnEventsReq& msg, AlgDataPtr /*algData*/
 }
 
 void TaskAlarm::HandPicture(CMsgOnEventsReq& msg, AlgDataPtr algData, DataAlarmUnit& alarmUnit) {
+    try {
+        HandPictureImpl(msg, algData, alarmUnit);
+    } catch (const std::exception& error) {
+        LOG_WARN("[{}] Alarm image generation failed; preserve event: {}", GetTaskId(), error.what());
+    } catch (...) {
+        LOG_WARN("[{}] Alarm image generation failed; preserve event", GetTaskId());
+    }
+}
+
+void TaskAlarm::HandPictureImpl(CMsgOnEventsReq& msg, AlgDataPtr algData, DataAlarmUnit& alarmUnit) {
+    util::AlarmImagePrivacy privacy;
+    std::vector<std::string> expectedDetectors;
+    {
+        std::shared_lock<std::shared_mutex> lock(mtx);
+        privacy           = m_param.imagePrivacy;
+        expectedDetectors = m_privacyExpectedDetectors;
+    }
+    if (privacy.Requested() && expectedDetectors.empty()) {
+        LOG_WARN("[{}] Omit alarm image: detector topology is unavailable or unsupported", GetTaskId());
+        return;
+    }
 #ifdef DURATION_LOG
     auto timpointCopyFrame = std::chrono::high_resolution_clock::now();
 #endif
     // Original photo. Native-only (DMA-BUF) frames carry no host pixels:
-    // materialize on demand at alarm time (P1-2 gate) instead of failing.
-    VideoFramePtr origImg;
+    // materialize on demand at alarm time (P1-2 gate) instead of failing, then let
+    // the shared privacy pipeline mask the resulting host frame.
+    VideoFramePtr hostFrame = algData->chanDataDec.frame;
 #ifdef COSMO_MEDIA_USE_ROCKCHIP_BACKEND
-    if (!algData->chanDataDec.frame && algData->chanDataDec.native_buffer &&
+    if (!hostFrame && algData->chanDataDec.native_buffer &&
         algData->chanDataDec.native_buffer->Valid()) {
-        origImg = media::MaterializeNativeBuffer(*algData->chanDataDec.native_buffer);
-        if (!origImg) {
+        hostFrame = media::MaterializeNativeBuffer(*algData->chanDataDec.native_buffer);
+        if (!hostFrame) {
             LOG_WARN("{}[{}] AlarmPicture native materialization failed "
                      "(alarm event still delivered)",
                      kTag, task_id);
@@ -114,17 +142,14 @@ void TaskAlarm::HandPicture(CMsgOnEventsReq& msg, AlgDataPtr algData, DataAlarmU
         }
     }
 #else
-    if (!algData->chanDataDec.frame && algData->chanDataDec.native_buffer) {
+    if (!hostFrame && algData->chanDataDec.native_buffer) {
         LOG_WARN("{}[{}] AlarmPicture skipped: native-only frame carries no host data "
                  "(alarm event still delivered)",
                  kTag, task_id);
         return;
     }
 #endif
-    if (!origImg) {
-        origImg = service::ServiceRegistry::Instance().Get<service::IVideoFrameOSD>().CopyJpegSrcFrame(
-            algData->chanDataDec.frame);
-    }
+    auto origImg = PrepareAlarmImage(hostFrame, GetTaskId(), privacy, expectedDetectors);
     if (!VideoFrameValid(origImg)) {
         LOG_WARN("{}", "CopyFrame Failed");
         return;
@@ -147,10 +172,11 @@ void TaskAlarm::HandPicture(CMsgOnEventsReq& msg, AlgDataPtr algData, DataAlarmU
     auto timpointEncodeJpegEnd = std::chrono::high_resolution_clock::now();
 #endif
     if (VideoFrameValid(alarmUnit.baseFrame)) {
-        // auto baseImg  =
-        // service::ServiceRegistry::Instance().Get<service::IVideoFrameOSD>().CopyJpegSrcFrame(alarmUnit.baseFrame);
-        auto baseJpeg = service::ServiceRegistry::Instance().Get<service::IVideoFrameCodec>().EncodeJpeg(
-            alarmUnit.baseFrame);
+        auto baseImg = PrepareAlarmImage(alarmUnit.baseFrame, GetTaskId(), privacy, expectedDetectors);
+        auto baseJpeg =
+            VideoFrameValid(baseImg)
+                ? service::ServiceRegistry::Instance().Get<service::IVideoFrameCodec>().EncodeJpeg(baseImg)
+                : std::vector<uint8_t>{};
         if (!baseJpeg.empty()) {
             UploadImage(msg, baseJpeg, msg.property.machineMaterial.baseImageUrl, "base");
         }
@@ -357,7 +383,7 @@ void TaskAlarm::HandPicture(CMsgOnEventsReq& msg, AlgDataPtr algData, DataAlarmU
             .count(),
         std::chrono::duration_cast<std::chrono::milliseconds>(timpointEnd - timpointEncodeJpegFull).count());
 #endif
-    HandBestInfoPicture(msg, algData, alarmUnit);
+    HandBestInfoPicture(msg, algData, alarmUnit, privacy, expectedDetectors);
 }
 
 // Image upload — moved to TaskAlarmUpload.cc

@@ -113,8 +113,9 @@ bash scripts/build_cpu_test.sh
 scripts/format_check.sh
 cd src/web
 npm ci
+npm test
 npm run build
-# build 的 prebuild 已包含 target-geometry:check
+# npm test 包含目标几何检查，build 的 prebuild 检查 i18n
 ```
 
 文档检查在仓库根目录执行 `npm run docs:verify`。

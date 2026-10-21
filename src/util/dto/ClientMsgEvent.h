@@ -11,6 +11,7 @@
 #include "util/MsgBaseTypes.h"
 #include "util/dto/FilterTypes.h"
 #include "util/dto/OverviewTypes.h"
+#include "util/dto/VlmResult.h"
 
 namespace cosmo {
 
@@ -206,6 +207,7 @@ struct CMsgOnEventsProperty {
     bool bHaveTarget{false};
     CMsgOnEventsPropertyTarget target;  // Target info
     std::vector<nlohmann::json> visualJudgments;
+    std::vector<VlmResult> vlmResults;
 };
 
 // Conditional: CCM/CEC/CE by type, CC(bHaveTarget, target)

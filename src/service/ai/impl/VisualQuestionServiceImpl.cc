@@ -14,7 +14,7 @@ namespace {
     using visual::Json;
     using Clock            = std::chrono::steady_clock;
     const char* kSources[] = {"compile_questions.py", "question_compiler.py", "image_frontend.py",
-                              "visual_protocol.py", "laya_shadow_worker.py"};
+                              "visual_protocol.py"};
 
     std::string Env(const char* name) {
         const char* value = std::getenv(name);

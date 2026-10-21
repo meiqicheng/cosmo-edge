@@ -45,6 +45,14 @@ try {
   assert.equal(requests, 1)
 } finally { device.unmount() }
 
+const emptyDevice = await mountComponent('views/box/systemManagement/systemConfig/components/DeviceInfo.vue', {
+  api: { queryDeviceInfo: async () => ({ resData: {} }) }
+})
+try {
+  await emptyDevice.settle()
+  assert.equal(emptyDevice.all((n) => n.type === 'el-form-item').length, 0, 'missing device info renders an empty list')
+} finally { emptyDevice.unmount() }
+
 for (const platform of ['1', '-1', null, '15']) {
   for (const match of [true, false]) {
     const form = await mountComponent('views/gam/taskManager/editTask/dynamicForm.vue', {
@@ -228,7 +236,10 @@ for (const scenario of [
         { key: 'inactive', value: 'kept' },
         { key: 'unrelated', value: '1' },
         { key: 'isEnabled', value: scenario.enabled },
-        ...(scenario.enabled === '1' ? [{ key: 'LeadsRadio', value: scenario.leads }] : [])
+        ...(scenario.enabled === '1' ? [{ key: 'LeadsRadio', value: scenario.leads }] : []),
+        { key: 'param.privacyEnabled', value: '0' },
+        { key: 'param.privacyLabels', value: '*' },
+        { key: 'param.privacyStrength', value: '2' }
       ])
     }
   } finally { service.unmount() }
@@ -237,3 +248,16 @@ for (const scenario of [
 console.log('Component behavior checks passed')
 
 await import('./edge_behavior_check.mjs')
+
+await import('./realtime_preview_behavior_check.mjs')
+
+await import('./scene_task_display_check.mjs')
+await import('./linkage_strategy_behavior_check.mjs')
+await import('./picture_library_selection_check.mjs')
+await import('./picture_match_node_check.mjs')
+
+await import('./image_analysis_library_check.mjs')
+
+await import('./scene_source_filter_check.mjs')
+
+await import('./picture_pair_check.mjs')

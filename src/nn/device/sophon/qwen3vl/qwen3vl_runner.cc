@@ -374,26 +374,10 @@ Status Qwen3VLRunner::Init(const std::string& model_path, const std::string& tok
     if (!model_config_json_path.empty())
         impl_->do_sample = ReadDoSampleFromModelConfig(model_config_json_path);
 
-    std::string blob = LoadBytesFromFile(tokenizer_path);
-    if (blob.empty())
-        return Status(COSMO_NN_ERR_OPEN_FILE, "Failed to load tokenizer: " + tokenizer_path);
-    impl_->tok = tokenizers::Tokenizer::FromBlobJSON(blob);
-    if (!impl_->tok)
-        return Status(COSMO_NN_ERR_PARAM, "Tokenizer::FromBlobJSON failed");
-    impl_->ID_IM_END       = impl_->tok->TokenToId("<|im_end|>");
-    impl_->ID_VISION_START = impl_->tok->TokenToId("<|vision_start|>");
-    impl_->IMAGE_PAD_TOKEN = impl_->tok->TokenToId("<|image_pad|>");
-    std::cerr << "[Qwen3VLRunner] init model_type=" << impl_->model_type << " device_id=" << impl_->device_id
-              << " do_sample=" << (impl_->do_sample ? 1 : 0) << " config_json="
-              << (model_config_json_path.empty()
-                      ? "(empty)"
-                      : (LooksLikeJsonContent(model_config_json_path) ? "(inline_json)"
-                                                                      : model_config_json_path))
-              << " tokenizer=" << tokenizer_path << " id_im_end=" << impl_->ID_IM_END
-              << " id_vision_start=" << impl_->ID_VISION_START << " image_pad=" << impl_->IMAGE_PAD_TOKEN
-              << std::endl;
-
     try {
+        // The protected loader briefly holds the entire plaintext model in host
+        // RAM. Build the tokenizer after that buffer is released so its parsed
+        // vocabulary and JSON do not overlap the model-loading peak.
         // Instantiate different underlying models based on model_type
         if (impl_->is_qwen35()) {
             impl_->model_35 = std::make_unique<qwen3_5::Qwen3_5Model>();
@@ -412,6 +396,29 @@ Status Qwen3VLRunner::Init(const std::string& model_path, const std::string& tok
             impl_->config.MAX_PIXELS         = impl_->model_vl->MAX_PIXELS;
             impl_->config.MAX_PATCHES        = impl_->model_vl->MAX_PATCHES;
         }
+        const std::string blob = LoadBytesFromFile(tokenizer_path);
+        if (blob.empty()) {
+            impl_.reset();
+            return Status(COSMO_NN_ERR_OPEN_FILE, "Failed to load tokenizer: " + tokenizer_path);
+        }
+        impl_->tok = tokenizers::Tokenizer::FromBlobJSON(blob);
+        if (!impl_->tok) {
+            impl_.reset();
+            return Status(COSMO_NN_ERR_PARAM, "Tokenizer::FromBlobJSON failed");
+        }
+        impl_->ID_IM_END       = impl_->tok->TokenToId("<|im_end|>");
+        impl_->ID_VISION_START = impl_->tok->TokenToId("<|vision_start|>");
+        impl_->IMAGE_PAD_TOKEN = impl_->tok->TokenToId("<|image_pad|>");
+        std::cerr << "[Qwen3VLRunner] init model_type=" << impl_->model_type
+                  << " device_id=" << impl_->device_id << " do_sample=" << (impl_->do_sample ? 1 : 0)
+                  << " config_json="
+                  << (model_config_json_path.empty()
+                          ? "(empty)"
+                          : (LooksLikeJsonContent(model_config_json_path) ? "(inline_json)"
+                                                                          : model_config_json_path))
+                  << " tokenizer=" << tokenizer_path << " id_im_end=" << impl_->ID_IM_END
+                  << " id_vision_start=" << impl_->ID_VISION_START << " image_pad=" << impl_->IMAGE_PAD_TOKEN
+                  << std::endl;
     } catch (const std::bad_alloc&) {
         impl_.reset();
         return Status(COSMO_NN_ERR_OUT_OF_MEMORY, "Qwen model initialization ran out of memory");

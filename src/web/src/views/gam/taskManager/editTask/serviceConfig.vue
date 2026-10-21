@@ -1,5 +1,5 @@
 <template>
-  <div class="mv-wrap" v-loading.fullscreen="loading" :element-loading-text="t('common.paramSyncing')" element-loading-background="rgba(0, 0, 0, 0.8)">
+  <div class="mv-wrap ui-admin-page service-config-page" v-loading.fullscreen="loading" :element-loading-text="t('common.paramSyncing')" element-loading-background="rgba(0, 0, 0, 0.8)">
     <div class="container">
       <div class="serve-type-container" v-if="arithmeticShow">
         <el-card class="box-card">
@@ -8,7 +8,7 @@
               <span>{{ t('glossary.scenarioTask') }}</span>
             </div>
           </template>
-          <el-input :placeholder="t('field.filterKeyword')" v-model="filterText" size="small" clearable style="margin-left: 10px;width: 220px;"></el-input>
+          <el-input :placeholder="t('field.filterKeyword')" v-model="filterText" size="small" clearable class="tree-search"></el-input>
           <div class="tree-body">
             <el-tree id="onboarding-algorithm-tree" class="filter-tree" :data="arithmeticTree" :props="defaultProps" highlight-current default-expand-all :filter-node-method="filterNode" ref="tree" @node-click="chooseType" node-key="algorithmId">
               <template #default="{ data }">
@@ -16,7 +16,7 @@
                   <span v-if="!data.algorithmCode" class="custom-treeText">{{ resolveAlgorithmCategoryName(data) }}</span>
                   <span v-else class="custom-treeText">{{ resolveAlgorithmName(data) }}</span>
                   <span v-if="data.algorithmCode">
-                    <el-icon v-if="data.isSave == true" class="el-menu-icon" color="#67C23A">
+                    <el-icon v-if="data.isSave == true" class="el-menu-icon" color="var(--theme-success, #67C23A)">
                       <CircleCheckFilled />
                     </el-icon>
                   </span>
@@ -26,23 +26,23 @@
           </div>
         </el-card>
       </div>
-      <div style="margin-left: 15px;flex:1;">
+      <div class="serve-config-main">
         <div class="serve-config-container">
-          <el-card class="serve-config-container-card">
+          <el-card class="serve-config-container-card" v-loading="configLoading">
             <template #header>
               <div class="serve-config-header clearfix">
-                <div>
-                  <span class="abc">{{ t('glossary.serviceConfig') }}</span>
+                <div class="service-identity">
+                  <strong>{{ t('glossary.serviceConfig') }}</strong>
                   <div :class="['circle', { 'red-circle': taskEnableStatus == 0 }, { 'green-circle': taskEnableStatus == 1 }]" class="abc"></div>
-                  <span v-if="taskEnableStatus == 1" style="margin-left: 10px" class="abc">{{ t('common.enabled') }}</span>
-                  <span v-else style="margin-left: 10px" class="abc">{{ t('common.disabled') }}</span>
+                  <span v-if="taskEnableStatus == 1" class="service-state">{{ t('common.enabled') }}</span>
+                  <span v-else class="service-state">{{ t('common.disabled') }}</span>
                 </div>
-                <div class="abc" style="margin-left:10px;">{{ resolvedAlgorithmName }}</div>
+                <div class="service-name">{{ resolvedAlgorithmName }}</div>
                 <div class="serve-config-header-btns">
-                  <el-button type="danger" v-if="taskEnableStatus == 1" @click="boxSwitchTask(0)" size="small">{{ t('action.disableService') }}</el-button>
-                  <el-button type="primary" v-if="taskEnableStatus == 0" @click="boxSwitchTask(1)" size="small">{{ t('action.enableService') }}</el-button>
-                  <el-button type="danger" @click="handleDelServe()" size="small">{{ t('action.deleteService') }}</el-button>
-                  <el-button id="onboarding-save-service" class="mv-el-button" type="primary" @click="clickSaveServe()" size="small">{{ t('action.save') }}</el-button>
+                  <el-button type="danger" plain v-if="taskEnableStatus == 1" @click="boxSwitchTask(0)" size="small">{{ t('action.disableService') }}</el-button>
+                  <el-button type="primary" v-if="taskEnableStatus == 0" @click="boxSwitchTask(1)" size="small" class="ui-secondary-button">{{ t('action.enableService') }}</el-button>
+                  <el-button type="danger" plain @click="handleDelServe()" size="small">{{ t('action.deleteService') }}</el-button>
+                  <el-button id="onboarding-save-service" class="mv-el-button" type="primary" @click="clickSaveServe()" :disabled="!configReady" size="small">{{ t('action.save') }}</el-button>
                 </div>
               </div>
             </template>
@@ -57,13 +57,21 @@
                 <div v-if="String(algorithmCode) === '99'" class="LargeModelAlgorithmConfiguration">
                   <el-tooltip style="margin-right: 10px;" class="item" effect="dark" :content="t('validate.saveAndStartFirst')" placement="top" :disabled="false">
                     <span>
-                      <el-button type="primary" @click="LargeModelAlgorithmConfiguration" :disabled="taskEnableStatus != 1">{{ t('action.enterDemoScreen') }}</el-button>
+                      <el-button type="primary" @click="LargeModelAlgorithmConfiguration" :disabled="taskEnableStatus != 1" class="ui-secondary-button">{{ t('action.enterDemoScreen') }}</el-button>
                     </span>
                   </el-tooltip>
                 </div>
-                <div style="margin-left:160px;">
+                <div class="form-actions">
                   <el-button style="margin-right:15px;" @click="parameterVisible = true">{{ t('action.reset') }}</el-button>
-                  <el-button type="primary" @click="batch">{{ t('glossary.batchApply') }}</el-button>
+                  <el-button type="primary" @click="batch" class="ui-secondary-button">{{ t('glossary.batchApply') }}</el-button>
+                </div>
+              </el-tab-pane>
+
+              <el-tab-pane :label="t('alarmPrivacy.title')" name="privacy">
+                <alarm-privacy-setting v-if="configReady" v-model="privacyConfig" :available-labels="privacyLabels" />
+                <div class="privacy-actions">
+                  <el-button :disabled="!configReady" @click="resetPrivacyConfig">{{ t('action.reset') }}</el-button>
+                  <el-button type="primary" :disabled="!configReady" @click="batch">{{ t('glossary.batchApply') }}</el-button>
                 </div>
               </el-tab-pane>
 
@@ -89,8 +97,8 @@
                     <el-input v-model="videoRepeatCount" class="width200" size="small" oninput="value=value.replace(/[^\d-]/g,'')" @input="handleVideoRepeatInput"></el-input>
                   </el-form-item>
                 </el-form>
-                <div style="margin: 80px 0px 0px 160px;">
-                  <el-button type="primary" @click="batch">{{ t('glossary.batchApply') }}</el-button>
+                <div class="form-actions">
+                  <el-button type="primary" @click="batch" class="ui-secondary-button">{{ t('glossary.batchApply') }}</el-button>
                 </div>
               </el-tab-pane>
             </el-tabs>
@@ -99,7 +107,7 @@
       </div>
     </div>
 
-    <el-dialog :title="t('common.notice')" v-model="confirmDialogVisible" center width="30%">
+    <el-dialog :title="t('common.notice')" v-model="confirmDialogVisible" center width="30%" class="ui-admin-dialog">
       <div style="text-align: center">{{ t('action.confirmDelete') }}</div>
       <template #footer>
         <span class="dialog-footer">
@@ -109,7 +117,7 @@
       </template>
     </el-dialog>
     <!-- 重置参数 -->
-    <el-dialog :title="t('common.notice')" v-model="parameterVisible" center width="550px">
+    <el-dialog :title="t('common.notice')" v-model="parameterVisible" center width="550px" class="ui-admin-dialog">
       <div style="text-align: center">{{ t('validate.resetParamsConfirm') }}</div>
       <template #footer>
         <span class="dialog-footer">
@@ -121,7 +129,7 @@
     <!-- 批量应用 -->
     <Batch v-if="config && config.channelId" v-model:BatchApplication="BatchApplication" @confirm="BatchConfirm" :algorithmId="algorithmId" :channelId="config.channelId"></Batch>
 
-    <el-dialog :title="t('common.notice')" v-model="warningVisible" width="400px" center>
+    <el-dialog :title="t('common.notice')" v-model="warningVisible" width="400px" center class="ui-admin-dialog">
       <div class="dialog-content">{{ warningContent }}</div>
       <template #footer>
         <span class="dialog-footer">
@@ -141,9 +149,18 @@ import { QuestionFilled, CircleCheckFilled } from '@element-plus/icons-vue'
 import areaSetting from './areaSetting2.vue'
 import { regionParams } from '@/utils/visualQuestions'
 import paramSetting from './paramSetting.vue'
+import AlarmPrivacySetting from './alarmPrivacySetting.vue'
 import { v4 } from 'uuid'
 import Batch from './BatchApplication.vue'
 import { getLocationQueryParam } from '@/utils/locationQuery'
+import {
+  ALARM_PRIVACY_PARAM_KEYS,
+  createAlarmPrivacyDefaults,
+  getAlarmPrivacyLabels,
+  isAlarmPrivacyConfigValid,
+  mergeAlarmPrivacyParams,
+  readAlarmPrivacyParams
+} from '@/utils/alarmImagePrivacy'
 import {
   filterChannelEditableParams,
   filterTaskParamsForSubmission,
@@ -204,6 +221,14 @@ const timeTemplateList = ref([])
 const category = ref(0)
 const colors = ['24,144,255', '255,115,24', '24,255,89', '255,239,24']
 const loading = ref(false)
+const configLoading = ref(false)
+const configReady = ref(false)
+let configRequestId = 0
+const privacyConfig = ref(createAlarmPrivacyDefaults())
+const privacyLabels = ref([])
+const resetPrivacyConfig = () => {
+  privacyConfig.value = createAlarmPrivacyDefaults()
+}
 const BatchType = ref(false)
 const parameterData = ref({})
 const parameterVisible = ref(false)
@@ -532,6 +557,9 @@ const getServeTypes = () => {
 }
 
 const resetConfig = () => {
+  configReady.value = false
+  resetPrivacyConfig()
+  privacyLabels.value = []
   config.value.taskParam = []
   config.value.visualQuestionParams = []
   config.value.visualQuestionEditing = false
@@ -545,6 +573,8 @@ const resetConfig = () => {
 }
 
 const getSelectConfig = () => {
+  const requestId = ++configRequestId
+  configLoading.value = true
   resetConfig()
   scheduleSupport.value = 1
   let taskCustId = window.localStorage.getItem('taskCustId')
@@ -557,6 +587,7 @@ const getSelectConfig = () => {
       custId: taskCustId ? taskCustId : ''
     })
     .then((res) => {
+      if (requestId !== configRequestId) return
       const { resData } = res
       resData.algorithmMetadata = JSON.parse(resData.algorithmMetadata)
       category.value = resData.category ? resData.category : 0
@@ -577,10 +608,14 @@ const getSelectConfig = () => {
 
       const metaData = resData.algorithmMetadata
       const metaParams = Array.isArray(metaData.params) ? metaData.params : []
-      const normalizedMetaParams = normalizeParamOwnershipList(metaParams)
+      const normalizedMetaParams = normalizeParamOwnershipList(
+        metaParams.filter((item) => !ALARM_PRIVACY_PARAM_KEYS.has(item.key))
+      )
       const taskParams = Array.isArray(resData.taskConfig?.params)
         ? resData.taskConfig.params
         : []
+      privacyConfig.value = readAlarmPrivacyParams(taskParams)
+      privacyLabels.value = getAlarmPrivacyLabels(metaData)
       const taskParamByKey = new Map(
         taskParams.map((item) => [item.key, item.value])
       )
@@ -696,6 +731,10 @@ const getSelectConfig = () => {
       if (scheduleSupport.value == 1 && !config.value.scheduleId) {
         config.value.scheduleId = timeTemplateList.value[0]?.scheduleId
       }
+      configReady.value = true
+    })
+    .finally(() => {
+      if (requestId === configRequestId) configLoading.value = false
     })
 }
 
@@ -755,6 +794,7 @@ const deleteServe = () => {
 }
 
 const clickSaveServe = () => {
+  if (!configReady.value) return
   if (areaSettingRef.value?.isDrawingLine)
     return proxy.$message.warning(t('validate.completeDrawingFirst'))
   const result = areaSettingRef.value.$refs.canvasRef.submit()
@@ -781,7 +821,9 @@ const clickSaveServe = () => {
 }
 
 const newSave = async (skipRefresh = false) => {
+  if (!configReady.value) return false
   const editingConfig = config.value
+  const editingRequestId = configRequestId
   const editingAlgorithmId = algorithmId.value
   const editingChannelId = config.value.channelId
   let result
@@ -791,7 +833,13 @@ const newSave = async (skipRefresh = false) => {
     return false
   }
   if (!result?.valid || config.value !== editingConfig ||
+      editingRequestId !== configRequestId || !configReady.value ||
       algorithmId.value !== editingAlgorithmId || config.value.channelId !== editingChannelId) {
+    return false
+  }
+  if (!isAlarmPrivacyConfigValid(privacyConfig.value, privacyLabels.value)) {
+    activeName.value = 'privacy'
+    proxy.$message.warning(t('alarmPrivacy.invalidConfig'))
     return false
   }
   config.value.taskParam = result.params
@@ -960,6 +1008,10 @@ const newSave = async (skipRefresh = false) => {
     }
   })
 
+  params.taskConfig.params = mergeAlarmPrivacyParams(
+    params.taskConfig.params,
+    privacyConfig.value
+  )
   parameterData.value = params
 
   return proxy.$API.saveOrUpdate(params).then((res) => {
@@ -1018,6 +1070,7 @@ const BatchConfirm = async (data) => {
 }
 
 const resetParameter = () => {
+  resetPrivacyConfig()
   filterChannelEditableParams(config.value.taskParam).forEach(
     (item) => {
       if (item.type == 'check') {
@@ -1061,7 +1114,20 @@ onMounted(() => {
 
 .container {
   display: flex;
+  width: 100%;
+  min-width: 0;
   height: 100%;
+  gap: 12px;
+}
+
+.serve-type-container {
+  flex: 0 0 220px;
+  min-width: 0;
+}
+
+.serve-config-main {
+  flex: 1;
+  min-width: 0;
 }
 
 .text {
@@ -1079,32 +1145,61 @@ onMounted(() => {
 }
 
 .box-card {
-  width: 240px;
+  width: 100%;
   height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 6px;
+  box-shadow: none;
+
+  :deep(.el-card__header) {
+    padding: 14px;
+    font-size: 14px;
+    font-weight: 600;
+  }
 
   :deep(.el-card__body) {
-    padding: 20px 0px 10px;
-    overflow: scroll;
+    padding: 12px 0;
+    min-height: 0;
+    overflow: auto;
   }
 }
 
+.tree-search {
+  margin: 0 10px;
+  width: calc(100% - 20px);
+}
+
 .serve-config-container {
+  width: 100%;
+  min-width: 0;
   height: 100%;
 }
 
 .serve-config-container-card {
   display: flex;
+  width: 100%;
+  min-width: 0;
   height: 100%;
   flex-direction: column;
+  border-radius: 6px;
+  box-shadow: none;
+
+  :deep(.el-card__header) { padding: 12px 16px; }
 
   :deep(.el-card__body) {
-    height: 100%;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
     overflow: auto;
+    padding: 12px 16px;
   }
 
   .el-tab-pane {
-    overflow-x: scroll;
-    padding-bottom: 20px;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    padding-bottom: 12px;
   }
 }
 
@@ -1115,7 +1210,7 @@ onMounted(() => {
   margin-top: 12px;
   padding-right: 12px;
   height: 56px;
-  background: #ffffff;
+  background: var(--theme-surface, #ffffff);
 }
 
 .serve-types {
@@ -1127,7 +1222,7 @@ onMounted(() => {
 }
 
 .c-serve-types {
-  background-color: #f1f5f9;
+  background-color: var(--bg-secondary);
 }
 
 .el-menu-icon {
@@ -1137,13 +1232,23 @@ onMounted(() => {
 
 .serve-config-header {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
   position: relative;
 }
 
 .serve-config-header-btns {
-  position: absolute;
-  right: 0px;
-  top: 0px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+
+  .el-button + .el-button {
+    margin-left: 0;
+  }
 }
 
 .el-button {
@@ -1154,19 +1259,19 @@ onMounted(() => {
 .circle {
   width: 7px;
   height: 7px;
-  background-color: red;
+  background-color: var(--danger-color);
   border-radius: 50%;
   display: inline-block;
-  position: absolute;
-  top: 14px;
+  flex: none;
+  margin-left: 4px;
 }
 
 .red-circle {
-  background-color: red;
+  background-color: var(--danger-color);
 }
 
 .green-circle {
-  background-color: #5cb5b1;
+  background-color: var(--theme-success, #5cb5b1);
 }
 
 :deep(.hint) {
@@ -1175,6 +1280,27 @@ onMounted(() => {
 
 .abc {
   line-height: 35px;
+}
+
+.service-identity {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.service-state { color: var(--text-secondary); font-size: 12px; }
+.service-name { min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 14px;
+  margin-top: 10px;
+  border-top: 1px solid var(--border-light);
+
+  .el-button { margin: 0 !important; }
 }
 
 .chooseMultiple {
@@ -1191,24 +1317,24 @@ onMounted(() => {
   float: left;
   font-size: 14px;
   margin: 0px 30px 0px 100px;
-  color: #606266;
+  color: var(--text-secondary);
   box-sizing: border-box;
 }
 
 :deep(.el-tree--highlight-current
     .el-tree-node.is-current
     > .el-tree-node__content) {
-  background-color: rgba(135, 206, 235, 0.2);
+  background-color: var(--theme-accent-soft, rgba(135, 206, 235, 0.2));
 }
 
 .LargeModelAlgorithmConfiguration {
-  position: absolute;
-  top: 15px;
-  right: 30px;
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 0;
 }
 
 .custom-treeText {
-  width: 160px;
+  width: 142px;
   display: inline-block;
   overflow: hidden;
   white-space: nowrap;
@@ -1219,7 +1345,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   margin-bottom: 10px;
-  color: #606266;
+  color: var(--text-secondary);
 
   > :first-child {
     margin-right: 10px;
@@ -1243,8 +1369,22 @@ onMounted(() => {
 }
 
 .strategy-body {
-  margin-top: 20px;
-  margin-left: 50px;
+  margin: 14px 0 0;
+}
+
+.service-config-page :deep(.main-container) {
+  margin-top: 12px;
+  padding-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.service-config-page :deep(.main-container .left-config) { flex: 0 0 550px; }
+.service-config-page :deep(.main-container .right-config) { margin-left: 0; min-width: 260px; }
+.service-config-page :deep(.main-container .area-top) { font-weight: 600; font-size: 13px; }
+
+.privacy-actions {
+  margin: 0 30px 20px 170px;
 }
 
 .dialog-content {

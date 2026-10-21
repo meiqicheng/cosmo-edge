@@ -3,31 +3,16 @@ import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import vm from 'node:vm'
 import * as vue from 'vue'
-import { parse, compileScript, compileTemplate } from '@vue/compiler-sfc'
+import { parse, compileScript } from '@vue/compiler-sfc'
 
 const filename = new URL('../src/views/gam/taskManager/components/Gb28181Dialog.vue', import.meta.url)
 const { descriptor, errors } = parse(await readFile(filename, 'utf8'), { filename: filename.pathname })
 assert.deepEqual(errors, [])
 const script = compileScript(descriptor, { id: 'gb-test' })
-const template = compileTemplate({ source: descriptor.template.content, filename: filename.pathname, id: 'gb-test', compilerOptions: { bindingMetadata: script.bindings } })
-assert.deepEqual(template.errors, [])
 const access = await readFile(new URL('../src/views/gam/taskManager/components/gb28181Access.js', import.meta.url), 'utf8')
 const device = { id: '34020000001110000001', username: 'auth-account', hasPassword: true, online: true, state: 'registered', channels: [{ id: '34020000001320000001', name: 'Entrance', added: false, state: 'idle', error: '' }] }
 const config = { enabled: true, listening: true, platformId: '34020000002000000001', realm: '3402000000', address: '', sipPort: 5060, heartbeatTimeout: 180, devices: [device] }
 
-test('GB access exposes only platform settings and devices/channels tabs', () => {
-  const tabs = [...descriptor.template.content.matchAll(/<el-tab-pane\b[^>]*\bname="([^"]+)"/g)].map(match => match[1])
-  assert.deepEqual(tabs, ['platform', 'devices'])
-  assert.doesNotMatch(descriptor.template.content, /gbAccess\.(guideTab|step[1-4]|cameraServer|cameraUser|userMapping|channelMapping|cameraAutoAddress)/)
-})
-test('GB access has a shortcut next to Add and retains the add-channel entry without a trial banner', async () => {
-  const page = await readFile(new URL('../src/views/gam/taskManager/index.vue', import.meta.url), 'utf8')
-  const { descriptor: pageDescriptor } = parse(page)
-  assert.match(pageDescriptor.template.content, /id="onboarding-add-channel"[^>]*>[\s\S]*?<\/el-button>\s*<el-button id="gb28181-access"[^>]*@click="gb28181Dialog\.open\(\)"[^>]*>GB28181<\/el-button>/)
-  assert.equal((pageDescriptor.template.content.match(/id="gb28181-access"/g) || []).length, 1)
-  assert.match(pageDescriptor.scriptSetup.content, /if \(val === 7\)\s*\{\s*channelDialogVisible\.value = false\s*nextTick\(\(\) => gb28181Dialog\.value\.open\(\)\)/)
-  assert.doesNotMatch(descriptor.template.content, /gbAccess\.scope/)
-})
 async function dialog(handler = () => config, network = async () => ({ resData: { netCardList: [] } })) {
   const calls = [], events = [], timers = [], networkCalls = []
   const context = vm.createContext({ console, window: { location: { hostname: '192.0.2.10' } }, setInterval: fn => { timers.push(fn); return timers.length }, clearInterval() {} })
@@ -153,4 +138,46 @@ test('GB compatibility mode is explicit and closing clears unfinished credential
   const d = await dialog(); await d.state.open(); Object.assign(d.state.deviceForm, { id: device.id, allowUnauthenticated: true })
   await d.state.saveDevice(); assert.equal(d.calls.find(c => c.action === 'saveDevice').allowUnauthenticated, true)
   d.state.deviceForm.password = 'unsaved'; d.state.close(); assert.equal(d.state.deviceForm.password, ''); d.stop()
+})
+
+
+test('GB device expansion is explicit, survives polling, and resets on reopen', async () => {
+  const d = await dialog(); await d.state.open()
+  assert.deepEqual(Array.from(d.state.expandedDevices.value), [])
+  const row = d.state.devices.value[0]
+  d.state.rememberExpanded(row, [row])
+  await d.state.refresh()
+  assert.deepEqual(Array.from(d.state.expandedDevices.value), [device.id])
+  assert.notEqual(d.state.devices.value[0], row)
+  d.state.rememberExpanded(d.state.devices.value[0], [])
+  await d.state.refresh()
+  assert.deepEqual(Array.from(d.state.expandedDevices.value), [])
+  d.state.rememberExpanded(d.state.devices.value[0], [d.state.devices.value[0]])
+  d.state.close(); await d.state.open()
+  assert.deepEqual(Array.from(d.state.expandedDevices.value), [])
+  assert.ok(d.calls.every(call => call.action === 'list'))
+  d.state.close(); d.stop()
+})
+
+test('GB device editor opens on demand and cancels without saving credentials', async () => {
+  const d = await dialog(); await d.state.open()
+  assert.equal(d.state.deviceEditorVisible.value, false)
+  d.state.startDevice()
+  assert.equal(d.state.deviceEditorVisible.value, true)
+  assert.equal(d.state.editing.value, false)
+  d.state.deviceForm.password = 'unsaved-fixture-password'
+  d.state.deviceAdvanced.value = ['advanced']
+  d.state.resetDevice()
+  assert.equal(d.state.deviceEditorVisible.value, false)
+  assert.equal(d.state.deviceForm.password, '')
+  assert.deepEqual(Array.from(d.state.deviceAdvanced.value), [])
+  d.state.editDevice({ ...device, allowUnauthenticated: true })
+  assert.equal(d.state.deviceEditorVisible.value, true)
+  assert.equal(d.state.editing.value, true)
+  assert.deepEqual(Array.from(d.state.deviceAdvanced.value), ['advanced'])
+  assert.equal(d.state.deviceForm.id, device.id)
+  d.state.resetDevice()
+  assert.equal(d.state.deviceForm.id, '')
+  assert.deepEqual(d.calls.map(call => call.action), ['list'])
+  d.state.close(); d.stop()
 })

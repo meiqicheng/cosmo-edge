@@ -47,6 +47,7 @@ public:
 };
 class ConfigLlm final : public cosmo::service::ILlmInferService {
 public:
+    std::string reply{"否"};
     bool EnsureInit(const std::string&) override {
         return true;
     }
@@ -61,7 +62,8 @@ public:
         for (size_t i = 0; i < images.size() && i < prompts.size(); ++i) {
             seen[images[i]->GetFrameIndex()] = prompts[i];
             cosmo::Qwen3VLResult result;
-            result.text = "no";
+            result.text        = reply;
+            result.duration_ms = 12.5;
             results.push_back(result);
         }
         ready.notify_all();
@@ -127,6 +129,14 @@ TEST_CASE("Video VLM configuration replacement preserves other tasks and honors 
         std::vector<cosmo::MsgDynamicKeyValue>{Param("keywords", "smoke"), Param("advanced_mode", "false")};
     REQUIRE(worker.ModifyParam("camera-a", "task-a", first));
     REQUIRE(worker.ModifyParam("camera-b", "task-b", second));
+    auto output = std::make_shared<cosmo::AlgDataQueue<cosmo::AlgDataPtr>>("result");
+    cosmo::AlgTaskUnit downstream;
+    downstream.channel_id = "camera-a";
+    downstream.task_id    = "task-a";
+    downstream.que        = output;
+    downstream.fps        = -1;
+    downstream.actionId   = "alarm";
+    worker.RegistTaskQueue(downstream);
     REQUIRE(worker.Start());
     int64_t sequence = 0;
     auto infer       = [&](const std::string& task, const std::string& camera) {
@@ -143,6 +153,33 @@ TEST_CASE("Video VLM configuration replacement preserves other tasks and honors 
     const std::string suffix = "，回答是或者否,不要换行，不要其他内容。";
     CHECK(infer("task-a", "camera-a") == "helmet" + suffix);
     CHECK(infer("task-b", "camera-b") == "判断图片中是否存在【smoke】目标" + suffix);
+
+    SECTION("Positive answers retain their source frame and negative answers do not create alarms") {
+        // Wait for the first negative frame to leave the worker before changing the fake reply.
+        REQUIRE(output->WaitForData(3000));
+        auto negative = output->Pop();
+        REQUIRE(negative->taskDataAlarm.alarmData);
+        CHECK(negative->taskDataAlarm.alarmData->alarms.empty());
+        llm.reply = "是";
+        CHECK(infer("task-a", "camera-a") == "helmet" + suffix);
+        REQUIRE(output->WaitForData(3000));
+        auto positive = output->Pop();
+        REQUIRE(positive->taskDataAlarm.alarmData);
+        REQUIRE(positive->taskDataAlarm.alarmData->alarms.size() == 1);
+        const auto& answers = positive->taskDataAlarm.alarmData->alarms.front().vlmResults;
+        REQUIRE(answers.size() == 1);
+        CHECK(answers[0].question == "helmet");
+        CHECK(answers[0].answer == "是");
+        CHECK(answers[0].durationMs == 12.5);
+        CHECK(answers[0].frameIndex == std::to_string(sequence));
+        CHECK(answers[0].timestamp == std::to_string(positive->chanDataDec.frame->GetTimestamp()));
+        llm.reply = "uncertain";
+        infer("task-a", "camera-a");
+        REQUIRE(output->WaitForData(3000));
+        auto unknown = output->Pop();
+        REQUIRE(unknown->taskDataAlarm.alarmData);
+        CHECK(unknown->taskDataAlarm.alarmData->alarms.empty());
+    }
 
     SECTION("Explicit empty and false replace old nonempty and true") {
         auto clear =

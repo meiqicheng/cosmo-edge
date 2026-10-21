@@ -12,6 +12,7 @@
 #include "service/algorithm/IAlgorithmQuery.h"
 #include "service/detail/ServiceRegistry.h"
 #include "service/task/ITaskLifecycle.h"
+#include "util/AlarmImagePrivacy.h"
 #include "util/Exec.h"
 #include "util/JsonStructUtil.h"
 #include "util/Keys.h"
@@ -55,7 +56,8 @@ namespace {
     }
 
     bool IsKeyOnlyChannelCompatibilityException(std::string_view key) {
-        return key == cosmo::key::CHANNEL_SOURCE_REPEAT || key == cosmo::key::CHANNEL_SOURCE_FPS;
+        return key == cosmo::key::CHANNEL_SOURCE_REPEAT || key == cosmo::key::CHANNEL_SOURCE_FPS ||
+               util::IsAlarmImagePrivacyKey(key);
     }
 
 }  // namespace
@@ -213,8 +215,9 @@ void CameraTaskUnit::LoadConfig() {
     }
 
     // Unknown historical keys cannot keep overriding the scene merely because an old full snapshot
-    // happened to contain them. The channel source controls remain key-level compatibility
-    // exceptions; retroDirect remains compatible only while a descriptor of that type still exists.
+    // happened to contain them. The channel source controls (videoRepeatCount, fps) and the
+    // built-in image privacy keys remain key-level compatibility exceptions;
+    // retroDirect remains compatible only while a descriptor of that type still exists above.
     if (persistedLoaded) {
         for (const auto& localParam : persisted.params) {
             const bool described =
@@ -521,6 +524,9 @@ util::ErrorEnum CameraTaskUnit::SetParams(const MsgTaskConfig& params) {
 }
 
 util::ErrorEnum CameraTaskUnit::SetChannelParams(const MsgTaskConfig& params) {
+    if (!util::ValidateAlarmImagePrivacyParams(params.params)) {
+        return util::ErrorEnum::InvalidParam;
+    }
     if (HasDuplicateParamKeys(params.params)) {
         LOG_WARN("[{}/{}] Reject channel parameter snapshot with duplicate keys", channel_id_,
                  algorithm_code_);
@@ -581,6 +587,9 @@ util::ErrorEnum CameraTaskUnit::SetParams(std::vector<MsgDynamicKeyValue> params
 }
 
 util::ErrorEnum CameraTaskUnit::SetChannelParams(std::vector<MsgDynamicKeyValue> params) {
+    if (!util::ValidateAlarmImagePrivacyParams(params)) {
+        return util::ErrorEnum::InvalidParam;
+    }
     if (HasDuplicateParamKeys(params)) {
         LOG_WARN("[{}/{}] Reject channel parameter patch with duplicate keys", channel_id_, algorithm_code_);
         return util::ErrorEnum::InvalidParam;
@@ -687,12 +696,13 @@ size_t CameraTaskUnit::MergeChannelParamsLocked(std::vector<MsgDynamicKeyValue> 
             canonicalOverrideKeys.push_back(metaParam.key.ToString());
         }
     }
-    for (const auto sourceKey : {cosmo::key::CHANNEL_SOURCE_REPEAT, cosmo::key::CHANNEL_SOURCE_FPS}) {
-        if (ContainsKey(conf_param_.channelOverrideKeys, sourceKey) &&
+    for (const auto& builtin : {cosmo::key::CHANNEL_SOURCE_REPEAT, cosmo::key::CHANNEL_SOURCE_FPS,
+                                util::kPrivacyEnabled, util::kPrivacyLabels, util::kPrivacyStrength}) {
+        if (ContainsKey(conf_param_.channelOverrideKeys, builtin) &&
             std::none_of(metadata_params_.begin(), metadata_params_.end(), [&](const auto& metaParam) {
-                return std::string_view(metaParam.key.ToRefString()) == sourceKey;
+                return std::string_view(metaParam.key.ToRefString()) == builtin;
             })) {
-            canonicalOverrideKeys.emplace_back(sourceKey);
+            canonicalOverrideKeys.emplace_back(builtin);
         }
     }
     if (!SameStringSnapshot(conf_param_.channelOverrideKeys, canonicalOverrideKeys)) {

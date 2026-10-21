@@ -98,6 +98,8 @@ void to_json(nlohmann::json& j, const CMsgOnEventsProperty& p) {
         j["target"] = p.target;
     if (!p.visualJudgments.empty())
         j["visualJudgments"] = p.visualJudgments;
+    if (!p.vlmResults.empty())
+        j["vlmResults"] = p.vlmResults;
 }
 
 void from_json(const nlohmann::json& j, CMsgOnEventsProperty& p) {
@@ -114,6 +116,8 @@ void from_json(const nlohmann::json& j, CMsgOnEventsProperty& p) {
     JSON_OPT(j, p, countNumber);
     JSON_OPT(j, p, workClothesRecognition);
     JSON_OPT(j, p, visualJudgments);
+    p.vlmResults.clear();
+    JSON_OPT(j, p, vlmResults);
     if (auto it = j.find("target"); it != j.end() && !it->is_null()) {
         p.bHaveTarget = true;
         it->get_to(p.target);

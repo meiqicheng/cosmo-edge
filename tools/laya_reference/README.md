@@ -14,12 +14,11 @@ weights and do not download or activate a model.
 - `image_frontend.py`, `dynamic_frontend.py`, `visual_backend.py`: reference
   preprocessing and multi-question evaluation, with no resident service entrypoint.
 - `bmrt_bridge.py`: binding used for explicitly invoked numeric device replay.
-- `visual_protocol.py`, `laya_shadow_worker.py`: historical reference framing;
-  the latter retains its filename for frozen manifest compatibility but contains
-  only `read_exact`, with no model loader, listener or executable worker.
+- `visual_protocol.py`: bounded JSON parsing, request validation and response
+  helpers for offline references; no socket transport.
 
-The former `managed_worker.py`, `dynamic_worker.py`, standalone shadow worker
-implementation, deployment units and worker lifecycle verifier have been removed.
+The former `managed_worker.py`, `dynamic_worker.py`, `laya_shadow_worker.py`,
+socket framing, deployment units and worker lifecycle verifier have been removed.
 Legacy C++ protocol/audit compatibility and historical alarm display remain;
 production service registration selects the native compiler and inference path.
 

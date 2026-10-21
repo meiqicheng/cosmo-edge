@@ -3,6 +3,8 @@
 
 #include <algorithm>
 
+#include "flow/alarm/TaskAlarm.h"
+#include "flow/alarm/TaskFaceAlarm.h"
 #include "flow/channel/AlgChannel.h"
 #include "flow/common/AlgTaskNativeCapability.h"
 #include "flow/task/TaskBase.h"
@@ -300,6 +302,41 @@ bool TaskBase::ModifyTaskParam(TaskElementPtr task, MsgTaskConfig& taskConfig) {
     if (!task) {
         LOG_ERRO("{}", "Delete Task Failed. Task Is Empty");
         return false;
+    }
+
+    // Freeze detector identities from the whole service graph before applying parameters.
+    // This includes unsupported detection stages: their missing provenance must suppress
+    // private images, including when another branch has already produced an alarm.
+    std::vector<std::string> privacyDetectors;
+    for (const auto& node : task->actions) {
+        if (!node.actionInst) {
+            LOG_ERRO("[{}/{}] Cannot configure privacy topology: action is uninitialized", task->channelId,
+                     task->taskId);
+            return false;
+        }
+        switch (node.actionInst->GetActionType()) {
+            case AlgActionType::AlgActionAiDetect:
+            case AlgActionType::AlgActionDinoDetect:
+            case AlgActionType::AlgActionSam2Segment:
+            case AlgActionType::AlgActionAiPersonFace:
+            case AlgActionType::AlgActionAiOcr: {
+                const auto id = node.actionInst->GetUuid();
+                if (std::find(privacyDetectors.begin(), privacyDetectors.end(), id) ==
+                    privacyDetectors.end()) {
+                    privacyDetectors.push_back(id);
+                }
+                break;
+            }
+            default:
+                break;
+        }
+    }
+    for (const auto& node : task->actions) {
+        if (auto alarm = std::dynamic_pointer_cast<TaskAlarm>(node.actionInst)) {
+            alarm->ConfigurePrivacyDetectors(privacyDetectors);
+        } else if (auto faceAlarm = std::dynamic_pointer_cast<TaskFaceAlarm>(node.actionInst)) {
+            faceAlarm->ConfigurePrivacyDetectors(privacyDetectors);
+        }
     }
 
     // Key: ModifyParam relies on param.keys (e.g. param.faceSet => ["param","faceSet"]).

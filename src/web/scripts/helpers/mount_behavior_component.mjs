@@ -18,6 +18,7 @@ export const i18n = {
 }
 const node = (type, text = '') => ({
   type, text, props: {}, children: [], parent: null, style: {},
+  get childNodes() { return this.children },
   addEventListener() {}, removeEventListener() {},
   getRootNode: () => ({ activeElement: null }),
   setAttribute(key, value) { this.props[key] = value },
@@ -27,7 +28,9 @@ const node = (type, text = '') => ({
 export async function mountComponent(entry, { props = {}, mocks = {}, globals = {}, api = {}, router = {}, route = { query: {} }, message = {}, wrap = component => component } = {}) {
   const { default: component } = await loadBehaviorModule(entry, {
     mocks: { vue: Vue, '@/i18n': i18n, 'element-plus': { ElMessage: () => {} },
-      '@element-plus/icons-vue': Object.fromEntries(['Plus', 'QuestionFilled', 'CircleCheckFilled', 'Search', 'Upload', 'ArrowDown', 'Delete', 'SwitchButton', 'Menu', 'House', 'View', 'Document', 'VideoCamera', 'Connection', 'Cpu', 'Picture', 'Headset', 'Iphone', 'Link', 'Setting', 'DataBoard', 'Monitor', 'Box'].map(name => [name, name])), ...mocks },
+      '@element-plus/icons-vue': Object.fromEntries(['Plus', 'QuestionFilled', 'CircleCheckFilled', 'Search', 'Upload', 'ArrowDown', 'Delete', 'SwitchButton', 'Menu', 'House', 'View', 'Document', 'VideoCamera', 'Connection', 'Cpu', 'Picture', 'Headset', 'Iphone', 'Link', 'Setting', 'DataBoard', 'Monitor', 'Box', 'Sunny', 'Moon', 'Check'].map(name => [name, name])),
+      // The head-script controller is checked separately in appearance_behavior_check.
+      '@/composables/useAppearance': { useAppearance: () => ({ appearance: Vue.ref({ preference: 'light', resolved: 'light', palette: 'modern' }), setAppearance() {}, setPalette() {} }) }, ...mocks },
     globals: { setTimeout, clearTimeout, setInterval, clearInterval, URL, URLSearchParams, ...globals }
   })
   const teleportTargets = new Map()
@@ -46,6 +49,7 @@ export async function mountComponent(entry, { props = {}, mocks = {}, globals = 
   const root = node('root')
   const app = renderer.createApp(wrap(component), props)
   app.config.globalProperties.$API = api
+  app.config.globalProperties.$t = i18n.t
   app.config.globalProperties.$route = route
   app.config.globalProperties.$router = router
   app.config.globalProperties.$message = { error() {}, success() {}, warning() {}, ...message }

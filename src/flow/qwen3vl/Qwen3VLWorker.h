@@ -2,6 +2,7 @@
 
 // Qwen3VLWorker — Qwen3VL vision-language model worker for video stream inference.
 
+#include <atomic>
 #include <list>
 #include <map>
 #include <memory>
@@ -132,6 +133,7 @@ private:
     size_t batch_count_{1};                           // Batch count
     std::vector<Qwen3VLWorkerChannel> channel_list_;  // Channels/tasks using it
     bool detector_inst_init_{false};
+    std::atomic<util::ErrorEnum> initialization_status_{util::ErrorEnum::ActionReady};
     bool local_worker_registered_{false};  // Owned by the processing thread.
     int sign_register_{0};
     Qwen3VLWorkerParam params_;

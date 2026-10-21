@@ -663,6 +663,7 @@ ActionNode PictureVisualAction(const std::string& id = "judge") {
     ActionNode action;
     action.actionId            = PDAQwen3VL_Code;
     action.flowActionId        = id;
+    action.atomicCode          = "laya-fixture";
     action.configObject.params = {Parameter("vlmProvider", "laya_v"), Parameter("keywords", "helmet")};
     return action;
 }
@@ -670,6 +671,7 @@ MsgPTaskDetectPicRecv PictureRequest() {
     MsgPTaskDetectPicRecv request;
     request.imageData  = {0xff, 0xd8, 0xff, 0xd9};
     request.needRetImg = false;
+    request.resultMode = "legacy";
     return request;
 }
 }  // namespace
@@ -899,7 +901,8 @@ TEST_CASE("Laya grouped picture response forwards typed results with event bindi
     auto alg    = std::make_shared<ActionAlg>();
     auto action = PictureVisualAction();
     action.configObject.params.clear();  // Provider is a saved task override.
-    alg->workFlow = {action};
+    alg->algorithmCode = "helmet";
+    alg->workFlow      = {action};
     REQUIRE(service.TaskCreate("helmet-0", alg) == util::ErrorEnum::Success);
     MsgTaskConfig config;
     config.params = {Parameter("vlmProvider", "laya_v"), Parameter("keywords", "helmet")};
@@ -919,7 +922,7 @@ TEST_CASE("Laya grouped picture response forwards typed results with event bindi
     CHECK(response.data.result.empty());
     const auto& record = response.data.visualJudgments[0];
     CHECK(record["event_code"] == "helmet");
-    CHECK(record["algorithm_code"] == "helmet-0");
+    CHECK(record["algorithm_code"] == "helmet");
     CHECK(record["area_id"] == "Area-1");
     CHECK(record["provider"] == "laya_v");
     CHECK(Json(response).get<MsgDetectSend>().data.visualJudgments == response.data.visualJudgments);
@@ -956,9 +959,10 @@ TEST_CASE("Picture publication rejects a stale earlier node and accepts shared r
           "[visual-flow][picture]") {
     FlowFixture f;
     PTaskBase base;
-    auto alg      = std::make_shared<ActionAlg>();
-    alg->workFlow = {PictureVisualAction("first"), PictureVisualAction("later")};
-    auto task     = base.TaskCreate("picture", alg);
+    auto alg                         = std::make_shared<ActionAlg>();
+    alg->workFlow                    = {PictureVisualAction("first"), PictureVisualAction("later")};
+    alg->workFlow[1].preFlowActionId = "first";
+    auto task                        = base.TaskCreate("picture", alg);
     REQUIRE(task);
     class AfterJudgment final : public PActionBase {
     public:
@@ -1019,8 +1023,8 @@ TEST_CASE("Picture requests apply distinct configs atomically and snapshots rema
     REQUIRE(snapshot.wait_for(1s) == std::future_status::ready);
     auto saved = snapshot.get();
     REQUIRE(saved.first);
-    REQUIRE(saved.second.areas.size() == 1);
-    CHECK(saved.second.areas[0].areaId == "left");
+    // Detection overrides belong to the request, not the persisted task defaults.
+    CHECK(saved.second.areas.empty());
     auto second = std::async(std::launch::async, [&] { return execute("right", 0.5); });
     CHECK(second.wait_for(40ms) == std::future_status::timeout);
     f.decisions.block = false;
@@ -1049,8 +1053,9 @@ TEST_CASE("Concurrent grouped picture calls keep request areas and saved questio
     test::ScopedServiceOverride<IAppInfoService> app(info);
     ALLOW_CALL(info, GetPicTaskGroupCount()).RETURN(1);
     PicTaskServiceImpl pictures;
-    auto alg      = std::make_shared<ActionAlg>();
-    alg->workFlow = {PictureVisualAction()};
+    auto alg           = std::make_shared<ActionAlg>();
+    alg->algorithmCode = "helmet";
+    alg->workFlow      = {PictureVisualAction()};
     REQUIRE(pictures.TaskCreate("helmet-0", alg) == util::ErrorEnum::Success);
     REQUIRE(pictures.TaskStart("helmet-0"));
     auto run = [&](float x) {

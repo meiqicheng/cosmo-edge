@@ -1,0 +1,6 @@
+interface:
+  display_name: "CosmoEdge 全量测试"
+  short_description: "逐条执行客户旅程用例，复用设备资源，输出通过与未通过原因并支持断点续测"
+  default_prompt: "使用 $cosmoedge-full-test，按完整用例库测试我指定的 CosmoEdge 设备，并输出逐用例报告。"
+policy:
+  allow_implicit_invocation: true

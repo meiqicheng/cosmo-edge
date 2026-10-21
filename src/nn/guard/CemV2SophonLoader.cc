@@ -3,10 +3,13 @@
 #ifdef COSMO_NN_USE_SOPHON_BACKEND
 
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <new>
 #include <utility>
 
 #include "bmruntime_interface.h"
+#include "nn/guard/HostModelLoadMemory.h"
 
 namespace cosmo::nn {
 namespace {
@@ -76,6 +79,30 @@ namespace {
     }
 
 #ifdef COSMO_HAS_MODEL_GUARD
+    CmgV2Status CheckFrozenLoadMemory(void*, const char* path) {
+        std::error_code error;
+        const auto artifact_bytes = std::filesystem::file_size(path, error);
+        if (error) {
+            return CMG_V2_RESOURCE_IO;
+        }
+        std::ifstream meminfo("/proc/meminfo");
+        const auto available_bytes = ReadHostAvailableMemory(meminfo);
+        if (!available_bytes) {
+            std::fputs("[ModelLoader] Cannot read available host memory; protected load refused\n", stderr);
+            return CMG_V2_RESOURCE_IO;
+        }
+        if (!HasHostModelLoadMemory(artifact_bytes, *available_bytes)) {
+            std::fprintf(stderr,
+                         "[ModelLoader] Insufficient host memory for protected model: "
+                         "artifact_bytes=%llu available_bytes=%llu headroom_bytes=%llu\n",
+                         static_cast<unsigned long long>(artifact_bytes),
+                         static_cast<unsigned long long>(*available_bytes),
+                         static_cast<unsigned long long>(kModelLoadHeadroomBytes));
+            return CMG_V2_RESOURCE_NO_MEMORY;
+        }
+        return CMG_V2_OK;
+    }
+
     CmgV2Status OpenFrozenArtifact(void*, const char* path, CmgV2SourceFormat source_format,
                                    CmgV2Artifact** out_artifact) {
         return CmgV2OpenArtifact(path, source_format, out_artifact);
@@ -141,7 +168,8 @@ const CemV2Api& FrozenCemV2Api() noexcept {
 #ifdef COSMO_HAS_MODEL_GUARD
     static const CemV2Api api{CMG_V2_ABI_MAJOR,        nullptr,
                               OpenFrozenArtifact,      GetFrozenArtifactInfo,
-                              LoadFrozenSophonSegment, CloseFrozenArtifact};
+                              LoadFrozenSophonSegment, CloseFrozenArtifact,
+                              CheckFrozenLoadMemory};
 #else
     static const CemV2Api api{CMG_V2_ABI_MAJOR, nullptr, nullptr, nullptr, nullptr, nullptr};
 #endif
@@ -183,6 +211,12 @@ SophonModelLoadResult LoadCemV2SophonArtifact(const CemV2Api& guard_api, const S
     if (!IsRuntimeDestroyAvailable(runtime_api)) {
         return Failure(SophonModelLoadError::kNativeRuntimeUnavailable, CMG_V2_RESOURCE_INVALID_STATE);
     }
+    if (guard_api.check_load_memory != nullptr) {
+        const auto status = guard_api.check_load_memory(guard_api.context, model_path.c_str());
+        if (status != CMG_V2_OK) {
+            return Failure(SophonModelLoadError::kMemoryAdmissionFailed, status);
+        }
+    }
 
     CmgV2Artifact* raw_artifact = nullptr;
     const CmgV2Status open_status =
@@ -220,6 +254,14 @@ SophonModelLoadResult LoadCemV2SophonArtifact(const CemV2Api& guard_api, const S
     options.flags       = flags;
 
     for (std::uint32_t index = 0; index < info.segment_count; ++index) {
+        // Authentication can take time, and earlier segments can retain memory.
+        // Recheck immediately before the guard's large plaintext allocation.
+        if (guard_api.check_load_memory != nullptr) {
+            const auto status = guard_api.check_load_memory(guard_api.context, model_path.c_str());
+            if (status != CMG_V2_OK) {
+                return Failure(SophonModelLoadError::kMemoryAdmissionFailed, status);
+            }
+        }
         void* raw_runtime             = nullptr;
         const CmgV2Status load_status = guard_api.load_sophon_segment(
             guard_api.context, artifact.Get(), bm_handle, index, &options, &raw_runtime);

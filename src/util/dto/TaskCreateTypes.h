@@ -2,9 +2,11 @@
 
 #pragma once
 
+#include <map>
 #include <nlohmann/json.hpp>
 
 #include "util/dto/TaskAreaTypes.h"
+#include "util/dto/VlmResult.h"
 
 namespace cosmo {
 
@@ -58,6 +60,18 @@ void from_json(const nlohmann::json& j, MsgPTaskCreateRecv& r);
 // Create task response
 struct MsgPTaskCreateSend : public MsgSendHead {};
 
+struct MsgPictureInput {
+    std::string imageBase64;
+    std::string imageUrl;
+    std::string uploadId;
+    std::vector<std::uint8_t> imageData;  // Authenticated HTTP dispatch only; never serialized.
+    bool HasInput() const {
+        return !imageBase64.empty() || !imageUrl.empty() || !uploadId.empty() || !imageData.empty();
+    }
+    friend void to_json(nlohmann::json& j, const MsgPictureInput& v);
+    friend void from_json(const nlohmann::json& j, MsgPictureInput& v);
+};
+
 struct MsgPTaskDetectPicRecv : public MsgRecvHead {
     std::string mvDebug;
     std::string taskId;         // Task ID, globally unique
@@ -67,7 +81,10 @@ struct MsgPTaskDetectPicRecv : public MsgRecvHead {
     std::string uploadId;       // Authenticated staged image ID (HTTP)
     // Populated only by authenticated HTTP dispatch; omitted from JSON.
     std::vector<std::uint8_t> imageData;
-    bool needRetImg{true};  // Need overlay picture
+    MsgPictureInput referenceImage;      // Image B for dual-image workflows; primary input is image A.
+    bool needRetImg{true};               // Need overlay picture
+    std::string resultMode{"business"};  // legacy, business, debug
+    std::string requestId;
 
     MsgTaskConfig taskConfig;
 };
@@ -76,6 +93,15 @@ void to_json(nlohmann::json& j, const MsgPTaskDetectPicRecv& r);
 void from_json(const nlohmann::json& j, MsgPTaskDetectPicRecv& r);
 
 struct MsgPTaskTarget {
+    std::string targetId;
+    std::string sourceNodeId;
+    std::string atomicCode;
+    std::string decision;
+    bool filtered{false};
+    std::string filterReason;
+    std::map<std::string, std::string> rules;
+    std::vector<MsgAiAttribute> attributes;
+    std::vector<std::string> texts;
     bool bHaveLogicResult{false};
     bool bLogicResult{false};
     MsgRectReal box;
@@ -104,7 +130,48 @@ struct MsgPTaskArea {
 
 // Create task response
 struct MsgPTaskDetectPicSend : public MsgSendHead {
+    struct Output {
+        std::string nodeId;
+        std::string name;
+        std::string decision;
+        std::string reason;
+        std::vector<std::string> targetIds;
+        size_t matchedCount{0};
+        friend void to_json(nlohmann::json& j, const Output& v);
+        friend void from_json(const nlohmann::json& j, Output& v);
+    };
+    struct Comparison {
+        std::string nodeId;
+        std::string featureType;
+        std::string decision{"score_only"};
+        bool hasScore{false};
+        double score{0};
+        double threshold{-1};
+        friend void to_json(nlohmann::json& j, const Comparison& v);
+        friend void from_json(const nlohmann::json& j, Comparison& v);
+    };
+    struct NodeResult {
+        std::string nodeId;
+        std::string actionId;
+        std::string status;
+        size_t inputCount{0};
+        size_t outputCount{0};
+        double durationMs{0};
+        std::string imageSide;
+        friend void to_json(nlohmann::json& j, const NodeResult& v);
+        friend void from_json(const nlohmann::json& j, NodeResult& v);
+    };
     struct ResData {
+        int schemaVersion{1};
+        std::string requestId;
+        std::string status;
+        std::string errorNodeId;
+        std::string errorSide;
+        Comparison comparison;
+        std::string referencePicture;
+        std::vector<MsgPTaskTarget> referenceTargetList;
+        std::vector<Output> outputs;
+        std::vector<NodeResult> nodes;
         std::string algorithmCode;
         std::string timestamp;
         std::string fullPicture;
@@ -112,6 +179,7 @@ struct MsgPTaskDetectPicSend : public MsgSendHead {
         std::vector<MsgPTaskTarget> targetList;
         // Typed review evidence; does not set legacy business booleans.
         std::vector<nlohmann::json> visualJudgments;
+        std::vector<VlmResult> vlmResults;
         friend void to_json(nlohmann::json& j, const ResData& v);
         friend void from_json(const nlohmann::json& j, ResData& v);
     } resData;

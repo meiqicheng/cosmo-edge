@@ -3,6 +3,7 @@
 #include "flow/qwen3vl/OpenAiVlmClient.h"
 
 #include <algorithm>
+#include <chrono>
 #include <nlohmann/json.hpp>
 #include <utility>
 
@@ -101,6 +102,7 @@ util::ErrorEnum OpenAiVlmClient::Generate(const OpenAiVlmConfig& config,
         std::max<long>(1L, static_cast<long>((std::max(config.timeout_ms, 1000) + 999) / 1000));
 
     for (size_t i = 0; i < images.size(); ++i) {
+        const auto started = std::chrono::steady_clock::now();
         if (!VideoFrameValid(images[i])) {
             return util::ErrorEnum::InvalidParam;
         }
@@ -153,6 +155,8 @@ util::ErrorEnum OpenAiVlmClient::Generate(const OpenAiVlmConfig& config,
         result.text        = ExtractText(response_json);
         result.frame_index = static_cast<int64_t>(images[i]->GetFrameIndex());
         result.timestamp   = images[i]->GetTimestamp();
+        result.duration_ms =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
         if (result.text.empty()) {
             LOG_WARN("{}empty text in response, response_bytes:{}", kTag, response.body.size());
         }

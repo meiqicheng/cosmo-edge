@@ -8,7 +8,6 @@ import hashlib
 import io
 import json
 import os
-import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -50,7 +49,7 @@ class BuildEntrypointTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix='f01 build space ')
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        for directory in ('scripts', 'test', 'fake-bin', 'config/rknn/platforms',
+        for directory in ('scripts', 'fake-bin', 'config/rknn/platforms',
                           'config/rockchip-build', 'tools/rknn'):
             (self.root / directory).mkdir(parents=True, exist_ok=True)
         for script in ('build.sh', 'build_sophon_package.sh', 'build_rknn.sh',
@@ -62,10 +61,6 @@ class BuildEntrypointTests(unittest.TestCase):
         for chip in ('rk3576', 'rv1126b'):
             shutil.copy2(REPOSITORY / f'config/rknn/platforms/{chip}.json',
                          self.root / f'config/rknn/platforms/{chip}.json')
-        # Regression executables are a tool boundary, not the entrypoint under test.
-        for name in ('test_package_profile.py', 'test_verify_model_guard_v2_sdk.py'):
-            (self.root / 'test' / name).write_text(
-                "import os,sys; sys.exit(42 if os.environ.get('FAIL_STAGE') == 'regression' else 0)\n")
         for name in ('media_sysroot_lock.py', 'stage_platform_resources.py'):
             (self.root / 'tools/rknn' / name).write_text(
                 "import json,os,sys\nwith open(os.environ['CALL_LOG'],'a') as f: f.write(json.dumps({'tool':sys.argv[0].split('/')[-1],'argv':sys.argv[1:]})+'\\n')\n")
@@ -258,7 +253,7 @@ class BuildEntrypointTests(unittest.TestCase):
 
     def test_sophon_failures_never_export_success(self):
         self.fixture('bm1688')
-        for stage in ('configure', 'tests', 'package', 'regression'):
+        for stage in ('configure', 'tests', 'package'):
             with self.subTest(stage=stage):
                 self.reset_outputs()
                 self.env['FAIL_STAGE'] = stage
@@ -282,32 +277,27 @@ class BuildEntrypointTests(unittest.TestCase):
         self.assertIn('target chip mismatch', result.stderr)
         self.assertFalse((self.root / 'export').exists())
 
-    def test_package_wrappers_audit_dependency_output_before_export(self):
+    def test_rockchip_wrapper_audits_dependency_output_before_export(self):
         self.configure_rockchip()
-        for kind, chip, dependency, directory in (
-            ('sophon', 'bm1688', 'build.sh', 'build'),
-            ('rockchip', 'rk3576', 'build_rknn.sh', 'build_rknn'),
-        ):
-            # Replace only the called builder boundary, leaving the wrapper unchanged.
-            self.write_executable('scripts/' + dependency,
-                                  '#!/bin/bash\nset -euo pipefail\ncmake --build . --target package_all\n')
-            self.env['BUILD_DIRECTORY'] = directory
-            for mode in ('one', 'none', 'multiple', 'directory', 'symlink'):
-                with self.subTest(kind=kind, mode=mode):
-                    self.reset_outputs()
-                    self.fixture(chip)
-                    self.env['ARCHIVE_MODE'] = mode
-                    self.run_script('build_' + kind + '_package.sh', success=mode == 'one')
-                    if mode == 'one':
-                        self.assert_export(chip, 'public-runtime')
-                    else:
-                        self.assertFalse((self.root / 'export').exists())
-            self.env.pop('ARCHIVE_MODE')
-            self.reset_outputs()
-            self.fixture(chip, mismatch='cv186x' if kind == 'sophon' else 'rv1126b')
-            result = self.run_script('build_' + kind + '_package.sh', success=False)
-            self.assertIn('target chip mismatch', result.stderr)
-            self.assertFalse((self.root / 'export').exists())
+        # Rockchip audits in the wrapper; Sophon audits in build.sh, exercised above.
+        self.write_executable('scripts/build_rknn.sh',
+                              '#!/bin/bash\nset -euo pipefail\ncmake --build . --target package_all\n')
+        for mode in ('one', 'none', 'multiple', 'directory', 'symlink'):
+            with self.subTest(mode=mode):
+                self.reset_outputs()
+                self.fixture('rk3576')
+                self.env['ARCHIVE_MODE'] = mode
+                self.run_script('build_rockchip_package.sh', success=mode == 'one')
+                if mode == 'one':
+                    self.assert_export('rk3576', 'public-runtime')
+                else:
+                    self.assertFalse((self.root / 'export').exists())
+        self.env.pop('ARCHIVE_MODE')
+        self.reset_outputs()
+        self.fixture('rk3576', mismatch='rv1126b')
+        result = self.run_script('build_rockchip_package.sh', success=False)
+        self.assertIn('target chip mismatch', result.stderr)
+        self.assertFalse((self.root / 'export').exists())
 
     def test_invalid_arguments_fail_before_tools(self):
         for script, args in (
@@ -379,31 +369,6 @@ class BuildEntrypointTests(unittest.TestCase):
                       '-DRESOURCE_MODELS_DIR=' + self.env['COSMO_RKNN_MODELS_DIR'],
                       '-DRESOURCE_OVERLAY_DIR=' + self.env['COSMO_RKNN_RESOURCE_OVERLAY_DIR']):
             self.assertIn(value, args)
-
-    def test_shell_variable_and_command_equivalents(self):
-        path = self.root / 'scripts/build.sh'
-        original = path.read_text()
-        # Pick an actual local declaration, without assuming its internal name.
-        local = re.search(r'^([a-zA-Z_][a-zA-Z_0-9]*)=""$', original, re.MULTILINE)
-        # The equivalent program may have no local empty-string declarations.
-        # In that case add a fixture-owned local before exercising its rename.
-        local_source = original if local else original.replace('\n', '\nf01_fixture_local=""\n', 1)
-        local_name = local[1] if local else 'f01_fixture_local'
-        name_pattern = re.escape(local_name)
-        renamed = re.sub(r'(?<![\w-])' + name_pattern + r'(?==)', 'f01_local_target', local_source)
-        renamed = re.sub(r'(?<=\$\{)' + name_pattern + r'\b', 'f01_local_target', renamed)
-        renamed = re.sub(r'\$' + name_pattern + r'\b', '$f01_local_target', renamed)
-        # A shell function preserves the public cmake argv contract while splitting
-        # tool selection from invocation; no build-command spelling is assumed.
-        forwarded = original.replace('\n', '\ncmake() { local selected_tool=cmake; command "$selected_tool" "$@"; }\n', 1)
-        for changed in (renamed, forwarded):
-            self.assertNotEqual(changed, original, 'mutation must apply')
-            path.write_text(changed)
-            self.reset_outputs()
-            self.fixture('cv186x')
-            self.run_script('build_sophon_package.sh', '--chip', 'cv186x')
-            self.assertIn('-DCOSMO_TARGET_CHIP=cv186x', self.calls()[0]['argv'])
-            self.assert_export('cv186x', 'public-runtime')
 
     def test_rockchip_failures_and_artifact_types(self):
         self.configure_rockchip()

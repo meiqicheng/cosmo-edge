@@ -31,13 +31,10 @@ bool LlmInferServiceImpl::EnsureInit(const std::string& atomic_code) {
         return atomic_code_ == atomic_code;
     }
 
-    // Permanent failure until Reset()
-    if (init_failed_)
-        return false;
-
+    // Failed attempts must not poison this shared service. A later task may
+    // select another model, or retry a model after its resources are repaired.
     if (atomic_code.empty()) {
         LOG_WARN("{}EnsureInit: atomicCode is empty", kTag);
-        init_failed_ = true;
         return false;
     }
 
@@ -45,7 +42,6 @@ bool LlmInferServiceImpl::EnsureInit(const std::string& atomic_code) {
     if (!ServiceRegistry::Instance().Get<IModelPathMapping>().GetModelCfg(atomic_code, cfg_path,
                                                                           model_path)) {
         LOG_WARN("{}EnsureInit: GetModelCfg failed for {}", kTag, atomic_code);
-        init_failed_ = true;
         return false;
     }
 
@@ -59,7 +55,6 @@ bool LlmInferServiceImpl::EnsureInit(const std::string& atomic_code) {
     auto ret  = inst->Init();
     if (ret != cosmo::util::ErrorEnum::Success) {
         LOG_WARN("{}EnsureInit: Init failed, error:{}", kTag, static_cast<int>(ret));
-        init_failed_ = true;
         return false;
     }
 
@@ -165,7 +160,6 @@ void LlmInferServiceImpl::Reset() {
         LOG_INFO("{}Reset: releasing Qwen3VL shared instance. use_count:{}", kTag, inst_.use_count());
         inst_.reset();
     }
-    init_failed_ = false;
     atomic_code_.clear();
     native_identity_.clear();
     LOG_INFO("{}Reset: done, ready for re-initialization", kTag);
@@ -192,7 +186,6 @@ void LlmInferServiceImpl::NotifyWorkerStop() {
         inst_.reset();
         atomic_code_.clear();
         native_identity_.clear();
-        init_failed_ = false;
         LOG_INFO("{}Last model user stopped; released local VLM", kTag);
     }
 }

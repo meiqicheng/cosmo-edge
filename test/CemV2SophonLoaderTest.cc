@@ -180,6 +180,45 @@ namespace {
         return plan;
     }
 
+    TEST_CASE("CEM v2 loader refuses an unsafe host allocation before loading a segment",
+              "[nn][model-guard-v2][memory]") {
+        LoaderMockState state;
+        auto api              = GuardApi(state);
+        api.check_load_memory = [](void*, const char*) { return CMG_V2_RESOURCE_NO_MEMORY; };
+        auto result           = LoadCemV2SophonArtifact(api, RuntimeApi(state), "/models/protected/model.nn",
+                                                        CMG_V2_SOURCE_COSMO_NN_V1, MockBmHandle(), 0);
+        CHECK_FALSE(result.IsSuccess());
+        CHECK(result.IsOutOfMemory());
+        CHECK(state.loaded_segments.empty());
+        CHECK(state.close_calls == state.open_calls);
+    }
+
+    TEST_CASE("CEM v2 loader rechecks RAM and releases partial model loads", "[nn][model-guard-v2][memory]") {
+        LoaderMockState state;
+        state.segment_count = 2;
+        auto api            = GuardApi(state);
+        SECTION("memory exhausted during authentication") {
+            api.check_load_memory = [](void* context, const char*) {
+                return static_cast<LoaderMockState*>(context)->open_calls == 0 ? CMG_V2_OK
+                                                                               : CMG_V2_RESOURCE_NO_MEMORY;
+            };
+        }
+        SECTION("memory exhausted after the first segment") {
+            api.check_load_memory = [](void* context, const char*) {
+                return static_cast<LoaderMockState*>(context)->loaded_segments.empty()
+                           ? CMG_V2_OK
+                           : CMG_V2_RESOURCE_NO_MEMORY;
+            };
+        }
+        auto result = LoadCemV2SophonArtifact(api, RuntimeApi(state), "/models/protected/model.nn",
+                                              CMG_V2_SOURCE_COSMO_NN_V1, MockBmHandle(), 0);
+        REQUIRE(result.IsOutOfMemory());
+        CHECK(result.runtimes.empty());
+        CHECK(state.loaded_segments.size() < 2);
+        CHECK(state.destroyed_runtimes.size() == state.loaded_segments.size());
+        CHECK(state.close_calls == 1);
+    }
+
     TEST_CASE("CEM v2 loader keeps one artifact handle through 31 segments",
               "[nn][model-guard-v2][ownership]") {
         for (const std::uint32_t segment_count : {1U, 2U, 8U, 31U}) {

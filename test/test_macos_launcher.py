@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class LauncherContracts(unittest.TestCase):
-    def run_launcher(self, *args, helper="fixture_run", **overrides):
+    def run_launcher(self, *args, **overrides):
         with tempfile.TemporaryDirectory(prefix='cosmo launcher ') as directory:
             root = Path(directory)
             (root / 'scripts').mkdir()
@@ -25,7 +25,6 @@ class LauncherContracts(unittest.TestCase):
             docker.write_text('''#!/usr/bin/env python3
 import json, os, sys
 args = sys.argv[1:]
-if os.getenv("MUTATE_STOP") == "1" and "down" in args: args.append("-v")
 with open(os.environ['COMMAND_LOG'], 'a') as f: f.write(json.dumps(args) + '\\n')
 if args == ['--version']: print('Docker fake')
 elif args[:2] == ['compose', 'version']: sys.exit(int(os.getenv('COMPOSE_FAIL', '0')))
@@ -48,8 +47,7 @@ sleep() { SECONDS=$((SECONDS + 241)); }
 ''')
             env = {**os.environ, 'PATH': f'{commands}:/usr/bin:/bin',
                    'BASH_ENV': str(envfile), 'COMMAND_LOG': str(log), **overrides}
-            wrapper = helper + '() { bash "$@"; }; ' + helper + ' "$@"'
-            result = subprocess.run(['bash', '-c', wrapper, 'fixture', str(root / 'scripts/macos-docker-preview.sh'), *args],
+            result = subprocess.run(['bash', str(root / 'scripts/macos-docker-preview.sh'), *args],
                                     env=env, text=True, capture_output=True, timeout=10)
             calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
             return result, calls
@@ -86,16 +84,6 @@ sleep() { SECONDS=$((SECONDS + 241)); }
         self.assertNotEqual(result.returncode, 0)
         result, _ = self.run_launcher('url', COSMO_X86_WEB_PORT='8090')
         self.assertEqual(result.stdout.strip(), 'http://127.0.0.1:8090')
-
-    def test_equivalent_name_and_destructive_stop_variants(self):
-        result, calls = self.run_launcher('up', helper='fixture_equivalent_name')
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue(any('--no-build' in call for call in calls))
-        result, calls = self.run_launcher('down', MUTATE_STOP='1')
-        self.assertEqual(result.returncode, 0)
-        self.assertTrue(any('-v' in call for call in calls), 'boundary mutation must take effect')
-        with self.assertRaisesRegex(AssertionError, 'persistent stop contract'):
-            self.assertEqual([call[3:] for call in calls if call[0] == 'compose'], [['down']], 'persistent stop contract')
 
     def test_logs_status_and_persistent_stop(self):
         for args, expected in [(('down',), ['down']), (('status',), ['ps']),

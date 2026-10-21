@@ -1,6 +1,6 @@
 ---
 title: Image Detection API Integration
-description: Use the HTTP API to sign in, create an image-analysis task, upload an image, run face or general object detection, and parse structured results.
+description: Upload images and execute region-free workflows, library matching, and two-image comparison, then parse decisions, matching samples, and similarity scores.
 prev:
   text: API Overview
   link: /en/reference/api
@@ -11,7 +11,7 @@ next:
 
 # Image Detection API Integration
 
-This guide is for applications that upload an image and synchronously receive detection results. Face detection, general object detection, landmarks, and segmentation use the same image-analysis APIs. The algorithm Pipeline configured on the target device determines the actual capability.
+This guide is for applications that upload images and synchronously receive analysis results. Detection, classification, landmarks, segmentation, OCR, VLM, library matching, and pair comparison share the image-analysis APIs. The configured scenario determines the capability. See [Image Analysis and Comparison](../guide/image-analysis.md) for console steps and [Image Analysis Fields](api-fields.md#image-analysis-fields) for a field reference.
 
 ## Prerequisites
 
@@ -118,7 +118,7 @@ mtk: <MTK>
 }
 ```
 
-`algorithmUsage: "2"` selects image-analysis algorithms. Leave `algorithmName` empty to let the client choose, or use the name configured for this deployment.
+`algorithmUsage: "2"` selects image-analysis algorithms; `"1"` selects video analysis. The scenario list's data-source-type filter uses this field; an empty value removes the type restriction. Leave `algorithmName` empty to let the client choose, or use the name configured for this deployment.
 
 ### Response
 
@@ -170,7 +170,7 @@ mtk: <MTK>
 | `algorithmUpdateTime` | Yes | Current 13-digit millisecond timestamp compatibility field; the current task loads the local algorithm by `algorithmCode` |
 | `taskId` | Recommended | Globally unique client-generated ID; defaults to `algorithmCode` when omitted |
 | `mvDebug` | Recommended | The current image-analysis client uses `Cosmo-Debug` |
-| `taskConfig` | No | Per-task parameter, region, and face-gallery overrides |
+| `taskConfig` | No | Per-task parameters and library bindings; regions are unsupported |
 
 Production integrations should provide a unique `taskId`. If multiple clients omit it, they share the default task, and one client may affect another by cancelling that task.
 
@@ -281,7 +281,9 @@ mtk: <MTK>
 {
   "taskId": "<TASK_ID>",
   "algorithmCode": "<ALGORITHM_CODE>",
-  "uploadId": "<UPLOAD_ID>"
+  "uploadId": "<UPLOAD_ID>",
+  "resultMode": "business",
+  "needRetImg": false
 }
 ```
 
@@ -311,41 +313,88 @@ or:
 
 Choose exactly one of `uploadId`, `imageBase64`, and `imageUrl`. JSON request bodies are limited to 1 MB by default, so production integrations and high-resolution images should use `uploadId`. With `imageUrl`, the URL must be reachable from the CosmoEdge device.
 
-## 6. Parse Detection Results
+### Two-image face / workwear comparison
 
-### Example Response
+Create a picture task using built-in scene `93000002` (two-image face comparison) or `93000058` (two-image workwear comparison), then send two inputs to the same endpoint. The primary input is image A; `referenceImage` is image B. Each side accepts exactly one of `uploadId`, `imageBase64`, or `imageUrl`. Both upload IDs must belong to the authenticated user and are consumed once.
+
+```json
+{
+  "taskId": "pair-example",
+  "algorithmCode": "93000002",
+  "uploadId": "<IMAGE_A_UPLOAD_ID>",
+  "referenceImage": { "uploadId": "<IMAGE_B_UPLOAD_ID>" },
+  "resultMode": "business",
+  "needRetImg": true,
+  "taskConfig": { "params": [{ "key": "pair.threshold", "value": "80" }] }
+}
+```
+
+Both images use the same models and parameters for detection, filtering, landmarks (faces), and feature extraction. Each image must contain exactly one eligible target. Pair workflows need no library and do not support regions, branches, multi-target pairing, or `legacy` results. Existing single-image and library-comparison requests remain compatible.
+
+Successful responses always include `resData.comparison.score` on a 0–100 scale, even below the threshold. An empty `pair.threshold` requests scores only: `decision` is `score_only` and `threshold` is omitted. Omitting the parameter preserves scene defaults; an explicit empty string clears a stored threshold. When a threshold is configured, scores greater than or equal to it produce `matched`; lower scores produce `not_matched`.
+
+```json
+{
+  "nodeId": "comparison-node",
+  "featureType": "face",
+  "decision": "matched",
+  "score": 87.25,
+  "threshold": 80
+}
+```
+
+Image A uses `targetList` and `fullPicture`; image B uses `referenceTargetList` and `referencePicture`. Target boxes contain pixel coordinates in their respective original images, suitable for displaying crops. `needRetImg: false` skips result image generation. In `debug` mode, node traces include `imageSide` to distinguish A, B, and the comparison of both.
+
+No eligible target, multiple targets, invalid features, invalid score calibration, and decode failures are execution errors. The response has a failed `resCode`, a specific reason in `resMsg`, and `resData.errorSide` of `A`, `B`, or `both`; no successful `comparison.score` is returned. A valid score of zero is a successful comparison and is distinct from an error.
+
+Scores represent calibrated model similarity, not identity probability. The workwear scene reuses body appearance features; its score is not the probability of wearing the same uniform.
+
+## 6. Parse Workflow Results
+
+The default `resultMode: "business"` executes the configured models, filters, rules and output nodes, returning `schemaVersion: 2`. Image tasks have no regions. Nonempty `taskConfig.areas` or `shieldedAreas` are rejected; the new response has no `areaList`.
 
 ```json
 {
   "resCode": 1,
   "resMsg": [],
   "resData": {
-    "algorithmCode": "7602",
-    "timestamp": "1787068800123",
-    "fullPicture": "data:image/jpeg;base64,/9j/4AAQ...",
-    "areaList": [
+    "schemaVersion": 2,
+    "requestId": "image-001",
+    "algorithmCode": "<ALGORITHM_CODE>",
+    "status": "completed",
+    "timestamp": "1770000000000",
+    "fullPicture": "",
+    "outputs": [
       {
-        "areaId": "-1",
-        "areaName": "default",
-        "bDetected": false,
-        "targetList": [
+        "nodeId": "output",
+        "name": "Helmet check",
+        "decision": "matched",
+        "targetIds": [
+          "detect:0"
+        ],
+        "matchedCount": 1
+      }
+    ],
+    "targetList": [
+      {
+        "targetId": "detect:0",
+        "sourceNodeId": "detect",
+        "atomicCode": "<MODEL_CODE>",
+        "decision": "matched",
+        "rules": {
+          "rule": "matched"
+        },
+        "filtered": false,
+        "box": {
+          "x": 120,
+          "y": 80,
+          "width": 160,
+          "height": 180
+        },
+        "confidence": [
           {
-            "box": {
-              "x": 120,
-              "y": 80,
-              "width": 160,
-              "height": 180
-            },
-            "confidence": [
-              {
-                "label": "face",
-                "confidence": 0.96
-              }
-            ],
-            "landmark": [
-              {"xRatio": 158.0, "yRatio": 132.0},
-              {"xRatio": 232.0, "yRatio": 131.0}
-            ]
+            "label": "person",
+            "confidence": 0.96
           }
         ]
       }
@@ -354,40 +403,105 @@ Choose exactly one of `uploadId`, `imageBase64`, and `imageUrl`. JSON request bo
 }
 ```
 
-The current HTTP response exposes targets at:
+Read each decision in `resData.outputs[]` and resolve its `targetIds` against `resData.targetList[]`. IDs remain stable through forks; `rules` preserves decisions by node ID. `output.targets` defaults to `matched`; `all` includes all unfiltered targets. A detector without a rule matches when it finds targets. An image rule can match with zero targets, for example a count-equals-zero condition.
 
-```text
-resData.areaList[].targetList[]
-```
-
-Merge the `targetList` values from all areas to obtain the targets for the whole image. Do not depend on a top-level `resData.targetList`, which is not emitted by the current JSON response.
-
-### Target Fields
-
-| Field | Description |
+| Field | Meaning |
 | --- | --- |
-| `box.x`, `box.y` | Pixel coordinates of the bounding-box top-left corner |
-| `box.width`, `box.height` | Bounding-box width and height in pixels |
-| `confidence[]` | Detector and downstream classifier outputs; each item contains `label` and `confidence` |
-| `bLogicResult` | May appear when the Pipeline has a logic node; indicates whether the target meets its condition |
-| `landmark[]` | Landmark output; current compatibility keys are `xRatio` and `yRatio`, but the values are used as pixel coordinates |
-| `maskPolygon[]` | Segmentation contour using normalized `xRatio` and `yRatio` values |
-| `featurePreview` | Debug preview of the first feature-vector values, not a complete business-comparison feature |
+| `decision` | `matched`, `not_matched`, or `unknown` (insufficient evidence); targets can also be `not_evaluated`, and pair results without a threshold use `score_only` |
+| `box` | Pixel `x/y/width/height` |
+| `confidence[]` | Detector and classifier labels and confidence |
+| `attributes[]`, `texts[]` | Attribute classifications and OCR text |
+| `matchInfo` | Library scores, group and match information; an empty library is unknown, not an unmatched result |
+| `outputs[].reason` | Unknown-decision reason: `no_comparable_samples` or `insufficient_evidence`; omitted for known decisions |
+| `landmark[]` | Pixel coordinates using the compatibility keys `xRatio/yRatio` |
+| `maskPolygon[]` | Normalized `xRatio/yRatio` segmentation contours |
+| `rules` | Decisions by node ID; missing evidence stays unknown even under NOT |
+| `errorNodeId` | Failed node; check top-level `resCode` as well. Failure clears partial business outputs |
 
-Count faces from the target list, for example:
+`resultMode: "debug"` additionally returns node timing, input/output counts, skipped nodes, filtered targets and unmatched targets. `filtered` and `filterReason` explain filtering. Use output `targetIds`, rather than all debug targets, for business decisions.
 
-```javascript
-const targets = (response.resData.areaList || [])
-  .flatMap(area => area.targetList || [])
-const faces = targets.filter(target =>
-  (target.confidence || []).some(item => item.label === 'face')
-)
-console.log('face count:', faces.length)
+Explicit `resultMode: "legacy"` temporarily preserves the old `areaList` response wrapper, while running the same region-free workflow. New clients should use business mode.
+
+Set `needRetImg: false` to disable the annotated image. Otherwise `fullPicture` may be a file-service URL or `data:image/jpeg;base64,...`; only selected output targets are drawn.
+
+### Library Match Details and Business Decisions
+
+Face and workwear comparisons return evidence in `targetList[].matchInfo`. This workwear match is an illustrative protocol example:
+
+```json
+{
+  "setPicCount": 3,
+  "matched": true,
+  "matchDegree": 92.6,
+  "matchId": "sample-001",
+  "name": "Example workwear sample",
+  "groupId": "library-001",
+  "groupName": "Example workwear library",
+  "baseImageUrl": "/sample-library-image.jpg",
+  "personId": "sample-001"
+}
 ```
 
-Do not use only `area.bDetected` to determine whether a face was found. That field represents an area-logic trigger. A pure detector Pipeline without a logic node may return targets while the field is `false`.
+| Field | Meaning |
+| --- | --- |
+| `setPicCount` | Samples that participated in valid comparisons; zero means no usable comparison evidence, not the number of thumbnails in the library |
+| `matched` | Whether the library matched, separate from an inverted business rule |
+| `matchDegree` | Best valid comparison score on the service's 0–100 scale; not detection confidence or probability |
+| `matchId` | Best candidate sample ID |
+| `name` | Enrolled person's name for faces, or sample image name for workwear |
+| `groupId`, `groupName` | Library ID and name for the best candidate |
+| `baseImageUrl` | Library reference image address, distinct from the current input's result image `fullPicture` |
+| `personId`, `personCode` | Person/sample ID and personnel code when available |
 
-`fullPicture` is the full image with detection overlays. It may be a URL when a file service is configured, or a `data:image/jpeg;base64,...` value when no file service is available. The current JSON protocol has no stable switch to disable this field, so clients should accept both forms and ignore it when it is not needed.
+Empty `name`, `baseImageUrl`, `personId`, and `personCode` fields are omitted. Interpret scores only when `setPicCount > 0`. For valid comparisons below the match condition, debug mode or `output.targets=all` can expose best-candidate details on returned targets; do not label such a candidate as matched.
+
+For example, no-workwear detection uses `match.mode=unmatched`. A workwear-library match has `matchInfo.matched=true` but business `decision=not_matched`. Business responses still retain that library-match target's evidence even when its ID is absent from output `targetIds`. Read `outputs[].matchedCount` and `targetIds` for business selection instead of counting `targetList` entries.
+
+### Unknown Decisions versus Failures
+
+`resCode=1` and `status=completed` mean execution completed; a business output can still be `unknown`:
+
+| Output or error | Meaning |
+| --- | --- |
+| `decision=unknown`, `reason=no_comparable_samples` | A library binding was supplied but no sample produced a valid comparison; inspect empty libraries, invalid/incompatible features, and model score configuration |
+| `decision=unknown`, `reason=insufficient_evidence` | A rule lacks other required evidence; inspect debug traces, filtering reasons, and rule inputs |
+| `decision=not_matched` | The business rule was not satisfied; interpret it according to its matched/unmatched mode |
+| `resCode=0` | Configuration or execution failed; inspect `resMsg[]` and any `errorNodeId` or `errorSide` |
+
+Missing library selection returns `api.error.FaceLibraryNotConfigured` or `api.error.BodyLibraryNotConfigured`, rather than a generic invalid-parameter message. This differs from selecting a library with no usable samples. Negation preserves `unknown`, which cannot establish that a person is not wearing workwear.
+
+### Parameters and Image Components
+
+Requests accept `taskConfig.params: [{"key":"aiParam.person.confidence","value":"0.6"}]`. Precedence is model defaults → node configuration → scenario defaults → task creation parameters → request overrides. Overrides never persist into another request. `atomicCode` and `pair.featureType` come from node configuration; requests cannot switch the model or feature type.
+
+Components include detection, target/whole-image classification, landmarks, features, OCR, DINO, SAM, whole-image/target-crop VLM, target filtering, target rules, image rules, conditional branches, library matching and result output. Crops use model detection boxes, not user-defined regions. Filtering supports labels, confidence, pixel area and shortest side; motion, region and duration conditions are unavailable.
+
+Rules may reference `aiOut.<label>.threshold`, `aiOut.attr.<category>`, `aiParam.<label>.confidence`, `picture.count`, `picture.matchedCount`, `match.score`, `match.matched`, `ocr.text`, and `node.<flowActionId>`. Referenced nodes must be ancestors on the current branch. Conditional branches execute their descendants only when matched; unknown and false skip them. Graphs support single parents and forks, but not joins.
+
+VLM uses `inputType=image` (default) or `targets`; classification defaults to `targets` and supports `image`. Library matching is separate from feature extraction: select `match.libraryType=face/body` and `match.mode=matched/unmatched`; bind comma-separated library IDs with `param.faceSet` or `param.workClothesSet`. `param.limitScore` ranges from 0 to 100. Required models and libraries must exist on the device.
+
+For example, override the workwear libraries and threshold:
+
+```json
+{
+  "taskConfig": {
+    "params": [
+      { "key": "param.workClothesSet", "value": "<LIBRARY_ID_1>,<LIBRARY_ID_2>" },
+      { "key": "param.limitScore", "value": "70" }
+    ]
+  }
+}
+```
+
+Face scenarios use `param.faceSet`. Current library comparison requires the best score to be strictly greater than its effective threshold. A positive `param.limitScore` overrides the library threshold; zero uses the threshold of the best candidate's library. Pair comparison instead uses `pair.threshold`, accepts equality, and supports an empty value for scores only. Keep these parameters distinct.
+
+### Video-to-image Templates
+
+Run `python tools/generate_picture_templates.py` to generate templates for the three platforms, or pass `--check` to verify reproducibility. Original video templates are retained. Each resource directory contains `layout/picture-template-conversions.json`, listing source IDs, image IDs and exclusions.
+
+The generator currently supplies 13 single-image and two pair templates under `algorithm_template/`, plus same-ID built-in scenarios under `algorithm/`, packaged with the resources. See the [scenario list](../guide/image-analysis.md#built-in-templates-and-scenarios). Query `/gtw/cwai/algorithm/page` for the scenarios actually available on a device.
+
+Compatible templates remove decoding, tracking and sensitivity history, replacing video event output with image result output. Their meaning is a single-frame state, not a sustained video event. Region, tripwire, absence and historical counting workflows are excluded. Template availability does not imply that the corresponding chip-specific model is installed or device-validated. Image result output does not automatically create video events or send external notifications.
 
 ## 7. Cancel the Task
 
@@ -466,6 +580,12 @@ Common failures:
 | `messageKey` or error | Likely cause | Recommended handling |
 | --- | --- | --- |
 | `api.error.ActionAlgLoadFailed` | `algorithmCode` does not exist or its resources are unavailable | Query image-analysis algorithms again and check model status |
+| `api.error.FaceLibraryNotConfigured` / `api.error.BodyLibraryNotConfigured` | No corresponding library is bound | Select face/workwear groups using `param.faceSet` / `param.workClothesSet` respectively |
+| `api.error.PicturePairInputRequired` | Image A or B is missing from a pair request | Supply one image input on each side |
+| `api.error.PicturePairUnexpectedReference` | A single-image scenario received image B | Select a pair scenario or remove `referenceImage` |
+| `api.error.PicturePairNoTarget` / `api.error.PicturePairMultipleTargets` | One side does not have exactly one eligible target | Use `errorSide` to check the image and detection/filter settings |
+| `api.error.PicturePairInvalidFeature` | Empty, invalid, or mismatched feature dimensions | Check the feature model and input |
+| `api.error.PicturePairInvalidCalibration` | Invalid model score configuration | Correct the feature model's score calibration |
 | `api.error.NotCreated` | Task was not created, was cancelled, or uses a different `taskId` | Call `PTaskCreate` again with matching values |
 | `api.error.TaskCreateFailed` | Model or Pipeline initialization failed | Inspect model status and device logs; do not retry without bounds |
 | `api.error.InvalidParam` | Conflicting image sources or invalid fields | Send exactly one image source and verify field types |

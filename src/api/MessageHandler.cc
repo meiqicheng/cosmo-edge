@@ -105,14 +105,16 @@ MsgOperateNodeSend MessageHandler::Handle(MsgOperateNodeRecv&& data, std::error_
 // Picture detection interface
 MsgPTaskDetectPicSend MessageHandler::Handle(MsgPTaskDetectPicRecv&& data, std::error_condition& errc) {
     MsgPTaskDetectPicSend retData{};
+    retData.resData.schemaVersion = data.resultMode == "legacy" ? 1 : 2;
+    retData.resData.requestId     = data.requestId;
+    retData.resData.status        = "failed";
     retData.resData.algorithmCode = data.algorithmCode;
     retData.resData.timestamp     = std::to_string(util::GetMilliseconds());
     if (data.taskId.empty()) {
         data.taskId = data.algorithmCode;
     }
-    // DetectPic applies request configuration and executes under one task lock.
-    // A separate SetTaskParam call here would allow another request to replace
-    // the regions between configuration and inference.
+    // DetectPic binds transient request configuration to inference under one task lease.
+    // Do not persist per-request overrides through a separate SetTaskParam call.
     errc = service::ServiceRegistry::Instance().Get<service::IPicTaskDetect>().DetectPic(data.taskId, data,
                                                                                          retData);
     return retData;
@@ -121,20 +123,30 @@ MsgPTaskDetectPicSend MessageHandler::Handle(MsgPTaskDetectPicRecv&& data, std::
 MsgPTaskDetectPicSend MessageHandler::Handle(MsgPTaskDetectPicRecv&& data,
                                              const RequestDispatchContext& context,
                                              std::error_condition& errc) {
-    if (data.uploadId.empty()) {
-        return Handle(std::move(data), errc);
-    }
-    if (!data.imageBase64.empty() || !data.imageUrl.empty()) {
+    const auto& peer   = data.referenceImage;
+    const bool stagedA = !data.uploadId.empty(), stagedB = !peer.uploadId.empty();
+    if ((stagedA && (!data.imageBase64.empty() || !data.imageUrl.empty())) ||
+        (stagedB && (!peer.imageBase64.empty() || !peer.imageUrl.empty()))) {
         errc = util::ErrorEnum::InvalidParam;
         return {};
     }
-
-    std::vector<std::vector<std::uint8_t>> images;
-    errc = detail::ConsumeStagedImages(context, {data.uploadId}, images);
-    if (errc != util::ErrorEnum::Success) {
-        return {};
+    if (stagedA || stagedB) {
+        std::vector<std::string> ids;
+        if (stagedA)
+            ids.push_back(data.uploadId);
+        if (stagedB)
+            ids.push_back(peer.uploadId);
+        std::vector<std::vector<std::uint8_t>> images;
+        // Consume both leases together under the authenticated owner; never consume just half a pair.
+        errc = detail::ConsumeStagedImages(context, ids, images);
+        if (errc != util::ErrorEnum::Success)
+            return {};
+        size_t index = 0;
+        if (stagedA)
+            data.imageData = std::move(images[index++]);
+        if (stagedB)
+            data.referenceImage.imageData = std::move(images[index]);
     }
-    data.imageData = std::move(images.front());
     return Handle(std::move(data), errc);
 }
 

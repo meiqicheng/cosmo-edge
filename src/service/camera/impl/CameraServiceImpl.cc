@@ -129,10 +129,26 @@ namespace {
     }
 
     // Lightweight URL connectivity check (TCP socket probe).
-    bool CheckUrlConnectivity(const std::string& inputUrl) {
-        const std::string urlStr = util::NormalizeRtspUrl(inputUrl);
-        if (urlStr.empty())
+    bool CheckUrlConnectivity(const std::string& inputUrl, std::string& reason) {
+        reason               = "connection_failed";
+        const auto connected = [&] {
+            reason.clear();
+            return true;
+        };
+        const auto socketFailure = [&](int error) {
+            if (error == ECONNREFUSED)
+                reason = "connection_refused";
+            else if (error == ETIMEDOUT)
+                reason = "connection_timeout";
+            else if (error == ENETUNREACH || error == EHOSTUNREACH)
+                reason = "network_unreachable";
             return false;
+        };
+        const std::string urlStr = util::NormalizeRtspUrl(inputUrl);
+        if (urlStr.empty()) {
+            reason = "invalid_url";
+            return false;
+        }
 
         if (urlStr.find("usb://") == 0) {
             auto startPos        = 6;
@@ -145,8 +161,9 @@ namespace {
             }
             std::string devPath = "/dev/video" + indexStr;
             if (::access(devPath.c_str(), F_OK) == 0) {
-                return true;
+                return connected();
             }
+            reason = "device_unavailable";
             return false;
         }
 
@@ -154,8 +171,9 @@ namespace {
         if (urlStr.find("rtsp://") == std::string::npos && urlStr.find("http://") == std::string::npos &&
             urlStr.find("https://") == std::string::npos) {
             if (::access(urlStr.c_str(), F_OK) == 0) {
-                return true;
+                return connected();
             }
+            reason = "file_not_found";
             return false;
         }
 
@@ -194,8 +212,10 @@ namespace {
             }
         }
 
-        if (ip.empty() || port <= 0)
+        if (ip.empty() || port <= 0 || port > 65535) {
+            reason = "invalid_url";
             return false;
+        }
 
         // RAII wrapper: ensures socket fd is closed on all exit paths
         struct ScopedSocket {
@@ -219,6 +239,7 @@ namespace {
         serv_addr.sin_port   = htons(port);
 
         if (inet_pton(AF_INET, ip.c_str(), &serv_addr.sin_addr) <= 0) {
+            reason = "unsupported_host";
             return false;
         }
 
@@ -228,7 +249,7 @@ namespace {
 
         int res = connect(sock.fd, reinterpret_cast<struct sockaddr*>(&serv_addr), sizeof(serv_addr));
         if (res == 0) {
-            return true;
+            return connected();
         }
         if (res < 0 && errno == EINPROGRESS) {
             struct timeval tv;
@@ -240,15 +261,20 @@ namespace {
 
             res = select(sock.fd + 1, nullptr, &fdset, nullptr, &tv);
             if (res > 0 && FD_ISSET(sock.fd, &fdset)) {
-                int lon;
+                int lon          = 0;
                 socklen_t lonLen = sizeof(int);
-                getsockopt(sock.fd, SOL_SOCKET, SO_ERROR, static_cast<void*>(&lon), &lonLen);
+                if (getsockopt(sock.fd, SOL_SOCKET, SO_ERROR, static_cast<void*>(&lon), &lonLen) != 0)
+                    return false;
                 if (lon == 0) {
-                    return true;
+                    return connected();
                 }
+                return socketFailure(lon);
             }
+            if (res == 0)
+                reason = "connection_timeout";
+            return false;
         }
-        return false;
+        return socketFailure(errno);
     }
 
 }  // namespace
@@ -276,18 +302,6 @@ bool CameraServiceImpl::ResolveSourceUrl(MsgCameraType sourceType, const std::st
     logicalUrl = util::NormalizeRtspUrl(source);
     mediaUrl   = logicalUrl;
     return true;
-}
-
-bool CameraServiceImpl::IsCameraSourceOnline(const CameraEntityPtr& camera) {
-    if (static_cast<MsgCameraType>(camera->channelType) == MsgCameraType::MsgCameraTypeOnvif) {
-        MsgCameraAttr attr;
-        return ServiceRegistry::Instance().Get<ITaskChannel>().GetChannelAttr(camera->videoChannelId, attr) &&
-               attr.channelStatus == ChannelStatus::ChannelStatusOnline;
-    }
-    if (static_cast<MsgCameraType>(camera->channelType) == MsgCameraType::MsgCameraTypeGb28181) {
-        return ServiceRegistry::Instance().Get<IGb28181SourceService>().IsStreamActive(camera->url);
-    }
-    return CheckUrlConnectivity(camera->channel_url_);
 }
 
 // ============================================================
@@ -753,15 +767,38 @@ void CameraServiceImpl::ProbeCameraOnlineStatus(const CameraEntityPtr& camera) {
         return;
     }
 
-    bool isConnected = IsCameraSourceOnline(camera);
-    camera->probed_status_.store(isConnected ? ChannelStatus::ChannelStatusOnline
-                                             : ChannelStatus::ChannelStatusOffline);
+    ProbeCameraOnlineStatusNow(camera);
 }
 
 void CameraServiceImpl::ProbeCameraOnlineStatusNow(const CameraEntityPtr& camera) {
-    bool isConnected = IsCameraSourceOnline(camera);
-    camera->probed_status_.store(isConnected ? ChannelStatus::ChannelStatusOnline
-                                             : ChannelStatus::ChannelStatusOffline);
+    std::string source, logical_source, channel_id;
+    MsgCameraType type;
+    {
+        std::shared_lock<std::shared_mutex> lock(mtx_);
+        source         = camera->channel_url_;
+        logical_source = camera->url;
+        channel_id     = camera->videoChannelId;
+        type           = static_cast<MsgCameraType>(camera->channelType);
+    }
+    std::string reason;
+    bool connected = false;
+    if (type == MsgCameraType::MsgCameraTypeOnvif) {
+        MsgCameraAttr attr;
+        connected = ServiceRegistry::Instance().Get<ITaskChannel>().GetChannelAttr(channel_id, attr) &&
+                    attr.channelStatus == ChannelStatus::ChannelStatusOnline;
+    } else if (type == MsgCameraType::MsgCameraTypeGb28181) {
+        connected = ServiceRegistry::Instance().Get<IGb28181SourceService>().IsStreamActive(logical_source);
+    } else {
+        connected = CheckUrlConnectivity(source, reason);
+    }
+    // A slow probe for an old address must not overwrite a newer edit's result.
+    std::shared_lock<std::shared_mutex> lock(mtx_);
+    if (source != camera->channel_url_ || logical_source != camera->url)
+        return;
+    std::lock_guard<std::mutex> attr_lock(camera->attr_mtx_);
+    camera->probed_error_ = std::move(reason);
+    camera->probed_status_.store(connected ? ChannelStatus::ChannelStatusOnline
+                                           : ChannelStatus::ChannelStatusOffline);
 }
 
 // ============================================================

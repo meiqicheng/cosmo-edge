@@ -240,6 +240,21 @@ void Qwen3VLWorker::ProcessInferResults(std::vector<InferEntry>& entries,
             unit.reportType    = OnEventsReportType::Trigger;
             unit.bLlmPrejudged = true;
             unit.ocrString     = kw;
+            if (!visual) {
+                VlmResult answer;
+                answer.nodeId   = unit.flowActionId;
+                answer.targetId = unit.strTrackId;
+                answer.modelCode =
+                    task_params.open_ai_config.Enabled() ? task_params.open_ai_config.model : alg_code_;
+                answer.question   = kw;
+                answer.answer     = result.text;
+                answer.decision   = "matched";
+                answer.durationMs = result.duration_ms;
+                answer.batchSize  = result.batch_size;
+                answer.frameIndex = std::to_string(data->chanDataDec.frame->GetFrameIndex());
+                answer.timestamp  = std::to_string(data->chanDataDec.frame->GetTimestamp());
+                unit.vlmResults.push_back(std::move(answer));
+            }
             if (visual && entry.visual_result) {
                 unit.visualRun = visual->Run();
                 if (entry.visual_result->audit.lease)
@@ -329,12 +344,12 @@ void Qwen3VLWorker::HandFrameBatch(std::vector<AlgDataPtr> alg_datas) {
 
     if (needs_local_model &&
         !service::ServiceRegistry::Instance().Get<service::ILlmInferService>().IsInitialized()) {
-        action_status = util::ErrorEnum::AI_INST_NOTCREATED;
         if (!Qwen3VLSdkInit()) {
             LOG_WARN("{}[{} {}] Qwen3VL shared instance not initialized", kTag, alg_code_, uuid);
             return;
         }
     }
+    initialization_status_.store(util::ErrorEnum::AI_INST_CREATED);
 
     std::vector<Qwen3VLResult> results;
     if (!RunBatchInference(entries, results)) {

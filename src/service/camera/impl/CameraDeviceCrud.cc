@@ -11,6 +11,7 @@
 #include "service/detail/ServiceRegistry.h"
 #include "service/onvif/IOnvifService.h"
 #include "service/task/ITaskChannel.h"
+#include "service/task/ITaskQuery.h"
 #include "util/FileUtil.h"
 #include "util/Log.h"
 #include "util/PaginationHelper.h"
@@ -24,6 +25,37 @@ namespace {
                data_status == static_cast<int>(camera::AlgDemuxStatus::AlgDemuxReadFailed) ||
                data_status == static_cast<int>(camera::AlgDemuxStatus::AlgDemuxInvalidUrl) ||
                data_status == static_cast<int>(camera::AlgDemuxStatus::AlgDemuxOpenUnauthorized);
+    }
+
+    void ApplySourceStatus(MsgCameraInfo& info, const CameraEntityPtr& camera) {
+        info.statusReason.clear();
+        if (info.channelStatus == ChannelStatus::ChannelStatusResolusionUnSupport) {
+            info.statusReason = "resolution_unsupported";
+        } else if (info.channelStatus == ChannelStatus::ChannelStatusUnauthorized) {
+            info.statusReason = "authentication_failed";
+        } else if (IsDemuxError(info.dataStatus)) {
+            switch (static_cast<camera::AlgDemuxStatus>(info.dataStatus)) {
+                case camera::AlgDemuxStatus::AlgDemuxOpenUnauthorized:
+                    info.statusReason = "authentication_failed";
+                    break;
+                case camera::AlgDemuxStatus::AlgDemuxInvalidUrl:
+                    info.statusReason = "invalid_url";
+                    break;
+                case camera::AlgDemuxStatus::AlgDemuxReadFailed:
+                    info.statusReason = "stream_read_failed";
+                    break;
+                default:
+                    info.statusReason = "stream_open_failed";
+                    break;
+            }
+        } else if (info.dataStatus == static_cast<int>(camera::AlgDemuxStatus::AlgDemuxInit) ||
+                   info.dataStatus == static_cast<int>(camera::AlgDemuxStatus::AlgDemuxClosed) ||
+                   info.channelStatus == ChannelStatus::ChannelStatusOffline) {
+            std::lock_guard<std::mutex> lock(camera->attr_mtx_);
+            info.channelStatus = camera->probed_status_.load();
+            if (info.channelStatus != ChannelStatus::ChannelStatusOnline)
+                info.statusReason = camera->probed_error_;
+        }
     }
 }  // namespace
 
@@ -171,6 +203,12 @@ util::ErrorEnum CameraServiceImpl::Update(MsgCameraInfo& config) {
         // Update channel URL directly (inlined from CameraTaskMng::SetChannelUrl)
         channel_url_changed  = camera->channel_url_ != media_url;
         camera->channel_url_ = media_url;
+        if (channel_url_changed) {
+            std::lock_guard<std::mutex> attr_lock(camera->attr_mtx_);
+            camera->cached_attr_ = {};
+            camera->probed_error_.clear();
+            camera->probed_status_.store(ChannelStatus::ChannelStatusOffline);
+        }
         LOG_INFO("{}/{} Update", config.videoChannelId, config.channelName);
     }
     if (channel_url_changed) {
@@ -248,8 +286,9 @@ util::ErrorEnum CameraServiceImpl::Delete(const std::string& videoChannelId) {
 
 std::vector<MsgCameraInfo> CameraServiceImpl::Query(const std::string& channelName, int channelStatus,
                                                     int pageNum, int pageSize, size_t& total) {
+    std::vector<std::string> running_task_ids;
     std::shared_lock<std::shared_mutex> lock(mtx_);
-    return util::PaginationHelper::Paginate(
+    auto result = util::PaginationHelper::Paginate(
         cameras_.rbegin(), cameras_.rend(), pageNum, pageSize, total,
         [&](const auto& info_cfg) {
             if (!channelName.empty() && std::string::npos == info_cfg->channelName.find(channelName)) {
@@ -260,15 +299,7 @@ std::vector<MsgCameraInfo> CameraServiceImpl::Query(const std::string& channelNa
                 info.channelType = static_cast<MsgCameraType>(info_cfg->channelType);
                 ServiceRegistry::Instance().Get<ITaskChannel>().GetChannelAttr(info_cfg->videoChannelId,
                                                                                info);
-                if (info.dataStatus == static_cast<int>(camera::AlgDemuxStatus::AlgDemuxInit) ||
-                    info.dataStatus == static_cast<int>(camera::AlgDemuxStatus::AlgDemuxClosed) ||
-                    info.channelStatus == ChannelStatus::ChannelStatusOffline) {
-                    auto probed_status = info_cfg->probed_status_.load();
-                    if (probed_status == ChannelStatus::ChannelStatusOnline ||
-                        probed_status == ChannelStatus::ChannelStatusOffline) {
-                        info.channelStatus = probed_status;
-                    }
-                }
+                ApplySourceStatus(info, info_cfg);
                 if (static_cast<ChannelStatus>(channelStatus) != info.channelStatus) {
                     return false;
                 }
@@ -287,18 +318,15 @@ std::vector<MsgCameraInfo> CameraServiceImpl::Query(const std::string& channelNa
             ServiceRegistry::Instance().Get<ITaskChannel>().GetChannelAttr(info.videoChannelId, info);
 
             // If underlying stream has not started, use lightweight probe for status
-            if (info.dataStatus == static_cast<int>(camera::AlgDemuxStatus::AlgDemuxInit) ||
-                info.dataStatus == static_cast<int>(camera::AlgDemuxStatus::AlgDemuxClosed) ||
-                info.channelStatus == ChannelStatus::ChannelStatusOffline) {
-                auto probed_status = info_cfg->probed_status_.load();
-                if (probed_status == ChannelStatus::ChannelStatusOnline ||
-                    probed_status == ChannelStatus::ChannelStatusOffline) {
-                    info.channelStatus = probed_status;
-                }
+            ApplySourceStatus(info, info_cfg);
+            if (!info.statusReason.empty() && info.channelStatus == ChannelStatus::ChannelStatusOffline) {
+                info.width = info.height = 0;
+                info.fps                 = 0;
+                info.codec.clear();
             }
 
             // Channel not started; fill resolution/encoding/fps from cached video attrs
-            if (info.width == 0 || info.height == 0) {
+            if (info.statusReason.empty() && (info.width == 0 || info.height == 0)) {
                 MsgCameraAttr cached_attr;
                 {
                     std::lock_guard<std::mutex> alock(info_cfg->attr_mtx_);
@@ -319,7 +347,7 @@ std::vector<MsgCameraInfo> CameraServiceImpl::Query(const std::string& channelNa
                 total_task    = info_cfg->tasks_.size();
                 info.taskList = util::PaginationHelper::PaginateKnownTotal(
                     info_cfg->tasks_.begin(), info_cfg->tasks_.end(), 1, 100, total_task,
-                    [](const auto& taskPtr) {
+                    [&](const auto& taskPtr) {
                         MsgCameraTask taskInfo;
                         taskInfo.algorithmId   = taskPtr->algorithm_code_;
                         taskInfo.algorithmName = taskPtr->algorithm_name_;
@@ -327,6 +355,10 @@ std::vector<MsgCameraInfo> CameraServiceImpl::Query(const std::string& channelNa
                         taskInfo.scheduleId    = taskPtr->schedule_id_;
                         taskInfo.enable        = taskPtr->is_enabled_;
                         taskInfo.status        = static_cast<int>(taskPtr->status_.load());
+                        if (taskInfo.enable &&
+                            taskInfo.status == static_cast<int>(CameraTaskStatus::kInService)) {
+                            running_task_ids.push_back(taskPtr->task_id_);
+                        }
                         return taskInfo;
                     });
             }
@@ -337,6 +369,27 @@ std::vector<MsgCameraInfo> CameraServiceImpl::Query(const std::string& channelNa
             }
             return info;
         });
+    lock.unlock();
+    // Flow status crosses service/lifecycle locks. Query it only after the
+    // camera and task snapshots have released their locks.
+    if (!running_task_ids.empty()) {
+        const auto statuses = ServiceRegistry::Instance().Get<ITaskQuery>().GetTaskStatus(running_task_ids);
+        for (const auto& status : statuses) {
+            if (!HasTaskInitializationFailure(status))
+                continue;
+            for (auto& camera : result) {
+                if (camera.videoChannelId != status.channelId)
+                    continue;
+                for (auto& task : camera.taskList) {
+                    if (task.enable && task.algorithmId == status.algorithmId &&
+                        task.status == static_cast<int>(CameraTaskStatus::kInService)) {
+                        task.status = static_cast<int>(CameraTaskStatus::kAbnormal);
+                    }
+                }
+            }
+        }
+    }
+    return result;
 }
 
 }  // namespace cosmo::service

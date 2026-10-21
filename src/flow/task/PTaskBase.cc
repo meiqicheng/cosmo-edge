@@ -4,39 +4,31 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <nlohmann/json.hpp>
 
 #include "flow/classify/PClassifier.h"
 #include "flow/detect/PDetector.h"
 #include "flow/detect/PDinoDetector.h"
 #include "flow/detect/PSamDetector.h"
 #include "flow/landmark/PLandmark.h"
-#include "flow/logical/PLogicalJudgment.h"
+#include "flow/logical/PictureRule.h"
+#include "flow/ocr/POcr.h"
 #include "flow/qwen3vl/PQwen3VLWorker.h"
+#include "flow/recognizer/PPictureMatch.h"
+#include "flow/recognizer/PPicturePairMatch.h"
 #include "flow/recognizer/PRecognizer.h"
 #include "media/Color.h"
 #include "service/detail/ServiceRegistry.h"
+#include "service/model/IModelPathMapping.h"
 #include "service/path/IFileService.h"
 #include "util/Log.h"
 #include "util/PathUtil.h"
 #include "util/StringUtil.h"
 #include "util/dto/ActionCodes.h"
+#include "util/dto/PictureWorkflow.h"
 
 namespace cosmo {
-
-namespace {
-
-    template <typename ActionT>
-    PActionBasePtr GetOrCreateTaskAction(const PTaskElement& task, ActionNode& action) {
-        auto it = std::find_if(task.actions.begin(), task.actions.end(), [&](const PTaskAction& node) {
-            return node.action.actionId == action.actionId && node.action.flowActionId == action.flowActionId;
-        });
-        if (it != task.actions.end()) {
-            return it->actionInst;
-        }
-        return std::make_shared<ActionT>(task.taskId, action);
-    }
-
-}  // namespace
 
 PTaskBase::PTaskBase() {
     LOG_INFO("{}", "PTaskBase Init");
@@ -58,42 +50,60 @@ PTaskElementPtr PTaskBase::TaskCreate(const std::string& taskId, ActionAlgPtr ac
     task->taskId     = taskId;
     task->action_alg = actionAlg;
 
-    bool hasUpstreamTargets = false;
-    for (auto actionNode : actionAlg->workFlow) {
-        for (auto& actionKeyParam : actionNode.configObject.params) {
-            auto keys = util::Split(actionKeyParam.key.ToRefString(), ".");
-            actionKeyParam.keys.assign(keys.begin(), keys.end());
+    auto workflow = actionAlg->workFlow;
+    if (!ValidatePictureWorkflow(workflow, task->errorInfo)) {
+        LOG_WARN("Invalid picture workflow: {}", task->errorInfo);
+        return nullptr;
+    }
+    std::map<std::string, std::string> featureModels;
+    std::map<std::string, bool> targetOutputs;
+    for (auto actionNode : workflow) {
+        const bool hasUpstreamTargets = targetOutputs[actionNode.preFlowActionId];
+        for (const auto& param : actionNode.configObject.params)
+            if (param.key == "atomicCode")
+                actionNode.atomicCode = param.value.ToString();
+        auto featureModel = featureModels[actionNode.preFlowActionId];
+        if (actionNode.actionId == PARecognizer_Code)
+            featureModel = actionNode.atomicCode;
+        featureModels[actionNode.flowActionId] = featureModel;
+        if ((actionNode.actionId == PAMatch_Code && actionNode.atomicCode.empty()) ||
+            actionNode.actionId == PAPairMatch_Code)
+            actionNode.atomicCode = featureModel;
+        for (auto& param : actionNode.configObject.params) {
+            auto keys = util::Split(param.key.ToRefString(), ".");
+            param.keys.assign(keys.begin(), keys.end());
         }
-
         PTaskAction ta;
-        ta.action = actionNode;
-        if (0 == PADetect_Code.compare(actionNode.actionId)) {
-            ta.actionInst = GetOrCreateTaskAction<PDetector>(*task, actionNode);
-        } else if (0 == PAClassify_Code.compare(actionNode.actionId)) {
-            ta.actionInst = GetOrCreateTaskAction<PClassifier>(*task, actionNode);
-        } else if (0 == PALandmark_Code.compare(actionNode.actionId)) {
-            ta.actionInst = GetOrCreateTaskAction<PLandmark>(*task, actionNode);
-        } else if (0 == PARecognizer_Code.compare(actionNode.actionId)) {
-            ta.actionInst = GetOrCreateTaskAction<PRecognizer>(*task, actionNode);
-        } else if (0 == PDADino_Code.compare(actionNode.actionId)) {
+        ta.action      = actionNode;
+        const auto& id = actionNode.actionId;
+        if (id == PADetect_Code)
+            ta.actionInst = std::make_shared<PDetector>(taskId, actionNode);
+        else if (id == PAClassify_Code)
+            ta.actionInst = std::make_shared<PClassifier>(taskId, actionNode);
+        else if (id == PALandmark_Code)
+            ta.actionInst = std::make_shared<PLandmark>(taskId, actionNode);
+        else if (id == PARecognizer_Code)
+            ta.actionInst = std::make_shared<PRecognizer>(taskId, actionNode);
+        else if (id == PAOcr_Code)
+            ta.actionInst = std::make_shared<POcr>(taskId, actionNode);
+        else if (id == PAPairMatch_Code)
+            ta.actionInst = std::make_shared<PPicturePairMatch>(taskId, actionNode);
+        else if (id == PAMatch_Code)
+            ta.actionInst = std::make_shared<PPictureMatch>(taskId, actionNode);
+        else if (id == PDADino_Code)
             ta.actionInst = std::make_shared<PDinoDetector>(actionNode, taskId);
-        } else if (0 == PDASam_Code.compare(actionNode.actionId)) {
+        else if (id == PDASam_Code)
             ta.actionInst = std::make_shared<PSamDetector>(actionNode, taskId);
-        } else if (0 == PDAQwen3VL_Code.compare(actionNode.actionId)) {
+        else if (id == PDAQwen3VL_Code)
             ta.actionInst = std::make_shared<PQwen3VLWorker>(actionNode, taskId, hasUpstreamTargets);
-        } else if (0 == PALogicalJudgment_Code.compare(actionNode.actionId)) {
-            ta.actionInst = GetOrCreateTaskAction<PLogicalJudgment>(*task, actionNode);
-        } else {
-            LOG_WARN("[{} Create {}] Action: {}-{} Not Support", taskId, actionAlg->algorithmName,
-                     actionNode.actionId, actionNode.actionName);
+        else
+            ta.actionInst = std::make_shared<PictureRuleAction>(taskId, actionNode);
+        if (!ta.actionInst->SetParam(taskId, actionNode.configObject.params))
             return nullptr;
-        }
-        LOG_INFO("[{} Create {}] Action Add: {} ", taskId, actionAlg->algorithmName, ta.action.actionId);
-        task->actions.push_back(ta);
-        if (actionNode.actionId == PADetect_Code || actionNode.actionId == PDADino_Code ||
-            actionNode.actionId == PDASam_Code || actionNode.actionId == PAClassify_Code ||
-            actionNode.actionId == PALandmark_Code)
-            hasUpstreamTargets = true;
+        task->actions.push_back(std::move(ta));
+        targetOutputs[actionNode.flowActionId] = hasUpstreamTargets || id == PADetect_Code ||
+                                                 id == PDADino_Code || id == PDASam_Code ||
+                                                 id == PAClassify_Code || id == PALandmark_Code;
     }
 
     LOG_INFO("[{} Create {}] Ok", taskId, actionAlg->algorithmName);
@@ -109,16 +119,7 @@ bool PTaskBase::TaskDelete(PTaskElementPtr task) {
 
     LOG_INFO("[{} Remove {}]", task->taskId, task->GetAlgName());
 
-    // Release actions
-    for (auto& taNode : task->actions) {
-        if (!taNode.actionInst) {
-            LOG_WARN("[{} Remove {}] Failed, ActionInst Is Empty", task->taskId, task->GetAlgName());
-            return false;
-        }
-        taNode.actionInst.reset();
-
-        LOG_INFO("[{} Remove {}] Action ID:{} ", task->taskId, task->GetAlgName(), taNode.action.actionId);
-    }
+    task->actions.clear();
     LOG_INFO("[{} Remove {}] Ok ", task->taskId, task->GetAlgName());
     return true;
 }
@@ -129,12 +130,37 @@ bool PTaskBase::TaskActionInit(PTaskElementPtr task) {
         return true;
     }
     task->startFailedCount += 1;
+    std::map<std::string, std::vector<MsgDynamicKeyValue>> inherited;
     for (auto& taNode : task->actions) {
+        taNode.modelParams = inherited[taNode.action.preFlowActionId];
         if (taNode.actionInst->ActionInit()) {
+            if (IsPictureModelAction(taNode.action.actionId) && taNode.action.actionId != PDAQwen3VL_Code) {
+                std::string config, model;
+                if (service::ServiceRegistry::Instance().Get<service::IModelPathMapping>().GetModelCfg(
+                        taNode.actionInst->GetAtomicCode(), config, model)) {
+                    std::ifstream stream(config);
+                    const auto json = nlohmann::json::parse(stream, nullptr, false);
+                    if (json.is_object() && json.contains("labels") && json["labels"].is_array()) {
+                        for (const auto& label : json["labels"]) {
+                            if (!label.is_object() || !label.contains("name") || !label["name"].is_string() ||
+                                !label.contains("threshold") || !label["threshold"].is_array() ||
+                                label["threshold"].empty() || !label["threshold"][0].is_number())
+                                continue;
+                            MsgDynamicKeyValue value;
+                            value.key   = "aiParam." + label["name"].get<std::string>() + ".confidence";
+                            value.value = std::to_string(label["threshold"][0].get<double>());
+                            taNode.modelParams.push_back(std::move(value));
+                        }
+                    }
+                }
+            }
+            inherited[taNode.action.flowActionId] = taNode.modelParams;
             LOG_INFO("[{} {}] Action {} {} Start", task->taskId, task->GetAlgName(), taNode.action.actionId,
                      taNode.action.actionName);
         } else {
             task->errorInfo = taNode.action.actionId + " " + taNode.action.flowActionId + " Start Failed";
+            for (auto& initialized : task->actions)
+                initialized.actionInst->ActionDestroy();
             return false;
         }
     }
@@ -164,32 +190,26 @@ bool PTaskBase::ModifyTaskParam(PTaskElementPtr task, MsgTaskConfig& taskConfig)
         return false;
     }
 
-    // Key: ModifyParam relies on param.keys (e.g. param.faceSet)
-    for (auto& kv : taskConfig.params) {
-        if (kv.keys.empty() && !kv.key.empty()) {
-            auto parts = util::Split(kv.key.ToRefString(), ".");
-            kv.keys.assign(parts.begin(), parts.end());
-        }
+    if (!PictureTaskSupportsAreas(task, taskConfig, false))
+        return false;
+    for (auto& entry : task->actions) {
+        if (entry.action.actionId != PDAQwen3VL_Code)
+            continue;
+        std::map<std::string, MsgDynamicKeyValue> merged;
+        for (const auto* values :
+             {&entry.action.configObject.params, &task->action_alg->pictureDefaults, &taskConfig.params})
+            for (const auto& value : *values)
+                merged[value.key.ToString()] = value;
+        std::vector<MsgDynamicKeyValue> params;
+        for (const auto& [key, value] : merged)
+            params.push_back(value);
+        if (!entry.actionInst->SetParam(task->taskId, params) ||
+            !entry.actionInst->SetArea(task->taskId, taskConfig.areas, taskConfig.shieldedAreas))
+            return false;
     }
-
-    for (auto& taNode : task->actions) {
-        LOG_INFO("[{} {}] ModifyParam For {}/{} params.size:{} areas.size:{} shieldedAreas.size:{}",
-                 task->taskId, task->GetAlgName(), taNode.action.actionId, taNode.action.actionName,
-                 taskConfig.params.size(), taskConfig.areas.size(), taskConfig.shieldedAreas.size());
-        if (taNode.action.actionId == PDAQwen3VL_Code) {
-            // SetTaskParam is a full override replacement. Removed task keys
-            // revert to template defaults instead of retaining stale questions.
-            auto merged = taNode.action.configObject.params;
-            for (const auto& param : taskConfig.params) {
-                merged.erase(std::remove_if(merged.begin(), merged.end(),
-                                            [&](const auto& old) { return old.key == param.key; }),
-                             merged.end());
-                merged.push_back(param);
-            }
-            taNode.actionInst->SetParam(task->taskId, merged);
-        } else
-            taNode.actionInst->ModifyParam(task->taskId, taskConfig.params);
-        taNode.actionInst->SetArea(task->taskId, taskConfig.areas, taskConfig.shieldedAreas);
+    {
+        std::lock_guard<std::mutex> lock(task->configMutex);
+        task->params = taskConfig;
     }
 
     return true;

@@ -89,6 +89,8 @@ const handleRemove = (index, item) => {
       > img {
         width: 100%;
         height: 100%;
+        object-fit: contain;
+        background: var(--bg-primary);
       }
     }
     .delete-style {
@@ -101,7 +103,13 @@ const handleRemove = (index, item) => {
       background-color: rgba($color: #000000, $alpha: 0.5);
       z-index: 1;
       transition: all 0.3s;
+      // Media overlays keep their own contrast and centering. The generic
+      // table action style deliberately does not apply to these controls.
       .upload-btn {
+        background: var(--theme-surface, #fff);
+        border: 1px solid var(--border-color);
+        color: var(--secondary-color);
+        box-shadow: none;
         position: absolute;
         margin: 0;
         padding: 0;
@@ -113,6 +121,7 @@ const handleRemove = (index, item) => {
           top: 15px;
         }
         &.btn2 {
+          color: var(--danger-color);
           top: 50px;
         }
       }
@@ -123,10 +132,10 @@ const handleRemove = (index, item) => {
     align-items: center;
     justify-content: center;
     font-size: 40px;
-    color: #c0ccda;
-    border: 1px dashed #c0ccda;
+    color: var(--theme-text-muted, #c0ccda);
+    border: 1px dashed var(--theme-border-light, #c0ccda);
     &:hover {
-      border: 1px dashed #409eff;
+      border: 1px dashed var(--primary-color);
     }
   }
 }

@@ -1,0 +1,2171 @@
+{
+  "schemaVersion": 1,
+  "suiteKind": "quick",
+  "version": "0.8.0",
+  "title": "CosmoEdge主要功能客户旅程用例",
+  "generatedFrom": {
+    "workbook": "CosmoEdge-主要功能客户旅程测试用例.xlsx",
+    "sha256": "eca2d945859793cb9a7e5560f3e3b0e35a5e6ec0421357914dc5d259e028f8d0",
+    "doNotEdit": "由快速XLSX生成；请修改正式工作簿。"
+  },
+  "resourceDefinitions": {
+    "CAM-DH": {
+      "title": "大华",
+      "kind": "remote",
+      "request": "设备地址、账户、协议服务及取流权限。",
+      "owner": "用户/设备管理员",
+      "fields": [
+        "host",
+        "username",
+        "password"
+      ]
+    },
+    "CAM-HK-A": {
+      "title": "海康A",
+      "kind": "remote",
+      "request": "设备地址、账户、协议服务及取流权限。",
+      "owner": "用户/设备管理员",
+      "fields": [
+        "host",
+        "username",
+        "password"
+      ]
+    },
+    "DINO-MODEL": {
+      "title": "视觉检测大模型运行资源",
+      "kind": "hardware",
+      "request": "目标芯片可运行的 DINO 模型包、词表及设备加载结果。",
+      "owner": "测试执行者/模型提供方"
+    },
+    "DUT": {
+      "title": "被测CosmoEdge",
+      "kind": "remote",
+      "request": "设备IP、平台用户名和密码。",
+      "owner": "用户/设备管理员",
+      "fields": [
+        "host",
+        "username",
+        "password"
+      ]
+    },
+    "FACE-VIDEO": {
+      "title": "人脸视频",
+      "kind": "file",
+      "request": "可解码的人脸视频。",
+      "owner": "用户/设备管理员"
+    },
+    "FACE-ZIP": {
+      "title": "人脸入库照片包",
+      "kind": "file",
+      "request": "合法人脸照片ZIP。",
+      "owner": "用户/设备管理员"
+    },
+    "GB-SETTINGS": {
+      "title": "国标注册与目录配置",
+      "kind": "configuration",
+      "request": "SIP监听端口、realm、认证ID/SIP密码；提供可注册的NVR及四通道与画面映射。注册参数由Codex读取。",
+      "owner": "用户/设备管理员"
+    },
+    "GENERATED-FIXTURES": {
+      "title": "边界与异常测试素材",
+      "kind": "generated",
+      "request": "Codex在私有目录生成空文件、坏图/坏ZIP、长文件名、短音频、已知结构夹具；不要求用户准备。",
+      "owner": "Codex可生成"
+    },
+    "HTTP-RECEIVER": {
+      "title": "HTTP测试接收端",
+      "kind": "remote",
+      "request": "可记录成功/失败/超时的隔离HTTP接收端。可复用已有测试服务器，需确认接收敏感告警的具体目的地和数据范围。",
+      "owner": "用户/设备管理员"
+    },
+    "IMAGE-MEDIA": {
+      "title": "图片目录",
+      "kind": "directory",
+      "request": "现有图片目录。",
+      "owner": "用户/设备管理员"
+    },
+    "MODEL-INVENTORY": {
+      "title": "运行版本模型与模板盘点",
+      "kind": "discovered",
+      "request": "Codex读取实际版本、模板、模型、缺失依赖与能力，不沿用上次ID。",
+      "owner": "Codex运行前盘点"
+    },
+    "MODEL-PACKAGES": {
+      "title": "有效模型包与依赖",
+      "kind": "directory",
+      "request": "目标芯片兼容Open模型包；补齐缺失依赖；DINO/SAM/OCR/VLM配套模型按适用功能提供。",
+      "owner": "用户/设备管理员"
+    },
+    "MQTT-BROKER": {
+      "title": "MQTT测试Broker",
+      "kind": "remote",
+      "request": "Broker地址、端口、认证、Topic与订阅观测方式，允许断连/恢复的隔离环境。",
+      "owner": "用户/设备管理员"
+    },
+    "NVR-A": {
+      "title": "NVR四路",
+      "kind": "remote",
+      "request": "设备地址、账户、协议服务及取流权限。",
+      "owner": "用户/设备管理员",
+      "fields": [
+        "host",
+        "username",
+        "password"
+      ]
+    },
+    "ONVIF-SETTINGS": {
+      "title": "ONVIF独立账户/服务",
+      "kind": "configuration",
+      "request": "有效ONVIF账户与权限；NVR的ONVIF服务、端口和可查询Profile。无需重复提供已接通设备。",
+      "owner": "用户/设备管理员"
+    },
+    "OPENAI-VLM": {
+      "title": "OpenAI兼容多模态审核服务",
+      "kind": "network",
+      "request": "可用的多模态chat/completions服务；核对/v1基地址、实际served-model-name、认证及图像输入。地址、API Key、并发限制只放私有配置。",
+      "owner": "用户/服务维护者",
+      "fields": [
+        "baseUrl",
+        "model",
+        "apiKey"
+      ],
+      "note": "为事件上报审核的接口模式单独预检；不以普通文本或TCP连通代替图像请求通过。"
+    },
+    "PEOPLE-MEDIA": {
+      "title": "行人图片/视频目录",
+      "kind": "directory",
+      "request": "现有行人图片与视频目录。",
+      "owner": "用户/设备管理员"
+    },
+    "PUSH-AUTHORIZATION": {
+      "title": "告警传输范围确认",
+      "kind": "authorization",
+      "request": "确认允许将测试告警图片和人员信息发送到指定HTTP/MQTT测试目的地。已有明确授权可复用，不重复询问。",
+      "owner": "用户/设备管理员"
+    },
+    "UNIFORM-IMAGE": {
+      "title": "工服底库图片",
+      "kind": "file",
+      "request": "工服底库图片。",
+      "owner": "用户/设备管理员"
+    },
+    "USB-CAMERA": {
+      "title": "USB摄像头",
+      "kind": "hardware",
+      "request": "必测硬件：将受支持USB摄像头接在被测设备上，核对枚举、设备标识与实时画面。资源就绪状态记入私有配置，不沿用旧缺口跳过。",
+      "owner": "用户/设备管理员"
+    },
+    "VLM-MODEL": {
+      "title": "视觉语言大模型运行资源",
+      "kind": "hardware",
+      "request": "目标芯片可运行的 VLM 模型包、分词器及设备加载结果；原始 bmodel 不等于可导入模型。",
+      "owner": "测试执行者/模型提供方"
+    }
+  },
+  "modules": [
+    {
+      "code": "准备与登录",
+      "name": "准备与登录",
+      "journey": "主要功能快测",
+      "route": "主要用例",
+      "source": "全量库映射"
+    },
+    {
+      "code": "模型与场景",
+      "name": "模型与场景",
+      "journey": "主要功能快测",
+      "route": "主要用例",
+      "source": "全量库映射"
+    },
+    {
+      "code": "视频接入",
+      "name": "视频接入",
+      "journey": "主要功能快测",
+      "route": "主要用例",
+      "source": "全量库映射"
+    },
+    {
+      "code": "任务与规则",
+      "name": "任务与规则",
+      "journey": "主要功能快测",
+      "route": "主要用例",
+      "source": "全量库映射"
+    },
+    {
+      "code": "底库与识别",
+      "name": "底库与识别",
+      "journey": "主要功能快测",
+      "route": "主要用例",
+      "source": "全量库映射"
+    },
+    {
+      "code": "图片分析",
+      "name": "图片分析",
+      "journey": "主要功能快测",
+      "route": "主要用例",
+      "source": "全量库映射"
+    },
+    {
+      "code": "大模型算法",
+      "name": "大模型算法",
+      "journey": "主要功能快测",
+      "route": "主要用例",
+      "source": "全量库映射"
+    },
+    {
+      "code": "事件与展示",
+      "name": "事件与展示",
+      "journey": "主要功能快测",
+      "route": "主要用例",
+      "source": "全量库映射"
+    },
+    {
+      "code": "数据对接",
+      "name": "数据对接",
+      "journey": "主要功能快测",
+      "route": "主要用例",
+      "source": "全量库映射"
+    },
+    {
+      "code": "系统管理",
+      "name": "系统管理",
+      "journey": "主要功能快测",
+      "route": "主要用例",
+      "source": "全量库映射"
+    },
+    {
+      "code": "必要补充",
+      "name": "必要补充",
+      "journey": "主要功能快测",
+      "route": "主要用例",
+      "source": "全量库映射"
+    },
+    {
+      "code": "收尾交付",
+      "name": "收尾交付",
+      "journey": "主要功能快测",
+      "route": "主要用例",
+      "source": "全量库映射"
+    }
+  ],
+  "cases": [
+    {
+      "id": "Q01",
+      "revision": 1,
+      "title": "资源预检、登录及首页基线",
+      "module": "准备与登录",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "本轮目标已明确；资源包已配置；不沿用上轮登录态。",
+      "requires": [
+        "DUT",
+        "MODEL-INVENTORY"
+      ],
+      "resourceNotes": "DUT;MODEL-INVENTORY",
+      "steps": [
+        {
+          "id": "Q01-S01",
+          "text": "运行资源包快速预检；首次迁移先做完整哈希校验。记录目标版本、设备类型、浏览器和本轮标识。"
+        },
+        {
+          "id": "Q01-S02",
+          "text": "登录页试一次错误密码，再使用本轮正确账户登录；刷新首页。"
+        },
+        {
+          "id": "Q01-S03",
+          "text": "核对已有通道、任务、底库数量及设备资源；逐个打开本轮涉及的主要菜单。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q01-A01",
+          "text": "输出缺口及影响用例；没有把远端端口可达当作协议验证；设备版本可追溯。"
+        },
+        {
+          "id": "Q01-A02",
+          "text": "错误登录被拒绝且可再次提交；正确登录成功；刷新不无故掉线。"
+        },
+        {
+          "id": "Q01-A03",
+          "text": "主要菜单可访问；记录原有对象清单；不把“页面能打开”算作后续业务通过。"
+        }
+      ],
+      "expected": "输出缺口及影响用例；没有把远端端口可达当作协议验证；设备版本可追溯。\n错误登录被拒绝且可再次提交；正确登录成功；刷新不无故掉线。\n主要菜单可访问；记录原有对象清单；不把“页面能打开”算作后续业务通过。",
+      "cleanup": "只读记录基线；最后在 Q24 退出登录。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：ENV-001、ENV-007、AUTH-001、AUTH-002、HOME-001",
+      "sourceCaseIds": [
+        "ENV-001",
+        "ENV-007",
+        "AUTH-001",
+        "AUTH-002",
+        "HOME-001"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q01-S01：预检 JSON、版本页、时间和本轮标识。\nQ01-S02：两次登录提示和首页截图；不记录密码。\nQ01-S03：首页基线和原有对象清单。",
+      "estimatedMinutes": [
+        3,
+        5
+      ]
+    },
+    {
+      "id": "Q02",
+      "revision": 1,
+      "title": "模型新增、查询、修改、导出及删除",
+      "module": "模型与场景",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "选择兼容、未安装且可删除的小模型包；优先不超过100MB。不能覆盖在用或预置模型。",
+      "requires": [
+        "DUT",
+        "MODEL-PACKAGES"
+      ],
+      "resourceNotes": "DUT;MODEL-PACKAGES",
+      "steps": [
+        {
+          "id": "Q02-S01",
+          "text": "导入1个小模型包；等待上传、解包和入库完成。"
+        },
+        {
+          "id": "Q02-S02",
+          "text": "分别按名称、编号查询；切换分类后核对同一模型；修改允许编辑的名称/说明并刷新。"
+        },
+        {
+          "id": "Q02-S03",
+          "text": "通过临时兼容场景调用该模型，对1张可用图片做分析；导出模型包并核对归档可读和元信息。"
+        },
+        {
+          "id": "Q02-S04",
+          "text": "删除临时场景和该模型，刷新并按编号再查询。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q02-A01",
+          "text": "模型可检索，类型、编号和版本与包内容一致；仅上传完成不算入库完成。"
+        },
+        {
+          "id": "Q02-A02",
+          "text": "查询定位到同一对象；分类切换不改变版本显示；修改保存且其他模型不受影响。"
+        },
+        {
+          "id": "Q02-A03",
+          "text": "加载和推理成功，有结构化结果；导出文件非空、归档可读、模型身份一致。"
+        },
+        {
+          "id": "Q02-A04",
+          "text": "临时模型消失；原有模型数量恢复；如在用删除有保护，应先解除引用再成功删除。"
+        }
+      ],
+      "expected": "模型可检索，类型、编号和版本与包内容一致；仅上传完成不算入库完成。\n查询定位到同一对象；分类切换不改变版本显示；修改保存且其他模型不受影响。\n加载和推理成功，有结构化结果；导出文件非空、归档可读、模型身份一致。\n临时模型消失；原有模型数量恢复；如在用删除有保护，应先解除引用再成功删除。",
+      "cleanup": "删除临时调用场景后删除该模型；保持原模型不变。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：MODEL-001、MODEL-002、MODEL-003、MODEL-007、MODEL-008、MODEL-012、MODEL-014",
+      "sourceCaseIds": [
+        "MODEL-001",
+        "MODEL-002",
+        "MODEL-003",
+        "MODEL-007",
+        "MODEL-008",
+        "MODEL-012",
+        "MODEL-014"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q02-S01：包校验值、导入结果和模型详情。\nQ02-S02：查询和刷新后的详情。\nQ02-S03：推理结果和导出文件大小/哈希/目录。\nQ02-S04：删除结果及前后对象清单。",
+      "estimatedMinutes": [
+        6,
+        10
+      ]
+    },
+    {
+      "id": "Q03",
+      "revision": 1,
+      "title": "场景创建、编排、查询、修改和删除",
+      "module": "模型与场景",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "使用已就绪基础检测模型。建立1个视频场景与1个图片场景；后续用例复用。",
+      "requires": [
+        "DUT",
+        "MODEL-INVENTORY"
+      ],
+      "resourceNotes": "DUT;MODEL-INVENTORY",
+      "steps": [
+        {
+          "id": "Q03-S01",
+          "text": "从可用模板创建1个视频场景，再创建1个图片场景；统一使用本轮前缀命名。"
+        },
+        {
+          "id": "Q03-S02",
+          "text": "打开编排，新增再删除1个可选节点，保持有效的输入、检测和输出链；保存后重新打开。"
+        },
+        {
+          "id": "Q03-S03",
+          "text": "修改名称、说明和1个有效场景默认阈值；按名称及类型查询；刷新页面。"
+        },
+        {
+          "id": "Q03-S04",
+          "text": "在后续视频/图片用例实际运行两类场景；完成后按 Q24 解除引用并删除，再检查选择列表。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q03-A01",
+          "text": "两类场景分别出现在相应选择列表；名称和任务类型正确，不混用图片/视频类型。"
+        },
+        {
+          "id": "Q03-A02",
+          "text": "编排能保存并回读；节点、连接和模型引用保持一致，无无效断链。"
+        },
+        {
+          "id": "Q03-A03",
+          "text": "编辑持久化；不同场景互不污染；图片分析的选项同步更新。"
+        },
+        {
+          "id": "Q03-A04",
+          "text": "场景真实可执行；删除后列表不保留失效选项；未删除时本例保持部分完成。"
+        }
+      ],
+      "expected": "两类场景分别出现在相应选择列表；名称和任务类型正确，不混用图片/视频类型。\n编排能保存并回读；节点、连接和模型引用保持一致，无无效断链。\n编辑持久化；不同场景互不污染；图片分析的选项同步更新。\n场景真实可执行；删除后列表不保留失效选项；未删除时本例保持部分完成。",
+      "cleanup": "Q24 删除临时场景并回填本例删除结果；此前不得记为完整通过。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：SCENE-001、SCENE-002、SCENE-003、SCENE-007、SCENE-009、FLOW-001、FLOW-002、SCENE-010",
+      "sourceCaseIds": [
+        "SCENE-001",
+        "SCENE-002",
+        "SCENE-003",
+        "SCENE-007",
+        "SCENE-009",
+        "FLOW-001",
+        "FLOW-002",
+        "SCENE-010"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q03-S01：创建记录和类型筛选截图。\nQ03-S02：保存前后编排截图。\nQ03-S03：场景参数及筛选结果。\nQ03-S04：关联 Q04/Q14 运行证据及 Q24 删除证据。",
+      "estimatedMinutes": [
+        5,
+        8
+      ]
+    },
+    {
+      "id": "Q04",
+      "revision": 1,
+      "title": "RTSP 摄像机与 NVR 取流跑算法",
+      "module": "视频接入",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "摄像机1路、NVR子通道1路；使用同一基础检测场景，逐路串行。已有等价测试通道可复用。",
+      "requires": [
+        "DUT",
+        "CAM-HK-A",
+        "NVR-A"
+      ],
+      "resourceNotes": "DUT;CAM-HK-A;NVR-A",
+      "steps": [
+        {
+          "id": "Q04-S01",
+          "text": "添加摄像机 RTSP 地址，预览并抓拍；修改显示名称并刷新查询。"
+        },
+        {
+          "id": "Q04-S02",
+          "text": "绑定基础检测场景并启用；观察30–60秒，取一帧有目标画面。"
+        },
+        {
+          "id": "Q04-S03",
+          "text": "添加 NVR 1个独立子通道 RTSP，重复预览和同场景推理。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q04-A01",
+          "text": "画面属于目标摄像机且有更新时间；抓拍是当前源；修改持久化。"
+        },
+        {
+          "id": "Q04-A02",
+          "text": "解码和推理持续运行；有检测框/结构化目标结果，不能只看运行状态。"
+        },
+        {
+          "id": "Q04-A03",
+          "text": "NVR目标子通道画面正确；真实输出检测结果；未串到其他通道。"
+        }
+      ],
+      "expected": "画面属于目标摄像机且有更新时间；抓拍是当前源；修改持久化。\n解码和推理持续运行；有检测框/结构化目标结果，不能只看运行状态。\nNVR目标子通道画面正确；真实输出检测结果；未串到其他通道。",
+      "cleanup": "保留本轮通道供后续测试；Q24 停任务并删除。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：CAM-001、CAM-002、CAM-005、TASK-001、LIVE-001",
+      "sourceCaseIds": [
+        "CAM-001",
+        "CAM-002",
+        "CAM-005",
+        "TASK-001",
+        "LIVE-001"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q04-S01：脱敏地址、通道ID和带时间的抓拍。\nQ04-S02：算法画面、目标结果和时间窗。\nQ04-S03：NVR通道映射和推理结果。",
+      "estimatedMinutes": [
+        5,
+        8
+      ]
+    },
+    {
+      "id": "Q05",
+      "revision": 1,
+      "title": "ONVIF 自动发现及手动添加跑算法",
+      "module": "视频接入",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "选1台已知可用ONVIF设备；自动和手动添加分别操作，可复用同一台设备。",
+      "requires": [
+        "DUT",
+        "CAM-HK-A",
+        "CAM-DH",
+        "ONVIF-SETTINGS"
+      ],
+      "resourceNotes": "DUT;CAM-HK-A;CAM-DH;ONVIF-SETTINGS",
+      "steps": [
+        {
+          "id": "Q05-S01",
+          "text": "执行 ONVIF 搜索，选择发现设备并填写协议账号；确认码流信息后添加。"
+        },
+        {
+          "id": "Q05-S02",
+          "text": "预览抓拍后绑定同一基础检测场景，观察30–60秒。"
+        },
+        {
+          "id": "Q05-S03",
+          "text": "用手动IP/端口方式再添加1路，验证预览及推理；随后删除该重复测试通道。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q05-A01",
+          "text": "能发现并正确认证；通道建立成功；失败明确提示认证或协议问题，不冒充添加成功。"
+        },
+        {
+          "id": "Q05-A02",
+          "text": "源画面正确；实际推理输出目标/检测框，且能定位到此通道。"
+        },
+        {
+          "id": "Q05-A03",
+          "text": "手动入口也能完成业务；不将自动添加结果当作手动入口通过；重复通道正确清理。"
+        }
+      ],
+      "expected": "能发现并正确认证；通道建立成功；失败明确提示认证或协议问题，不冒充添加成功。\n源画面正确；实际推理输出目标/检测框，且能定位到此通道。\n手动入口也能完成业务；不将自动添加结果当作手动入口通过；重复通道正确清理。",
+      "cleanup": "保留1路后续复用；重复临时通道随测删除，其余 Q24 清理。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：ONVIF-001、ONVIF-002、ONVIF-005、TASK-001",
+      "sourceCaseIds": [
+        "ONVIF-001",
+        "ONVIF-002",
+        "ONVIF-005",
+        "TASK-001"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q05-S01：发现列表、添加结果和通道ID。\nQ05-S02：算法结果与时间窗。\nQ05-S03：手动添加、算法结果及删除记录。",
+      "estimatedMinutes": [
+        5,
+        8
+      ]
+    },
+    {
+      "id": "Q06",
+      "revision": 1,
+      "title": "GB28181 IPC 注册、点播及算法",
+      "module": "视频接入",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "1台已配置到本轮DUT的国标IPC；仅测当前正常SIP/媒体组合，不遍历TCP/UDP矩阵。",
+      "requires": [
+        "DUT",
+        "CAM-HK-A",
+        "GB-SETTINGS"
+      ],
+      "resourceNotes": "DUT;CAM-HK-A;GB-SETTINGS",
+      "steps": [
+        {
+          "id": "Q06-S01",
+          "text": "核对平台国标参数与摄像机注册状态，刷新设备目录。"
+        },
+        {
+          "id": "Q06-S02",
+          "text": "从目录选择1路添加为业务通道，点播预览和抓拍。"
+        },
+        {
+          "id": "Q06-S03",
+          "text": "绑定基础检测场景，观察30–60秒并记录结果。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q06-A01",
+          "text": "目标IPC在线；设备和通道编码对应；不是依赖历史在线缓存。"
+        },
+        {
+          "id": "Q06-A02",
+          "text": "添加状态、媒体接收及画面正确；无媒体不能记通过。"
+        },
+        {
+          "id": "Q06-A03",
+          "text": "在国标媒体链路上完成真实推理并输出目标；不能用 RTSP 同源结果替代。"
+        }
+      ],
+      "expected": "目标IPC在线；设备和通道编码对应；不是依赖历史在线缓存。\n添加状态、媒体接收及画面正确；无媒体不能记通过。\n在国标媒体链路上完成真实推理并输出目标；不能用 RTSP 同源结果替代。",
+      "cleanup": "不改摄像机永久注册参数；Q24 删除本轮业务通道和任务。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：GB-001、GB-002、GB-008、TASK-001",
+      "sourceCaseIds": [
+        "GB-001",
+        "GB-002",
+        "GB-008",
+        "TASK-001"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q06-S01：平台配置摘要及设备目录。\nQ06-S02：通道ID和实际画面。\nQ06-S03：国标通道的推理结果。",
+      "estimatedMinutes": [
+        5,
+        8
+      ]
+    },
+    {
+      "id": "Q07",
+      "revision": 1,
+      "title": "GB28181 NVR 两路独立算法",
+      "module": "视频接入",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "NVR已注册到DUT；快测抽2个不同通道，不遍历全部4路。",
+      "requires": [
+        "DUT",
+        "NVR-A",
+        "GB-SETTINGS"
+      ],
+      "resourceNotes": "DUT;NVR-A;GB-SETTINGS",
+      "steps": [
+        {
+          "id": "Q07-S01",
+          "text": "刷新NVR目录，记录父设备及2个不同子通道编码；分别添加。"
+        },
+        {
+          "id": "Q07-S02",
+          "text": "分别预览/抓拍，核对两路画面来源。"
+        },
+        {
+          "id": "Q07-S03",
+          "text": "两路分别运行同一算法；若容量允许短时同时启用，否则串行验证并注明。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q07-A01",
+          "text": "父子对应正确；两路独立存在，没有以同一通道重复充数。"
+        },
+        {
+          "id": "Q07-A02",
+          "text": "每路画面与实际映射一致；抓拍失败不沿用另一路或旧图。"
+        },
+        {
+          "id": "Q07-A03",
+          "text": "两路均有独立推理结果，事件通道归属正确；串行通过不声称并发容量通过。"
+        }
+      ],
+      "expected": "父子对应正确；两路独立存在，没有以同一通道重复充数。\n每路画面与实际映射一致；抓拍失败不沿用另一路或旧图。\n两路均有独立推理结果，事件通道归属正确；串行通过不声称并发容量通过。",
+      "cleanup": "停掉两路本轮任务；Q24 删除业务通道。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：GB-003、GB-008、CAM-002、EVENT-008",
+      "sourceCaseIds": [
+        "GB-003",
+        "GB-008",
+        "CAM-002",
+        "EVENT-008"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q07-S01：父子编码映射及两个通道ID。\nQ07-S02：两张有通道标识及时间的抓拍。\nQ07-S03：每路运行结果、并发/串行方式。",
+      "estimatedMinutes": [
+        5,
+        8
+      ]
+    },
+    {
+      "id": "Q08",
+      "revision": 1,
+      "title": "本地视频上传、循环和告警",
+      "module": "视频接入",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "选30–60秒可解码行人片段，必要时由现有视频生成并保存哈希；使用已就绪检测/入侵场景。",
+      "requires": [
+        "DUT",
+        "FACE-VIDEO",
+        "PEOPLE-MEDIA"
+      ],
+      "resourceNotes": "DUT;FACE-VIDEO;PEOPLE-MEDIA",
+      "steps": [
+        {
+          "id": "Q08-S01",
+          "text": "在本地视频入口上传短片段，建立通道并设置有限循环。"
+        },
+        {
+          "id": "Q08-S02",
+          "text": "播放并启用算法；让明确有人的片段经过检测区域。"
+        },
+        {
+          "id": "Q08-S03",
+          "text": "确认至少一次回放/循环，再暂停并恢复任务。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q08-A01",
+          "text": "上传、解码、通道创建全部完成；文件名和实际画面对应。"
+        },
+        {
+          "id": "Q08-A02",
+          "text": "产生真实检测结果及至少1条可追溯事件；无事件需定位触发条件，不能只看任务在线。"
+        },
+        {
+          "id": "Q08-A03",
+          "text": "循环按已设规则发生；恢复后继续输出；没有新建重复任务。"
+        }
+      ],
+      "expected": "上传、解码、通道创建全部完成；文件名和实际画面对应。\n产生真实检测结果及至少1条可追溯事件；无事件需定位触发条件，不能只看任务在线。\n循环按已设规则发生；恢复后继续输出；没有新建重复任务。",
+      "cleanup": "保留该可重复视频用于参数、事件和推送测试；Q24 清理。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：CAM-003、CAM-004、TASK-001、ALG-3",
+      "sourceCaseIds": [
+        "CAM-003",
+        "CAM-004",
+        "TASK-001",
+        "ALG-3"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q08-S01：素材哈希、上传结果和通道ID。\nQ08-S02：带时间的目标结果和事件ID。\nQ08-S03：循环和恢复的时序记录。",
+      "estimatedMinutes": [
+        4,
+        6
+      ]
+    },
+    {
+      "id": "Q25",
+      "revision": 1,
+      "title": "USB 摄像头发现、预览及运行算法",
+      "module": "视频接入",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "USB 摄像头为必测资源，现有硬件开测时核对设备枚举、标识和实时画面；使用已就绪基础检测场景。不得沿用历史“资源不足/暂不测试”跳过；异常需保存本轮证据。",
+      "requires": [
+        "DUT",
+        "USB-CAMERA",
+        "MODEL-INVENTORY"
+      ],
+      "resourceNotes": "DUT;USB-CAMERA;MODEL-INVENTORY",
+      "steps": [
+        {
+          "id": "Q25-S01",
+          "text": "刷新 USB 摄像头列表，核对连接设备数量、名称及设备节点或唯一标识；拔插操作仅在现场条件允许时进行。"
+        },
+        {
+          "id": "Q25-S02",
+          "text": "选择该摄像头添加为视频通道，预览并抓拍；核对画面来源与当前时间。"
+        },
+        {
+          "id": "Q25-S03",
+          "text": "绑定基础检测场景并启动任务，让目标进入画面；观察 30–60 秒。"
+        },
+        {
+          "id": "Q25-S04",
+          "text": "停止任务并确认无新增结果，再启动并观察新结果；最后删除本轮任务和通道。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q25-A01",
+          "text": "列表与实际接入硬件一致；未识别时记录具体状态和原因，不以空列表判通过。"
+        },
+        {
+          "id": "Q25-A02",
+          "text": "通道建立成功，预览连续更新，抓拍来自当前 USB 画面，不复用旧图。"
+        },
+        {
+          "id": "Q25-A03",
+          "text": "USB 实时画面持续解码并产生检测框或结构化目标结果；仅任务显示运行不算通过。"
+        },
+        {
+          "id": "Q25-A04",
+          "text": "停止与恢复符合预期，重新启动产生新时间戳结果；清理后不留重复通道或任务。"
+        }
+      ],
+      "expected": "列表与实际接入硬件一致；未识别时记录具体状态和原因，不以空列表判通过。\n通道建立成功，预览连续更新，抓拍来自当前 USB 画面，不复用旧图。\nUSB 实时画面持续解码并产生检测框或结构化目标结果；仅任务显示运行不算通过。\n停止与恢复符合预期，重新启动产生新时间戳结果；清理后不留重复通道或任务。",
+      "cleanup": "停止本轮 USB 任务，删除本轮通道；保留用户原有配置。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：CAM-010、TASK-001、LIVE-001",
+      "sourceCaseIds": [
+        "CAM-010",
+        "TASK-001",
+        "LIVE-001"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q25-S01：USB 硬件和页面设备标识、刷新前后截图。\nQ25-S02：通道 ID、预览时间和当前抓拍。\nQ25-S03：算法画面、目标结果、任务 ID 和时间窗。\nQ25-S04：启停时序、新结果及清理后列表。",
+      "estimatedMinutes": [
+        5,
+        8
+      ]
+    },
+    {
+      "id": "Q09",
+      "revision": 1,
+      "title": "任务增删改查与启停恢复",
+      "module": "任务与规则",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "复用已通的视频源；创建1个独立临时任务，不修改用户已有任务。",
+      "requires": [
+        "DUT"
+      ],
+      "resourceNotes": "DUT",
+      "steps": [
+        {
+          "id": "Q09-S01",
+          "text": "为测试通道添加场景任务，按通道/场景查询并读取详情。"
+        },
+        {
+          "id": "Q09-S02",
+          "text": "启动，观察实际检测；停止后记录在途事件截止点，再重新启动。"
+        },
+        {
+          "id": "Q09-S03",
+          "text": "运行中修改1个可用业务参数，保存刷新并观察其结果；核对同场景另一任务。"
+        },
+        {
+          "id": "Q09-S04",
+          "text": "删除此临时任务，刷新查询并检查原始视频源。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q09-A01",
+          "text": "绑定到正确场景和源；详情参数与初始设置一致。"
+        },
+        {
+          "id": "Q09-A02",
+          "text": "启停状态正确；停止后不持续产生新事件；重启后推理恢复。"
+        },
+        {
+          "id": "Q09-A03",
+          "text": "新值持久化并在结果中体现；另一任务参数未被隐式修改。"
+        },
+        {
+          "id": "Q09-A04",
+          "text": "任务消失且不再运行；源仍可预览；其他任务继续可用。"
+        }
+      ],
+      "expected": "绑定到正确场景和源；详情参数与初始设置一致。\n启停状态正确；停止后不持续产生新事件；重启后推理恢复。\n新值持久化并在结果中体现；另一任务参数未被隐式修改。\n任务消失且不再运行；源仍可预览；其他任务继续可用。",
+      "cleanup": "本例末尾删除该独立任务；保留其他快测任务。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：TASK-001、TASK-012、TASK-014、TASK-013",
+      "sourceCaseIds": [
+        "TASK-001",
+        "TASK-012",
+        "TASK-014",
+        "TASK-013"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q09-S01：任务ID、绑定关系及查询结果。\nQ09-S02：启停时间窗及前后结果。\nQ09-S03：参数前后值和另一任务的读回。\nQ09-S04：删除、源预览和其他任务状态。",
+      "estimatedMinutes": [
+        5,
+        8
+      ]
+    },
+    {
+      "id": "Q10",
+      "revision": 1,
+      "title": "区域、阈值与时间计划生效",
+      "module": "任务与规则",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "固定短视频及1个检测/区域入侵任务；取样1个阈值、1个ROI和1个计划，不遍历所有参数。",
+      "requires": [
+        "DUT",
+        "PEOPLE-MEDIA"
+      ],
+      "resourceNotes": "DUT;PEOPLE-MEDIA",
+      "steps": [
+        {
+          "id": "Q10-S01",
+          "text": "绘制包含目标路径的ROI并保存，重开确认；回放固定片段。"
+        },
+        {
+          "id": "Q10-S02",
+          "text": "把ROI移到目标路径之外；调整一个有明确语义的阈值并再次回放。"
+        },
+        {
+          "id": "Q10-S03",
+          "text": "创建并查询时间计划，先设当前时间无效，再编辑为当前有效；绑定测试任务。"
+        },
+        {
+          "id": "Q10-S04",
+          "text": "恢复原参数；解绑并删除时间计划；重新读回场景默认值。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q10-A01",
+          "text": "区域坐标持久化；区域内的目标可触发约定检测/事件。"
+        },
+        {
+          "id": "Q10-A02",
+          "text": "区域外事件被排除；阈值生效可由目标/事件变化或实际运行参数证实；只保存成功不足以判通过。"
+        },
+        {
+          "id": "Q10-A03",
+          "text": "无效时段不出新业务结果；有效时段恢复；计划修改和查询一致，不需要等待跨天。"
+        },
+        {
+          "id": "Q10-A04",
+          "text": "原参数恢复；测试计划删除；任务级操作未污染场景默认值。"
+        }
+      ],
+      "expected": "区域坐标持久化；区域内的目标可触发约定检测/事件。\n区域外事件被排除；阈值生效可由目标/事件变化或实际运行参数证实；只保存成功不足以判通过。\n无效时段不出新业务结果；有效时段恢复；计划修改和查询一致，不需要等待跨天。\n原参数恢复；测试计划删除；任务级操作未污染场景默认值。",
+      "cleanup": "恢复阈值和ROI；解绑并删除本轮时间计划。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：ROI-001、TASK-002、SCH-001、SCH-002、SCH-005、SCENE-009",
+      "sourceCaseIds": [
+        "ROI-001",
+        "TASK-002",
+        "SCH-001",
+        "SCH-002",
+        "SCH-005",
+        "SCENE-009"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q10-S01：区域截图与对应结果。\nQ10-S02：固定输入、变更值和对照结果。\nQ10-S03：设备时间、两段配置及观测窗口。\nQ10-S04：恢复、删除及默认值读回。",
+      "estimatedMinutes": [
+        5,
+        8
+      ]
+    },
+    {
+      "id": "Q11",
+      "revision": 1,
+      "title": "人脸底库及人员入库增删改查",
+      "module": "底库与识别",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "从已有照片ZIP抽3–5张合格照片构成小包；保留1张单图，不做全量人员导入。",
+      "requires": [
+        "DUT",
+        "FACE-ZIP"
+      ],
+      "resourceNotes": "DUT;FACE-ZIP",
+      "steps": [
+        {
+          "id": "Q11-S01",
+          "text": "新增人脸分组；修改名称并搜索；删除一个空的临时分组验证删除入口。"
+        },
+        {
+          "id": "Q11-S02",
+          "text": "单图新增1名人员，再用3–5张小ZIP批量导入；等待后台完成。"
+        },
+        {
+          "id": "Q11-S03",
+          "text": "编辑1名测试人员名称/编号并搜索；删除1名测试人员，刷新检查。"
+        },
+        {
+          "id": "Q11-S04",
+          "text": "选择保留人员的原入库图，准备 Q15 同图识别；完成后 Q24 删除剩余人员和分组。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q11-A01",
+          "text": "分组新增、编辑、查询及空组删除生效。"
+        },
+        {
+          "id": "Q11-A02",
+          "text": "成功/失败人数清楚；成功人员可查询且有有效图片/特征状态；不能把提交任务成功当作全部入库。"
+        },
+        {
+          "id": "Q11-A03",
+          "text": "编辑持久化、搜索准确、删除后不可再查；保留后续识别所需人员。"
+        },
+        {
+          "id": "Q11-A04",
+          "text": "样本与人员ID可对应；最终残留为零，Q24 未完成时本例不记完整通过。"
+        }
+      ],
+      "expected": "分组新增、编辑、查询及空组删除生效。\n成功/失败人数清楚；成功人员可查询且有有效图片/特征状态；不能把提交任务成功当作全部入库。\n编辑持久化、搜索准确、删除后不可再查；保留后续识别所需人员。\n样本与人员ID可对应；最终残留为零，Q24 未完成时本例不记完整通过。",
+      "cleanup": "保留1组及2–3名人员供 Q12/Q15；Q24 删除并回填本例。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：FACE-001、FACE-002、FACE-003、FACE-012、FACE-015",
+      "sourceCaseIds": [
+        "FACE-001",
+        "FACE-002",
+        "FACE-003",
+        "FACE-012",
+        "FACE-015"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q11-S01：分组ID及操作前后列表。\nQ11-S02：导入任务终态和逐人状态。\nQ11-S03：人员字段读回及删除结果。\nQ11-S04：人员样本映射和最终清理证据。",
+      "estimatedMinutes": [
+        6,
+        10
+      ]
+    },
+    {
+      "id": "Q12",
+      "revision": 1,
+      "title": "人脸视频识别功能返回",
+      "module": "底库与识别",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "Q11 底库就绪，复用本地视频通道。没有身份标注，只验收识别流程和返回语义。",
+      "requires": [
+        "DUT",
+        "FACE-VIDEO"
+      ],
+      "resourceNotes": "DUT;FACE-VIDEO",
+      "steps": [
+        {
+          "id": "Q12-S01",
+          "text": "创建人脸识别任务，绑定 Q11 分组并保存刷新。"
+        },
+        {
+          "id": "Q12-S02",
+          "text": "播放含清晰人脸的片段，观察抓拍、特征提取和比对输出。"
+        },
+        {
+          "id": "Q12-S03",
+          "text": "在事件/抓拍页面查看同一结果，核对通道、分组及时间。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q12-A01",
+          "text": "模型和分组加载成功；绑定的分组ID正确，不误选其他底库。"
+        },
+        {
+          "id": "Q12-A02",
+          "text": "至少获得一条真实的人脸比对返回；区分命中、未命中与处理错误。只有抓拍没有比对返回不算完成。"
+        },
+        {
+          "id": "Q12-A03",
+          "text": "显示与算法返回一致；未标注视频不据此计算正确率；识别链路错误明确失败。"
+        }
+      ],
+      "expected": "模型和分组加载成功；绑定的分组ID正确，不误选其他底库。\n至少获得一条真实的人脸比对返回；区分命中、未命中与处理错误。只有抓拍没有比对返回不算完成。\n显示与算法返回一致；未标注视频不据此计算正确率；识别链路错误明确失败。",
+      "cleanup": "恢复原底库绑定，停止本轮人脸任务。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：FACE-009、TASK-008、ALG-7602",
+      "sourceCaseIds": [
+        "FACE-009",
+        "TASK-008",
+        "ALG-7602"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q12-S01：任务及底库绑定关系。\nQ12-S02：带时间的人脸结果及比对字段。\nQ12-S03：跨页面一致性证据；精度未验收说明。",
+      "estimatedMinutes": [
+        4,
+        6
+      ]
+    },
+    {
+      "id": "Q13",
+      "revision": 1,
+      "title": "工服底库增删改查及视频算法",
+      "module": "底库与识别",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "使用已有工服图片和可解码行人片段；模型齐备；无标注不验收误报漏报率。",
+      "requires": [
+        "DUT",
+        "UNIFORM-IMAGE",
+        "PEOPLE-MEDIA"
+      ],
+      "resourceNotes": "DUT;UNIFORM-IMAGE;PEOPLE-MEDIA",
+      "steps": [
+        {
+          "id": "Q13-S01",
+          "text": "新增工服分组，修改名称并查询；上传指定工服图，选择有效人体区域完成入库。"
+        },
+        {
+          "id": "Q13-S02",
+          "text": "再建一个可删除样本/空分组，执行删除并刷新；编辑保留样本的可编辑信息。"
+        },
+        {
+          "id": "Q13-S03",
+          "text": "绑定保留工服库运行短视频，查看工服比对和未穿工服业务结果。"
+        },
+        {
+          "id": "Q13-S04",
+          "text": "准备同图样本供图片比对；后续在 Q24 解除引用并删掉剩余分组。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q13-A01",
+          "text": "分组编辑可回读；图片检测、特征提取、保存完成，底库有有效样本。"
+        },
+        {
+          "id": "Q13-A02",
+          "text": "可编辑字段持久化；被删对象不再出现；保留样本有效。"
+        },
+        {
+          "id": "Q13-A03",
+          "text": "发生真实比对且返回内容可追溯；明确相似度/命中与业务告警的含义，不能只有人体检测框。"
+        },
+        {
+          "id": "Q13-A04",
+          "text": "同图链路可复核；最终清理完成前本例保留部分完成。"
+        }
+      ],
+      "expected": "分组编辑可回读；图片检测、特征提取、保存完成，底库有有效样本。\n可编辑字段持久化；被删对象不再出现；保留样本有效。\n发生真实比对且返回内容可追溯；明确相似度/命中与业务告警的含义，不能只有人体检测框。\n同图链路可复核；最终清理完成前本例保留部分完成。",
+      "cleanup": "保留一个工服样本供 Q15/Q16；Q24 删除剩余样本/分组。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：UNIFORM-001、UNIFORM-002、UNIFORM-005、UNIFORM-008、UNIFORM-009",
+      "sourceCaseIds": [
+        "UNIFORM-001",
+        "UNIFORM-002",
+        "UNIFORM-005",
+        "UNIFORM-008",
+        "UNIFORM-009"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q13-S01：分组ID、入库目标和样本状态。\nQ13-S02：编辑及删除前后状态。\nQ13-S03：任务绑定、比对返回和业务结果。\nQ13-S04：样本关系及最终删除证据。",
+      "estimatedMinutes": [
+        6,
+        10
+      ]
+    },
+    {
+      "id": "Q14",
+      "revision": 1,
+      "title": "单图、批量图片和临时参数",
+      "module": "图片分析",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "选2张可解码、目标清晰的图片；Q03图片场景可用。核对模型类别，准备分值介于0和1的稳定目标用于阈值对照；OBB已部署时优先抽样，专项另执行ALG-38874。",
+      "requires": [
+        "DUT",
+        "IMAGE-MEDIA",
+        "MODEL-INVENTORY"
+      ],
+      "resourceNotes": "DUT;IMAGE-MEDIA;MODEL-INVENTORY",
+      "steps": [
+        {
+          "id": "Q14-S01",
+          "text": "选择图片场景，检查参数面板和编排，再上传1张图片提交分析。"
+        },
+        {
+          "id": "Q14-S02",
+          "text": "更换图片，再一次加入2张做批量分析；逐张打开结果。"
+        },
+        {
+          "id": "Q14-S03",
+          "text": "记录稳定目标分值，用其两侧的直接置信度阈值重测同一图；刷新检查默认值。保存并重新打开场景，再检查参数声明。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q14-A01",
+          "text": "无视频区域/布防配置和无效置信度偏移；直接置信度阈值可用。输出与当前图片对应；若为OBB，核对旋转框和原图，不沿用旧结果。"
+        },
+        {
+          "id": "Q14-A02",
+          "text": "替换后旧图结果清除；批量每张有独立结果或明确失败原因，不串图。"
+        },
+        {
+          "id": "Q14-A03",
+          "text": "低阈值保留、高阈值过滤同一目标；临时值不改默认，保存重开不恢复旧字段。缺边界样本明确记录缺口；不能只以请求成功判定阈值生效。"
+        }
+      ],
+      "expected": "无视频区域/布防配置和无效置信度偏移；直接置信度阈值可用。输出与当前图片对应；若为OBB，核对旋转框和原图，不沿用旧结果。\n替换后旧图结果清除；批量每张有独立结果或明确失败原因，不串图。\n低阈值保留、高阈值过滤同一目标；临时值不改默认，保存重开不恢复旧字段。缺边界样本明确记录缺口；不能只以请求成功判定阈值生效。",
+      "cleanup": "清空本轮图片及临时设置；任务按页面/接口生命周期释放。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：IMAGE-001、IMAGE-002、IMAGE-003、IMAGE-011、SCENE-010、IMAGE-007、ALG-38874",
+      "sourceCaseIds": [
+        "IMAGE-001",
+        "IMAGE-002",
+        "IMAGE-003",
+        "IMAGE-011",
+        "SCENE-010",
+        "IMAGE-007",
+        "ALG-38874"
+      ],
+      "suite": "主要功能快测",
+      "review": "v0.8补充旧字段与直接阈值对照；这里只抽样，不能替代ALG-38874全项验收。",
+      "evidenceRequirements": "Q14-S01：参数与编排截图、输入哈希、场景及模型标识、原始结果与标注图。\nQ14-S02：两张输入与逐项结果。\nQ14-S03：同一目标两次阈值、请求与返回对照；默认值回读；保存重开后的参数截图。",
+      "estimatedMinutes": [
+        6,
+        9
+      ]
+    },
+    {
+      "id": "Q15",
+      "revision": 1,
+      "title": "图片人脸与工服底库命中",
+      "module": "图片分析",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "分别使用Q11/Q13已入库原图；各1张。同图用于功能自洽，不代表独立精度验证。",
+      "requires": [
+        "DUT",
+        "FACE-ZIP",
+        "UNIFORM-IMAGE"
+      ],
+      "resourceNotes": "DUT;FACE-ZIP;UNIFORM-IMAGE",
+      "steps": [
+        {
+          "id": "Q15-S01",
+          "text": "选择图片人脸比对场景和Q11底库，上传对应原图执行分析。"
+        },
+        {
+          "id": "Q15-S02",
+          "text": "选择图片工服比对场景和Q13底库，上传对应原图分析。"
+        },
+        {
+          "id": "Q15-S03",
+          "text": "对其中一类改用空测试组或不含有效目标的图片再提交，然后恢复有效输入。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q15-A01",
+          "text": "返回可核对的测试人员、分组、比对分值/结果及参考图；不只返回检测框。"
+        },
+        {
+          "id": "Q15-A02",
+          "text": "返回关联的工服样本、分组和比对信息；页面正确展示命中详情。"
+        },
+        {
+          "id": "Q15-A03",
+          "text": "未命中、无有效目标、处理错误有明确区分；不沿用上一次成功结果；恢复后正常。"
+        }
+      ],
+      "expected": "返回可核对的测试人员、分组、比对分值/结果及参考图；不只返回检测框。\n返回关联的工服样本、分组和比对信息；页面正确展示命中详情。\n未命中、无有效目标、处理错误有明确区分；不沿用上一次成功结果；恢复后正常。",
+      "cleanup": "释放本轮图片任务；保留底库至 Q24。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：IMAGE-004、IMAGE-005、FACE-015、UNIFORM-009",
+      "sourceCaseIds": [
+        "IMAGE-004",
+        "IMAGE-005",
+        "FACE-015",
+        "UNIFORM-009"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q15-S01：人员/分组对应关系和原始返回。\nQ15-S02：工服样本、分组及详情。\nQ15-S03：异常和恢复的两次结果。",
+      "estimatedMinutes": [
+        5,
+        8
+      ]
+    },
+    {
+      "id": "Q16",
+      "revision": 1,
+      "title": "双图人脸与工服比对",
+      "module": "图片分析",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "双图能力已部署且对应模型齐备；人脸、工服各1对，允许同图做功能自洽。",
+      "requires": [
+        "DUT",
+        "FACE-ZIP",
+        "UNIFORM-IMAGE"
+      ],
+      "resourceNotes": "DUT;FACE-ZIP;UNIFORM-IMAGE",
+      "steps": [
+        {
+          "id": "Q16-S01",
+          "text": "选择双图人脸场景，为A/B两侧放入同一张有效脸图，执行比对。"
+        },
+        {
+          "id": "Q16-S02",
+          "text": "用工服图对执行双图工服比对。"
+        },
+        {
+          "id": "Q16-S03",
+          "text": "清掉其中一侧后提交，再补回并重试。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q16-A01",
+          "text": "结果包含双侧目标对应及比对返回；两侧图片和结果归属清楚。"
+        },
+        {
+          "id": "Q16-A02",
+          "text": "工服比对完成并显示明确结果；不得用人脸场景结果代替。"
+        },
+        {
+          "id": "Q16-A03",
+          "text": "缺侧输入被阻止或返回明确缺侧原因；不沿用旧成功状态；补齐后恢复。"
+        }
+      ],
+      "expected": "结果包含双侧目标对应及比对返回；两侧图片和结果归属清楚。\n工服比对完成并显示明确结果；不得用人脸场景结果代替。\n缺侧输入被阻止或返回明确缺侧原因；不沿用旧成功状态；补齐后恢复。",
+      "cleanup": "清空两侧测试图并释放临时任务。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：IMAGE-008、IMAGE-010、IMAGE-011",
+      "sourceCaseIds": [
+        "IMAGE-008",
+        "IMAGE-010",
+        "IMAGE-011"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q16-S01：双侧输入哈希和人脸比对结果。\nQ16-S02：工服双图返回。\nQ16-S03：缺侧提示和恢复结果。",
+      "estimatedMinutes": [
+        4,
+        7
+      ]
+    },
+    {
+      "id": "Q26",
+      "revision": 1,
+      "title": "视觉语言大模型：图片判断、视频任务与事件",
+      "module": "大模型算法",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "先核对目标芯片兼容且可在设备加载的 VLM 模型、分词器等配套资源；现有 Qwen 原始文件不能直接等同可导入包。固定含清晰行人与不含行人的图片各1张，复用 Q08 行人视频；提示词及预期结果先记录。",
+      "requires": [
+        "DUT",
+        "VLM-MODEL",
+        "MODEL-INVENTORY",
+        "IMAGE-MEDIA",
+        "FACE-VIDEO"
+      ],
+      "resourceNotes": "DUT;VLM-MODEL;MODEL-INVENTORY;IMAGE-MEDIA;FACE-VIDEO",
+      "steps": [
+        {
+          "id": "Q26-S01",
+          "text": "在模型仓库核对 VLM 模型的芯片、版本、配套文件和加载状态；没有可运行模型时写明缺口及受阻步骤。"
+        },
+        {
+          "id": "Q26-S02",
+          "text": "创建图片 VLM 任务，开启高级提示词模式，设置单一问题“画面中是否有清晰可见的行人”；用固定正图与负图分别分析。"
+        },
+        {
+          "id": "Q26-S03",
+          "text": "用同一模型与提示词创建视频 VLM 任务，绑定 Q08 视频并设低频取帧；至少观察两次已完成推理和一条符合规则的新事件。"
+        },
+        {
+          "id": "Q26-S04",
+          "text": "修改一项提示词或取帧参数并保存刷新，用同一固定输入复测；最后停止并清理本轮任务/场景。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q26-A01",
+          "text": "只有在模型可选择且能完成初始化后才继续；文件存在或模板可见不算模型可用。"
+        },
+        {
+          "id": "Q26-A02",
+          "text": "两次请求均结束并返回与当前图片对应的明确是/否结果及耗时；若判断与人工可见事实不符，记录为失败或待分析，不能只因有返回判通过。"
+        },
+        {
+          "id": "Q26-A03",
+          "text": "推理持续完成，无反复初始化或持续超时；判断、抓拍、视频帧时间、事件 ID 相互对应；VLM 无检测框属于正常输出形态。"
+        },
+        {
+          "id": "Q26-A04",
+          "text": "读回为新值，后续结果标明当前配置且非上一次缓存；清理后原业务不受影响。"
+        }
+      ],
+      "expected": "只有在模型可选择且能完成初始化后才继续；文件存在或模板可见不算模型可用。\n两次请求均结束并返回与当前图片对应的明确是/否结果及耗时；若判断与人工可见事实不符，记录为失败或待分析，不能只因有返回判通过。\n推理持续完成，无反复初始化或持续超时；判断、抓拍、视频帧时间、事件 ID 相互对应；VLM 无检测框属于正常输出形态。\n读回为新值，后续结果标明当前配置且非上一次缓存；清理后原业务不受影响。",
+      "cleanup": "删除本轮图片/视频 VLM 场景与任务，恢复原模型和参数；不删除用户已有模型。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：ALG-89336、ALG-92034707、ALG-34707",
+      "sourceCaseIds": [
+        "ALG-89336",
+        "ALG-92034707",
+        "ALG-34707"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q26-S01：模型详情、配套文件清单、设备加载结果。\nQ26-S02：两张输入哈希、提示词/模式、原始结果及耗时。\nQ26-S03：取帧频率、完成时间、判断、抓拍和事件详情。\nQ26-S04：修改前后配置、复测结果和清理清单。",
+      "estimatedMinutes": [
+        12,
+        22
+      ]
+    },
+    {
+      "id": "Q27",
+      "revision": 1,
+      "title": "视觉检测大模型：开放类别检测与事件",
+      "module": "大模型算法",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "核对当前后端可运行的 DINO 检测模型及词表等配套文件；已有 BM1688 GroundingDINO 包是候选，仍须在目标设备验证。选清晰有人正图、无人负图和 Q08 行人视频，提示词固定为英文 person。",
+      "requires": [
+        "DUT",
+        "DINO-MODEL",
+        "MODEL-INVENTORY",
+        "IMAGE-MEDIA",
+        "FACE-VIDEO"
+      ],
+      "resourceNotes": "DUT;DINO-MODEL;MODEL-INVENTORY;IMAGE-MEDIA;FACE-VIDEO",
+      "steps": [
+        {
+          "id": "Q27-S01",
+          "text": "在模型仓库核对 DINO 模型的芯片、包元信息、词表与加载状态，选择或导入一个兼容模型。"
+        },
+        {
+          "id": "Q27-S02",
+          "text": "创建图片 DINO 场景，以 person 为目标词分析固定正图和负图，分别查看标注图与结构化结果。"
+        },
+        {
+          "id": "Q27-S03",
+          "text": "创建视频 DINO 任务，绑定 Q08 视频和有效区域，观察新帧检测与至少一条符合条件的事件。"
+        },
+        {
+          "id": "Q27-S04",
+          "text": "修改目标置信度或目标词，保存刷新并用固定输入复测；再恢复设置并清理测试对象。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q27-A01",
+          "text": "模型可选择、加载并绑定到检测视觉大模型节点；仅有原始 bmodel 或模板不算就绪。"
+        },
+        {
+          "id": "Q27-A02",
+          "text": "正图的行人位置有对应 person 框、类别和分数；负图不得沿用旧框；误框如实记录，不把返回非空当作通过。"
+        },
+        {
+          "id": "Q27-A03",
+          "text": "推理持续完成；person 框与可见目标位置及当前帧相符；事件归属、时间和抓拍与任务一致。"
+        },
+        {
+          "id": "Q27-A04",
+          "text": "实际运行参数与读回一致，结果来自本次输入；恢复后原任务和模型不受影响。"
+        }
+      ],
+      "expected": "模型可选择、加载并绑定到检测视觉大模型节点；仅有原始 bmodel 或模板不算就绪。\n正图的行人位置有对应 person 框、类别和分数；负图不得沿用旧框；误框如实记录，不把返回非空当作通过。\n推理持续完成；person 框与可见目标位置及当前帧相符；事件归属、时间和抓拍与任务一致。\n实际运行参数与读回一致，结果来自本次输入；恢复后原任务和模型不受影响。",
+      "cleanup": "停止并删除本轮 DINO 图片/视频场景及任务；仅删除本轮导入的临时模型，保留原模型。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：ALG-8533、ALG-2935",
+      "sourceCaseIds": [
+        "ALG-8533",
+        "ALG-2935"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q27-S01：候选包校验值、模型详情及加载结果。\nQ27-S02：输入哈希、目标词、两张标注图和原始结果。\nQ27-S03：任务配置、帧时间、检测框、事件 ID 和抓拍。\nQ27-S04：参数前后值、复测结果、恢复与清理记录。",
+      "estimatedMinutes": [
+        10,
+        18
+      ]
+    },
+    {
+      "id": "Q17",
+      "revision": 1,
+      "title": "事件查询、重置、详情和导出",
+      "module": "事件与展示",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "复用Q08/Q12/Q13本轮事件；普通告警和人脸结果各抽1类。若某类模型排除，只跳过其对应子步。",
+      "requires": [
+        "DUT"
+      ],
+      "resourceNotes": "DUT",
+      "steps": [
+        {
+          "id": "Q17-S01",
+          "text": "按本轮时间、通道和场景组合筛选，翻页后点重置。"
+        },
+        {
+          "id": "Q17-S02",
+          "text": "打开1条本轮告警详情，再查看1条本轮人脸抓拍/识别结果。"
+        },
+        {
+          "id": "Q17-S03",
+          "text": "下载该告警图片；若当前场景启用告警录像，播放并下载短录像。"
+        },
+        {
+          "id": "Q17-S04",
+          "text": "导出当前小范围筛选结果，打开导出文件核对至少1条及总数。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q17-A01",
+          "text": "筛选结果属于指定对象；重置后控件和查询结果同步恢复；操作不误跳实时大屏。"
+        },
+        {
+          "id": "Q17-A02",
+          "text": "通道、场景、时间、目标或人员字段与来源一致；详情能打开。"
+        },
+        {
+          "id": "Q17-A03",
+          "text": "文件非空可打开；录像属于对应时间窗。未开启录像时仅该子检查记不适用并说明。"
+        },
+        {
+          "id": "Q17-A04",
+          "text": "导出字段、中文、时间和筛选范围正确；不能仅检查下载请求成功。"
+        }
+      ],
+      "expected": "筛选结果属于指定对象；重置后控件和查询结果同步恢复；操作不误跳实时大屏。\n通道、场景、时间、目标或人员字段与来源一致；详情能打开。\n文件非空可打开；录像属于对应时间窗。未开启录像时仅该子检查记不适用并说明。\n导出字段、中文、时间和筛选范围正确；不能仅检查下载请求成功。",
+      "cleanup": "保留必要证据，不清理用户历史事件。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：EVENT-001、EVENT-003、EVENT-004、EVENT-005、REG-010、REG-011",
+      "sourceCaseIds": [
+        "EVENT-001",
+        "EVENT-003",
+        "EVENT-004",
+        "EVENT-005",
+        "REG-010",
+        "REG-011"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q17-S01：筛选条件、事件ID及重置前后画面。\nQ17-S02：两类详情与来源记录。\nQ17-S03：下载文件哈希和打开/播放证据。\nQ17-S04：导出文件与筛选记录比对。",
+      "estimatedMinutes": [
+        5,
+        8
+      ]
+    },
+    {
+      "id": "Q28",
+      "revision": 1,
+      "title": "大屏多路预览与算法叠加",
+      "module": "事件与展示",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "复用至少2路已建立且有有效算法任务的测试通道；记录通道与任务映射及大屏原布局。以本轮新画面和新推理结果验收。",
+      "requires": [
+        "DUT",
+        "MODEL-INVENTORY"
+      ],
+      "resourceNotes": "DUT;MODEL-INVENTORY",
+      "steps": [
+        {
+          "id": "Q28-S01",
+          "text": "进入实时告警大屏，先用单窗打开一路，再切四窗并在两个窗口分别选不同测试通道。"
+        },
+        {
+          "id": "Q28-S02",
+          "text": "在第一窗口选择“无”叠加，再选择该通道已运行的检测算法；同时核对原始画面与算法画面。"
+        },
+        {
+          "id": "Q28-S03",
+          "text": "在第二窗口选择其运行算法，并切换窗口焦点、通道或算法叠加选项。"
+        },
+        {
+          "id": "Q28-S04",
+          "text": "切换单窗/四窗、窗口放大/退出和页面全屏/退出；保持目标运动并比较叠加位置。"
+        },
+        {
+          "id": "Q28-S05",
+          "text": "关闭其中一个测试窗口再重新打开，随后刷新大屏并恢复原布局。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q28-A01",
+          "text": "每窗显示对应通道名称和持续更新的当前画面；空窗明确显示无信号，不把旧通道帧当新通道成功。"
+        },
+        {
+          "id": "Q28-A02",
+          "text": "无叠加时不残留旧框；选择后出现当前目标的框/标签，位置和时间与实际结果相符；任务未运行时不伪造可选算法。"
+        },
+        {
+          "id": "Q28-A03",
+          "text": "各窗口叠加归属各自通道和任务；切换后旧框、旧标签和旧时间不串到新通道；区域/轨迹如该任务支持，也与实际元数据一致。"
+        },
+        {
+          "id": "Q28-A04",
+          "text": "视频与框/标签随尺寸同步缩放，不明显漂移或裁切；切回后通道和可用叠加仍能正常选择。"
+        },
+        {
+          "id": "Q28-A05",
+          "text": "另一窗口持续可播；关闭的窗口会释放并可恢复，不出现永久黑屏、重复播放器或过期叠加；原布局恢复。"
+        }
+      ],
+      "expected": "每窗显示对应通道名称和持续更新的当前画面；空窗明确显示无信号，不把旧通道帧当新通道成功。\n无叠加时不残留旧框；选择后出现当前目标的框/标签，位置和时间与实际结果相符；任务未运行时不伪造可选算法。\n各窗口叠加归属各自通道和任务；切换后旧框、旧标签和旧时间不串到新通道；区域/轨迹如该任务支持，也与实际元数据一致。\n视频与框/标签随尺寸同步缩放，不明显漂移或裁切；切回后通道和可用叠加仍能正常选择。\n另一窗口持续可播；关闭的窗口会释放并可恢复，不出现永久黑屏、重复播放器或过期叠加；原布局恢复。",
+      "cleanup": "关闭本轮预览并恢复进入前布局；不停止其他已有客户端或业务任务。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：LIVE-001、LIVE-002、LIVE-003、LIVE-005、LIVE-006",
+      "sourceCaseIds": [
+        "LIVE-001",
+        "LIVE-002",
+        "LIVE-003",
+        "LIVE-005",
+        "LIVE-006"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q28-S01：单窗/四窗画面、通道映射和带时间抓拍。\nQ28-S02：叠加前后画面、任务ID及对应原始元数据。\nQ28-S03：两窗并列截图、算法选项及切换前后结果。\nQ28-S04：布局与全屏前后同目标画面。\nQ28-S05：关闭/恢复时序及最终画面。",
+      "estimatedMinutes": [
+        6,
+        10
+      ]
+    },
+    {
+      "id": "Q18",
+      "revision": 1,
+      "title": "实时告警与首页统计显示",
+      "module": "事件与展示",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "复用已运行检测任务和本轮事件；统计只验证已部署且能生成测试数据的指标。",
+      "requires": [
+        "DUT"
+      ],
+      "resourceNotes": "DUT",
+      "steps": [
+        {
+          "id": "Q18-S01",
+          "text": "触发1条本轮新告警，在实时告警大屏打开该条详情。"
+        },
+        {
+          "id": "Q18-S02",
+          "text": "查看首页资源/通道/任务计数及有数据的事件统计，刷新后与清单核对。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q18-A01",
+          "text": "新告警可见且详情对应事件ID；不是历史数据假刷新。"
+        },
+        {
+          "id": "Q18-A02",
+          "text": "对象计数及所选范围统计自洽；不将资源图短时波动作为性能验收。"
+        }
+      ],
+      "expected": "新告警可见且详情对应事件ID；不是历史数据假刷新。\n对象计数及所选范围统计自洽；不将资源图短时波动作为性能验收。",
+      "cleanup": "退出大屏并恢复原布局，不遗留无用播放连接。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：LIVE-004、HOME-001、EVENT-007",
+      "sourceCaseIds": [
+        "LIVE-004",
+        "HOME-001",
+        "EVENT-007"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q18-S01：事件产生与大屏接收时间。\nQ18-S02：计数与对象清单对照。",
+      "estimatedMinutes": [
+        2,
+        4
+      ]
+    },
+    {
+      "id": "Q19",
+      "revision": 1,
+      "title": "HTTP 告警推送闭环",
+      "module": "数据对接",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "隔离接收服务已可达并可查看请求记录；沿用已授权目的地。接收端不可用只阻塞本例。",
+      "requires": [
+        "DUT",
+        "HTTP-RECEIVER",
+        "PUSH-AUTHORIZATION"
+      ],
+      "resourceNotes": "DUT;HTTP-RECEIVER;PUSH-AUTHORIZATION",
+      "steps": [
+        {
+          "id": "Q19-S01",
+          "text": "记录原配置，启用HTTP推送并填入测试接收地址；保存刷新。"
+        },
+        {
+          "id": "Q19-S02",
+          "text": "触发一条新的测试告警，在接收端找到对应请求。"
+        },
+        {
+          "id": "Q19-S03",
+          "text": "验证推送中的图片/媒体引用可按约定访问；关闭推送后再触发一条事件。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q19-A01",
+          "text": "地址、开关等持久化；不把配置保存作为闭环通过。"
+        },
+        {
+          "id": "Q19-A02",
+          "text": "确实收到本轮事件；设备标识、通道、场景、时间/事件ID与事件中心一致。"
+        },
+        {
+          "id": "Q19-A03",
+          "text": "本轮媒体可获取；关闭后不再新增推送；事件中心仍正常记录。"
+        }
+      ],
+      "expected": "地址、开关等持久化；不把配置保存作为闭环通过。\n确实收到本轮事件；设备标识、通道、场景、时间/事件ID与事件中心一致。\n本轮媒体可获取；关闭后不再新增推送；事件中心仍正常记录。",
+      "cleanup": "恢复测试前HTTP配置；不要改用未授权外部接收站。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：PUSH-001、PUSH-003、PUSH-009",
+      "sourceCaseIds": [
+        "PUSH-001",
+        "PUSH-003",
+        "PUSH-009"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q19-S01：脱敏配置读回。\nQ19-S02：接收端请求记录及事件中心记录。\nQ19-S03：媒体访问结果和关闭后的观测窗口。",
+      "estimatedMinutes": [
+        5,
+        8
+      ]
+    },
+    {
+      "id": "Q20",
+      "revision": 1,
+      "title": "MQTT 注册、心跳与业务响应",
+      "module": "数据对接",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "隔离 Broker 及订阅端可用；按当前控制协议确定 topic、设备标识和心跳周期。主动告警由 HTTP 推送，在 Q19 验证。",
+      "requires": [
+        "DUT",
+        "MQTT-BROKER",
+        "PUSH-AUTHORIZATION"
+      ],
+      "resourceNotes": "DUT;MQTT-BROKER;PUSH-AUTHORIZATION",
+      "steps": [
+        {
+          "id": "Q20-S01",
+          "text": "记录原配置，填写Broker、端口及必要认证，启用并保存刷新。"
+        },
+        {
+          "id": "Q20-S02",
+          "text": "观察注册和至少两次心跳；下发一次只读设备信息请求。"
+        },
+        {
+          "id": "Q20-S03",
+          "text": "核对只读设备信息响应中的业务结果；停止本轮订阅/请求，恢复原 MQTT 配置并刷新读回。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q20-A01",
+          "text": "配置持久化；端口未被错误截断；连接状态和Broker观测一致。"
+        },
+        {
+          "id": "Q20-A02",
+          "text": "注册/心跳设备标识正确；响应topic和requestId与该请求匹配；超出快测预算记录实际等待原因。"
+        },
+        {
+          "id": "Q20-A03",
+          "text": "只读响应业务结果成功且内容与设备一致；原 MQTT 配置可读回。主动告警由 Q19 的 HTTP 闭环覆盖，不要求 MQTT 主动发布告警。"
+        }
+      ],
+      "expected": "配置持久化；端口未被错误截断；连接状态和Broker观测一致。\n注册/心跳设备标识正确；响应topic和requestId与该请求匹配；超出快测预算记录实际等待原因。\n只读响应业务结果成功且内容与设备一致；原 MQTT 配置可读回。主动告警由 Q19 的 HTTP 闭环覆盖，不要求 MQTT 主动发布告警。",
+      "cleanup": "停止本轮订阅/请求并恢复原MQTT配置。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：PUSH-004、PUSH-005、PUSH-006",
+      "sourceCaseIds": [
+        "PUSH-004",
+        "PUSH-005",
+        "PUSH-006"
+      ],
+      "suite": "主要功能快测",
+      "review": "v0.6：按已确认的 HTTP 告警、MQTT 控制设计修正预期；不要求 MQTT 主动发布告警。",
+      "evidenceRequirements": "Q20-S01：脱敏配置、连接日志。\nQ20-S02：注册、心跳、请求响应关联记录。\nQ20-S03：只读业务响应、设备信息核对结果、恢复配置证据。",
+      "estimatedMinutes": [
+        5,
+        8
+      ]
+    },
+    {
+      "id": "Q21",
+      "revision": 1,
+      "title": "系统设置保存、刷新及恢复",
+      "module": "系统管理",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "记录原系统设置；仅选可恢复配置，不修改管理IP、密码或设备时间。",
+      "requires": [
+        "DUT"
+      ],
+      "resourceNotes": "DUT",
+      "steps": [
+        {
+          "id": "Q21-S01",
+          "text": "核对设备信息；修改系统显示名称，保存后刷新或重进页面。"
+        },
+        {
+          "id": "Q21-S02",
+          "text": "选择1项截图/告警叠加设置或录像时长，修改后触发一条受该配置影响的事件。"
+        },
+        {
+          "id": "Q21-S03",
+          "text": "恢复原值并刷新，再确认主要页面及测试任务可用。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q21-A01",
+          "text": "系统信息可读；名称修改持久化并在对应界面体现。"
+        },
+        {
+          "id": "Q21-A02",
+          "text": "业务输出体现该配置；不能仅凭配置页读回判定生效。"
+        },
+        {
+          "id": "Q21-A03",
+          "text": "原值恢复；现有任务和页面无异常。"
+        }
+      ],
+      "expected": "系统信息可读；名称修改持久化并在对应界面体现。\n业务输出体现该配置；不能仅凭配置页读回判定生效。\n原值恢复；现有任务和页面无异常。",
+      "cleanup": "本例内恢复全部原值；清理由测试生成的个性化图片。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：SYS-001、SYS-003、SYS-004、SYS-007",
+      "sourceCaseIds": [
+        "SYS-001",
+        "SYS-003",
+        "SYS-004",
+        "SYS-007"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q21-S01：原值、变更值和刷新结果。\nQ21-S02：设置及对应媒体结果。\nQ21-S03：恢复设置及页面状态。",
+      "estimatedMinutes": [
+        4,
+        6
+      ]
+    },
+    {
+      "id": "Q22",
+      "revision": 1,
+      "title": "设备日志下载与网络状态",
+      "module": "系统管理",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "系统已有测试期间日志；网络只读，不做IP/DHCP切换。",
+      "requires": [
+        "DUT"
+      ],
+      "resourceNotes": "DUT",
+      "steps": [
+        {
+          "id": "Q22-S01",
+          "text": "读取网卡、IP、网关/DNS及网络状态，与本次访问目标核对。"
+        },
+        {
+          "id": "Q22-S02",
+          "text": "保持一个短视频任务产生正常日志，执行设备日志导出并打开归档。"
+        },
+        {
+          "id": "Q22-S03",
+          "text": "导出结束后返回任务及事件页面，查询本轮对象。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q22-A01",
+          "text": "显示配置与实际管理目标一致；字段可读，不把只读检查作为改网验收。"
+        },
+        {
+          "id": "Q22-A02",
+          "text": "持续写日志时仍可完成下载；归档可读且包含本轮时间段，不能是错误文本伪装文件。"
+        },
+        {
+          "id": "Q22-A03",
+          "text": "导出未使平台长时间不可用；任务/事件仍可正常读取。"
+        }
+      ],
+      "expected": "显示配置与实际管理目标一致；字段可读，不把只读检查作为改网验收。\n持续写日志时仍可完成下载；归档可读且包含本轮时间段，不能是错误文本伪装文件。\n导出未使平台长时间不可用；任务/事件仍可正常读取。",
+      "cleanup": "保存脱敏日志证据；不清空设备日志。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：SYS-006、NET-001、NET-006、REG-008",
+      "sourceCaseIds": [
+        "SYS-006",
+        "NET-001",
+        "NET-006",
+        "REG-008"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q22-S01：脱敏网络状态。\nQ22-S02：文件大小/哈希、归档目录和本轮日志片段。\nQ22-S03：页面恢复与任务状态。",
+      "estimatedMinutes": [
+        3,
+        5
+      ]
+    },
+    {
+      "id": "Q23",
+      "revision": 1,
+      "title": "常见错误提示及恢复",
+      "module": "必要补充",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "使用本轮隔离对象；只选无效RTSP地址和空必填字段各1个，不做资源压满或安全扫描。",
+      "requires": [
+        "DUT",
+        "GENERATED-FIXTURES"
+      ],
+      "resourceNotes": "DUT;GENERATED-FIXTURES",
+      "steps": [
+        {
+          "id": "Q23-S01",
+          "text": "在新增通道表单留空必填字段尝试保存；再输入一个无效RTSP地址提交/试连接。"
+        },
+        {
+          "id": "Q23-S02",
+          "text": "更正为已知可用地址再试；确认按钮恢复并可正常创建/预览。"
+        },
+        {
+          "id": "Q23-S03",
+          "text": "本例产生的临时通道立即删除；检查主要页面无遗留错误状态。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q23-A01",
+          "text": "空值校验明确；无效源有失败原因，不显示旧抓拍冒充新源成功。"
+        },
+        {
+          "id": "Q23-A02",
+          "text": "错误后页面可继续操作；无重复通道/永久加载态；恢复路径真实可用。"
+        },
+        {
+          "id": "Q23-A03",
+          "text": "错误输入未污染已运行通道；清理完成。"
+        }
+      ],
+      "expected": "空值校验明确；无效源有失败原因，不显示旧抓拍冒充新源成功。\n错误后页面可继续操作；无重复通道/永久加载态；恢复路径真实可用。\n错误输入未污染已运行通道；清理完成。",
+      "cleanup": "删除失败占位对象；恢复有效配置。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：CAM-006、AUTH-005、HOME-005、REG-009",
+      "sourceCaseIds": [
+        "CAM-006",
+        "AUTH-005",
+        "HOME-005",
+        "REG-009"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q23-S01：字段提示、失败结果及对象列表。\nQ23-S02：更正与成功恢复记录。\nQ23-S03：清理后对象清单。",
+      "estimatedMinutes": [
+        3,
+        5
+      ]
+    },
+    {
+      "id": "Q24",
+      "revision": 1,
+      "title": "依赖清理、退出与逐项报告",
+      "module": "收尾交付",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "仅处理本轮前缀对象。保留最小复现对象需要明确记录，不能默认为已清理。",
+      "requires": [
+        "DUT"
+      ],
+      "resourceNotes": "DUT",
+      "steps": [
+        {
+          "id": "Q24-S01",
+          "text": "按任务、通道、场景、样本/底库、模型的依赖顺序删除本轮对象；恢复系统及对接配置。"
+        },
+        {
+          "id": "Q24-S02",
+          "text": "检查至少1路原有/约定保留业务仍可用，退出登录并刷新受保护页面。"
+        },
+        {
+          "id": "Q24-S03",
+          "text": "汇总28条及所有步骤结果，对失败/阻塞/部分完成写具体步骤、原因、证据和下一步。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q24-A01",
+          "text": "可删除对象按预期删除；原有对象不受影响；回填Q03/Q11/Q13等延后删除的结果。"
+        },
+        {
+          "id": "Q24-A02",
+          "text": "约定业务恢复；退出后不能直接读取受保护业务，重新登录仍正常。"
+        },
+        {
+          "id": "Q24-A03",
+          "text": "无未执行冒充通过；USB、视觉语言与视觉检测大模型、大屏预览叠加均为必测项；缺设备或模型时逐项记录阻塞原因；快速版结果不覆盖全量主用例状态。"
+        }
+      ],
+      "expected": "可删除对象按预期删除；原有对象不受影响；回填Q03/Q11/Q13等延后删除的结果。\n约定业务恢复；退出后不能直接读取受保护业务，重新登录仍正常。\n无未执行冒充通过；USB、视觉语言与视觉检测大模型、大屏预览叠加均为必测项；缺设备或模型时逐项记录阻塞原因；快速版结果不覆盖全量主用例状态。",
+      "cleanup": "对照Q01基线；所有未恢复项单列，不把保留对象当清理完成。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：REG-005、REG-006、AUTH-001、CAM-009、TASK-014、SCENE-007",
+      "sourceCaseIds": [
+        "REG-005",
+        "REG-006",
+        "AUTH-001",
+        "CAM-009",
+        "TASK-014",
+        "SCENE-007"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q24-S01：清理明细及前后数量差异。\nQ24-S02：恢复、退出及访问结果。\nQ24-S03：逐条报告和待处理问题清单。",
+      "estimatedMinutes": [
+        4,
+        6
+      ]
+    },
+    {
+      "id": "Q29",
+      "revision": 1,
+      "title": "事件上报大模型审核（本地模型与OpenAI接口）",
+      "module": "事件与展示",
+      "priority": "P1",
+      "journey": "主要功能快测",
+      "preconditions": "使用FACE-VIDEO固定视频及人工可见的人物特征正负片段；本地VLM与OpenAI接口分别预检。审核由事件上报组件执行，普通行人检测产生候选，HTTP接收就绪。",
+      "requires": [
+        "DUT",
+        "FACE-VIDEO",
+        "MODEL-INVENTORY",
+        "VLM-MODEL",
+        "OPENAI-VLM",
+        "HTTP-RECEIVER",
+        "PUSH-AUTHORIZATION"
+      ],
+      "resourceNotes": "DUT;FACE-VIDEO;MODEL-INVENTORY;VLM-MODEL;OPENAI-VLM;HTTP-RECEIVER;PUSH-AUTHORIZATION",
+      "steps": [
+        {
+          "id": "Q29-S01",
+          "text": "核对 FACE-VIDEO 固定视频和本地/接口两种审核资源；人工标注匹配与不匹配人物ROI、时间段。提示词可用“穿红色衣服的人”，缺红衣正例则选择实际可见特征。"
+        },
+        {
+          "id": "Q29-S02",
+          "text": "复制行人检测/区域入侵场景，使用事件上报组件BA_00004；关闭审核，从相同起点重播正负片段建立基线。"
+        },
+        {
+          "id": "Q29-S03",
+          "text": "开启本地模型审核，填写人物特征提示词并保存刷新；串行重播正负片段，逐目标对账审核日志、事件中心及HTTP接收。"
+        },
+        {
+          "id": "Q29-S04",
+          "text": "切换OpenAI兼容接口模式，按私有配置填写基地址、served-model-name与认证；保存刷新，按服务并发限制串行重播同一正负片段。"
+        },
+        {
+          "id": "Q29-S05",
+          "text": "把同一目标的匹配提示词改成明显不匹配的衣着特征，保存刷新并停启任务，再重播同一片段；分别核对已测两种模式。"
+        },
+        {
+          "id": "Q29-S06",
+          "text": "仅在本轮接口配置中暂填无效API Key，触发一次审核；记录认证失败后恢复正确值并重播正负片段。"
+        },
+        {
+          "id": "Q29-S07",
+          "text": "关闭审核再重播原负例确认基线上报恢复；停止删除本轮任务、通道和复制场景，恢复原推送与参数。"
+        }
+      ],
+      "assertions": [
+        {
+          "id": "Q29-A01",
+          "text": "正负事实可从当前目标裁剪图独立确认；未出现的特征不编造正例；两种模式分别记录资源与结果，缺一不影响另一模式可执行步骤。"
+        },
+        {
+          "id": "Q29-A02",
+          "text": "正负候选均实际触发基线上报；固定ROI、告警间隔、去重和播放次数。独立VLM节点输出不能代替事件上报组件审核。"
+        },
+        {
+          "id": "Q29-A03",
+          "text": "本地模式真实执行：“是”对应事件放行，“否”有审核过滤证据且无该候选普通告警。不能以无检测或去重冒充审核过滤。"
+        },
+        {
+          "id": "Q29-A04",
+          "text": "图像请求实际发往所配服务，“是”放行、“否”过滤；结果关联当前目标与帧，接口请求失败不当作否定判断。"
+        },
+        {
+          "id": "Q29-A05",
+          "text": "回读和实际审核使用新提示词；结果符合人工标注且不是上次缓存。同帧其他人的特征不替代当前目标。"
+        },
+        {
+          "id": "Q29-A06",
+          "text": "认证错误与模型否定分开记录；当前普通接口路径错误时降级放行并留日志，恢复后真实审核再次生效，其他业务不受影响。"
+        },
+        {
+          "id": "Q29-A07",
+          "text": "关闭审核后恢复原上报规则；两种模式结果分别留证。清理不影响原业务，不修改或停止共享模型服务。"
+        }
+      ],
+      "expected": "正负事实可从当前目标裁剪图独立确认；未出现的特征不编造正例；两种模式分别记录资源与结果，缺一不影响另一模式可执行步骤。\n正负候选均实际触发基线上报；固定ROI、告警间隔、去重和播放次数。独立VLM节点输出不能代替事件上报组件审核。\n本地模式真实执行：“是”对应事件放行，“否”有审核过滤证据且无该候选普通告警。不能以无检测或去重冒充审核过滤。\n图像请求实际发往所配服务，“是”放行、“否”过滤；结果关联当前目标与帧，接口请求失败不当作否定判断。\n回读和实际审核使用新提示词；结果符合人工标注且不是上次缓存。同帧其他人的特征不替代当前目标。\n认证错误与模型否定分开记录；当前普通接口路径错误时降级放行并留日志，恢复后真实审核再次生效，其他业务不受影响。\n关闭审核后恢复原上报规则；两种模式结果分别留证。清理不影响原业务，不修改或停止共享模型服务。",
+      "cleanup": "停止并删除本轮视频任务、临时通道与复制场景；恢复原推送、审核参数和视频播放配置。保留原有业务及历史事件，不修改共享模型服务。",
+      "method": "Codex逐步操作与证据记录",
+      "executor": "codex-ui-and-evidence",
+      "applicability": "当前部署具备对应功能",
+      "source": "全量库用例：EVENT-012、EVENT-013、EVENT-014",
+      "sourceCaseIds": [
+        "EVENT-012",
+        "EVENT-013",
+        "EVENT-014"
+      ],
+      "suite": "主要功能快测",
+      "review": "",
+      "evidenceRequirements": "Q29-S01：视频哈希、片段/帧/目标框标注、提示词、本地模型及脱敏接口资源。\nQ29-S02：场景链、组件配置、候选目标/帧、基线事件与HTTP接收记录。\nQ29-S03：本地模式配置、目标裁剪图、审核结果、事件ID和HTTP对账。\nQ29-S04：脱敏模式/模型配置、服务图像请求应答、审核过滤记录和事件/HTTP关联。\nQ29-S05：修改前后提示词、停启与实际请求、目标ROI、判断及事件变化。\nQ29-S06：脱敏认证错误、故障期事件、恢复配置及恢复后正负审核证据。\nQ29-S07：开关关闭后的事件、两种模式结论及清理恢复清单。",
+      "estimatedMinutes": [
+        16,
+        28
+      ]
+    }
+  ]
+}

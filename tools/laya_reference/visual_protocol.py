@@ -2,10 +2,7 @@
 import json
 import math
 import re
-import struct
 import time
-
-from laya_shadow_worker import read_exact
 
 PROTOCOL = "cosmo-visual-decision-v1"
 PROFILE = "laya-256p-256s-v1"
@@ -90,15 +87,6 @@ def validate_request(value):
     return value
 
 
-def read_request(conn, timeout=1.5):
-    deadline = time.monotonic() + timeout
-    size = struct.unpack("!I", read_exact(conn, 4, deadline))[0]
-    if not 2 <= size <= MAX_JSON:
-        raise ValueError("invalid_metadata_size")
-    value = validate_request(parse_json(read_exact(conn, size, deadline)))
-    return value, read_exact(conn, value["image_size"], deadline)
-
-
 def response_base(request):
     return {"protocol": PROTOCOL, "profile": PROFILE,
             "manifest_sha256": request["manifest_sha256"],
@@ -112,10 +100,3 @@ def failed_item(item, reason):
 def failure_response(request, reason):
     return {**response_base(request), "status": "unknown", "reason": reason,
             "items": [failed_item(item, reason) for item in request["items"]]}
-
-
-def write_response(conn, value):
-    payload = json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode()
-    if len(payload) > MAX_JSON:
-        raise ValueError("response_too_large")
-    conn.sendall(struct.pack("!I", len(payload)) + payload)

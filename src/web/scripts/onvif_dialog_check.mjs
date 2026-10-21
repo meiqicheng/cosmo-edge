@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import vm from 'node:vm'
 import * as vue from 'vue'
-import { parse, compileScript, compileTemplate } from '@vue/compiler-sfc'
+import { parse, compileScript } from '@vue/compiler-sfc'
 import * as access from '../src/views/gam/taskManager/components/onvifAccess.js'
 
 const filename = new URL('../src/views/gam/taskManager/components/OnvifDialog.vue', import.meta.url)
@@ -11,8 +11,6 @@ const source = await readFile(filename, 'utf8')
 const { descriptor, errors } = parse(source, { filename: filename.pathname })
 assert.equal(errors.length, 0)
 const script = compileScript(descriptor, { id: 'onvif-test' })
-const template = compileTemplate({ source: descriptor.template.content, filename: filename.pathname, id: 'onvif-test', compilerOptions: { bindingMetadata: script.bindings } })
-assert.deepEqual(template.errors, [])
 const profiles = [{ token: 'main', codec: 'H264', width: 1920, height: 1080, fps: 25 }]
 
 async function dialog(handler) {

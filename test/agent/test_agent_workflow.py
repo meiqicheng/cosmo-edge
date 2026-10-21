@@ -695,7 +695,8 @@ class AgentWorkflowTest(unittest.TestCase):
     @unittest.skipIf(os.name == "nt", "doctor.sh requires a POSIX shell")
     def test_baseline_is_inventory_not_task_readiness(self):
         process = subprocess.run(
-            [str(ROOT / "scripts" / "agent" / "doctor.sh"), "--baseline", "--format", "json"],
+            [sys.executable, str(ROOT / "tools" / "agent_workflow.py"),
+             "doctor", "--baseline", "--format", "json"],
             text=True,
             capture_output=True,
             check=False,

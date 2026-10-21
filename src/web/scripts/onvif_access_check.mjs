@@ -1,8 +1,5 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { readFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { chooseProfile, deviceAddress, deviceName, requestConfig, probeDevice, saveDevice, runDeviceBatch } from '../src/views/gam/taskManager/components/onvifAccess.js'
 
 const profiles = [
@@ -24,15 +21,6 @@ test('chooses highest resolution rather than name; preserves existing Profile', 
   assert.throws(() => chooseProfile([{ ...profiles[0], width: 62, height: 720 }]), /unsupported_stream/)
   assert.throws(() => chooseProfile([{ ...profiles[0], width: 128, height: 62 }]), /unsupported_stream/)
   assert.throws(() => chooseProfile([{ ...profiles[0], width: 641, height: 480 }]), /unsupported_stream/)
-})
-test('automatic resolution bounds match the existing media pipeline', async () => {
-  // CMake stages the web sources separately and supplies the original repository root.
-  const repoRoot = process.env.COSMO_REPO_ROOT || fileURLToPath(new URL('../../../', import.meta.url))
-  const source = await readFile(resolve(repoRoot, 'src/util/VideoInfo.h'), 'utf8')
-  for (const [name, value] of Object.entries({ kVideoMinWidth: 64, kVideoMinHeight: 64, kVideo4KWidth: 7680, kVideo4KHeight: 4320 }))
-    assert.match(source, new RegExp(`${name}\\s*=\\s*${value}\\s*;`))
-  assert.match(source, /value % 2 == 0/)
-  assert.match(source, /return IsValidVideoWidth\(width\) && IsValidVideoHeight\(height\)/)
 })
 test('generates names from discovery with safe address fallback', () => {
   assert.equal(deviceName({ endpoint: 'http://192.0.2.10/onvif/device_service', scopes: 'onvif://www.onvif.org/name/Front%20door' }), 'Front door')

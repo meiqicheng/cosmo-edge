@@ -115,8 +115,7 @@ def manifest_assets(path, expected):
     manifest = parse_json(path.read_bytes())
     if manifest.get("schema") != 2 or manifest.get("qualification") != "business-acceptance-pending":
         raise ValueError("unsupported_compiler_manifest")
-    for name in ("compile_questions.py", "question_compiler.py", "image_frontend.py", "visual_protocol.py",
-                 "laya_shadow_worker.py"):
+    for name in ("compile_questions.py", "question_compiler.py", "image_frontend.py", "visual_protocol.py"):
         spec = manifest["implementation"][name]
         source = (path.parent / spec["path"]).resolve()
         if source != Path(__file__).with_name(name).resolve() or sha256(source) != spec["sha256"]:
@@ -158,7 +157,7 @@ def main():
                               "model_config_sha256": a.config_sha256},
                    "implementation": {name: sha256(Path(__file__).with_name(name)) for name in
                                       ("compile_questions.py", "question_compiler.py", "image_frontend.py",
-                                       "visual_protocol.py", "laya_shadow_worker.py")}}
+                                       "visual_protocol.py")}}
         def factory():
             return QuestionCompiler(FrozenTokenizer(a.tokenizer, a.tokenizer_sha256),
                                     parse_json(a.config.read_bytes()), a.config_sha256)

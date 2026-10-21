@@ -91,8 +91,10 @@ class PlatformContracts(unittest.TestCase):
                 profile["runtime"]["npu_core_count"],
                 verifier.ROCKCHIP_NPU_CORE_COUNTS[chip],
             )
+            # "dual" is RKNN's two-core mask (the only mask rk3576 can honour);
+            # see src/nn/device/rknn/rknn_net_node.cc core-mask parsing.
             self.assertIn(profile["runtime"]["default_core_mode"],
-                          ("auto", "split", "all"))
+                          ("auto", "dual", "split", "all"))
         self.assertNotEqual(
             rk3576["media"]["runtime_profile"],
             rv1126b["media"]["runtime_profile"],

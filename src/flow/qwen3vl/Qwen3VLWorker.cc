@@ -57,7 +57,7 @@ namespace {
 Qwen3VLWorker::~Qwen3VLWorker() {
     detector_inst_init_ = false;
     LOG_INFO("{}[{} {}] Stop", kTag, alg_code_, uuid);
-    Stop();
+    Qwen3VLWorker::Stop();
     // Stop() has set running=false and called MvThread::stop() (pthread_join)
 
     while (data_queue && data_queue->RestSize() > 0) {
@@ -87,12 +87,12 @@ bool Qwen3VLWorker::Qwen3VLSdkInit() {
     // Use global shared Qwen3VL instance
     bool ok = service::ServiceRegistry::Instance().Get<service::ILlmInferService>().EnsureInit(alg_code_);
     if (!ok) {
-        action_status = util::ErrorEnum::AI_INST_CREATEFAILED;
+        initialization_status_.store(util::ErrorEnum::AI_INST_CREATEFAILED);
         LOG_WARN("{}[{} {}] {} Qwen3VL shared instance init failed", kTag, alg_code_, uuid, alg_code_);
         return false;
     }
 
-    action_status = util::ErrorEnum::AI_INST_CREATED;
+    initialization_status_.store(util::ErrorEnum::AI_INST_CREATED);
     LOG_INFO("{}[{} {}] {} Qwen3VL shared instance ready", kTag, alg_code_, uuid, alg_code_);
     detector_inst_init_ = true;
     return true;
@@ -107,11 +107,12 @@ void Qwen3VLWorker::QueueStatus(std::vector<AlgActionDataQueueStatus>& que_statu
     status.durationInfos.push_back(duration_info);
     if (data_queue->Status(status.queueStatus, duration_sec)) {
         status.actionId = GetActionId();
+        std::shared_lock<std::shared_mutex> lock(mtx);
         for (auto& channel_node : channel_list_) {
             status.channelIds.push_back(channel_node.channel);
             status.taskIds.insert(status.taskIds.end(), channel_node.tasks.begin(), channel_node.tasks.end());
         }
-        status.actionStatus = action_status;
+        status.actionStatus = initialization_status_.load();
         que_status.push_back(status);
     }
 }
@@ -314,6 +315,7 @@ void Qwen3VLWorker::Stop() {
 
 void Qwen3VLWorker::ResetStateOnRestart() {
     std::lock_guard<std::shared_mutex> lock(mtx);
+    initialization_status_.store(util::ErrorEnum::ActionReady);
     for (const auto& param : params_.param)
         RebuildVisualLocked(param.task_id);
 }

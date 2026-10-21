@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "name": "填写一次的本地资源配置",
+  "resources": {
+    "DUT": {
+      "status": "missing",
+      "host": "",
+      "username": "",
+      "password": "",
+      "gap": "设备IP、平台用户名和密码。"
+    },
+    "VLM-MODEL": {
+      "status": "missing",
+      "gap": "目标芯片可运行的视觉语言模型、分词器和设备加载结果。原始 bmodel 不等于可导入包。"
+    },
+    "OPENAI-VLM": {
+      "status": "missing",
+      "baseUrl": "",
+      "model": "",
+      "apiKey": "",
+      "endpoint": "/chat/completions",
+      "gap": "事件上报审核所用的OpenAI兼容多模态服务；填写/v1基地址、实际served-model-name及认证，开测验证图像输入。并发限制维护在私有配置。"
+    },
+    "DINO-MODEL": {
+      "status": "missing",
+      "gap": "目标芯片可运行的视觉检测大模型、词表和设备加载结果。"
+    },
+    "CAM-HK-A": {
+      "status": "missing",
+      "host": "",
+      "username": "",
+      "password": "",
+      "gap": "设备地址、账户、协议服务及取流权限。"
+    },
+    "CAM-DH": {
+      "status": "missing",
+      "host": "",
+      "username": "",
+      "password": "",
+      "gap": "设备地址、账户、协议服务及取流权限。"
+    },
+    "CAM-HK-B": {
+      "status": "missing",
+      "host": "",
+      "username": "",
+      "password": "",
+      "gap": "设备地址、账户、协议服务及取流权限。"
+    },
+    "CAM-UNV": {
+      "status": "missing",
+      "host": "",
+      "username": "",
+      "password": "",
+      "gap": "设备地址、账户、协议服务及取流权限。"
+    },
+    "NVR-A": {
+      "status": "missing",
+      "host": "",
+      "username": "",
+      "password": "",
+      "gap": "设备地址、账户、协议服务及取流权限。"
+    },
+    "FACE-ZIP": {
+      "status": "missing",
+      "path": "",
+      "gap": "合法人脸照片ZIP。"
+    },
+    "FACE-VIDEO": {
+      "status": "missing",
+      "path": "",
+      "gap": "可解码的人脸视频。"
+    },
+    "UNIFORM-IMAGE": {
+      "status": "missing",
+      "path": "",
+      "gap": "工服底库图片。"
+    },
+    "PEOPLE-MEDIA": {
+      "status": "missing",
+      "path": "",
+      "gap": "现有行人图片与视频目录。"
+    },
+    "IMAGE-MEDIA": {
+      "status": "missing",
+      "path": "",
+      "gap": "现有图片目录。"
+    },
+    "AUDIO-FILE": {
+      "status": "missing",
+      "path": "",
+      "gap": "Codex生成1秒PCM WAV，记录格式与时长。"
+    },
+    "PRECISION-SERVER": {
+      "status": "missing",
+      "host": "",
+      "username": "",
+      "password": "",
+      "gap": "SSH地址、登录方式、脚本和样本根路径。"
+    },
+    "GB-SETTINGS": {
+      "status": "missing",
+      "gap": "SIP监听端口、realm、认证ID/SIP密码；修复NVR等待注册并提供四通道与画面映射。三台现有注册参数可由Codex读取。"
+    },
+    "ONVIF-SETTINGS": {
+      "status": "missing",
+      "gap": "海康B可用ONVIF账户与权限；NVR的ONVIF服务、端口和可查询Profile。无需重复提供已接通设备。"
+    },
+    "UPGRADE-PACKAGE": {
+      "status": "missing",
+      "path": "",
+      "gap": "目标芯片兼容升级包、版本与SHA-256、迁移说明。"
+    },
+    "ROLLBACK-PACKAGE": {
+      "status": "missing",
+      "path": "",
+      "gap": "可回退的当前版本包及校验值。"
+    },
+    "RECOVERY-KIT": {
+      "status": "missing",
+      "gap": "可恢复专用测试机、配置备份、备用网口/串口、重刷说明；断电试验还需可控电源/现场人员。明确可影响范围和时间窗口。"
+    },
+    "MODEL-PACKAGES": {
+      "status": "missing",
+      "path": "",
+      "gap": "目标芯片兼容Open模型包；补齐缺失依赖；DINO/SAM/OCR/VLM配套模型按适用功能提供。"
+    },
+    "PROTECTED-ASSETS": {
+      "status": "missing",
+      "path": "",
+      "gap": "仅适用Protected模式：证书、授权模型包、授权/失效测试身份；若当前版本不支持，提供依据后记不适用。"
+    },
+    "FACE-TRUTH": {
+      "status": "missing",
+      "path": "",
+      "gap": "照片匿名ID映射、独立同人/陌生人照片、count_indoor时间段到人物ID的标注。"
+    },
+    "UNIFORM-TRUTH": {
+      "status": "missing",
+      "path": "",
+      "gap": "穿/未穿、同服异人、异服同人、遮挡与不同光照样本及逐素材标签。"
+    },
+    "SCENARIO-TRUTH": {
+      "status": "missing",
+      "path": "",
+      "gap": "补齐现有精度集外的区域入侵、聚集、人数/车辆统计、离岗、反光衣、跨线、睡岗、车牌等正负/困难样本；VLM需正例；违停需负例；区域/时间/计数真值。可用统一标注索引。"
+    },
+    "ACCEPTANCE": {
+      "status": "missing",
+      "gap": "各算法正检/误报/错认门槛、并发路数、FPS、延迟P95、24小时稳定性、恢复时限和允许丢失量。"
+    },
+    "HTTP-RECEIVER": {
+      "status": "missing",
+      "gap": "可记录成功/失败/超时的隔离HTTP接收端。可复用已有测试服务器，需确认接收敏感告警的具体目的地和数据范围。"
+    },
+    "MQTT-BROKER": {
+      "status": "missing",
+      "gap": "Broker地址、端口、认证、Topic与订阅观测方式，允许断连/恢复的隔离环境。"
+    },
+    "PUSH-AUTHORIZATION": {
+      "status": "missing",
+      "gap": "确认允许将测试告警图片和人员信息发送到指定HTTP/MQTT测试目的地。已有明确授权可复用，不重复询问。"
+    },
+    "AUDIO-HARDWARE": {
+      "status": "missing",
+      "gap": "支持的真实网络音柱、协议/地址/账号，以及现场可听确认或录音反馈。"
+    },
+    "USB-CAMERA": {
+      "status": "missing",
+      "gap": "USB接入为必测：准备已连接的受支持摄像头并核对当前枚举、画面、算法及启停恢复。仅真实不支持的其他平台可凭证据判不适用；不得沿用历史资源不足跳过。"
+    },
+    "OTHER-TARGETS": {
+      "status": "missing",
+      "gap": "仅用于跨平台回归：目标芯片/浏览器实机及其安装包；当前设备不能代表其他芯片。"
+    },
+    "ACCOUNT-HANDOFF": {
+      "status": "missing",
+      "gap": "浏览器修改密码需用户接管输入和提交；已有平台凭据可用于普通登录，无需此项。"
+    },
+    "GENERATED-FIXTURES": {
+      "status": "missing",
+      "gap": "Codex在私有目录生成空文件、坏图/坏ZIP、长文件名、短音频、已知结构夹具；不要求用户准备。"
+    },
+    "MODEL-INVENTORY": {
+      "status": "missing",
+      "gap": "Codex读取实际版本、模板、模型、缺失依赖与能力，不沿用上次ID。"
+    }
+  }
+}

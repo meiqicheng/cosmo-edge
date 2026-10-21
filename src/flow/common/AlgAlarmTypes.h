@@ -162,6 +162,7 @@ struct DataAlarmUnit {
     // Typed numerical decisions remain independent per ROI/question. The run
     // fence is local only; serialized events contain identities, never a pointer.
     std::vector<nlohmann::json> visualJudgments;
+    std::vector<VlmResult> vlmResults;
     std::shared_ptr<service::VisualDecisionRun> visualRun;
     std::vector<std::shared_ptr<service::VisualDecisionRun>> visualRuns;
     std::vector<std::shared_ptr<service::VisualAuditLease>> visualAuditLeases;

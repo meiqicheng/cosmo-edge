@@ -48,17 +48,42 @@ TEST_CASE("LlmInferServiceImpl: EnsureInit validation", "[llm-infer]") {
         REQUIRE(sut.IsInitialized() == false);
     }
 
-    SECTION("EnsureInit fails permanently after empty code — no retry until Reset") {
+    SECTION("An empty code does not prevent initialization of another model") {
         REQUIRE(sut.EnsureInit("") == false);
-        // Even with a valid code, init_failed_ blocks retry
+#if (defined(COSMO_NN_USE_HOST_BACKEND) && !defined(COSMO_NN_USE_RKNN_BACKEND)) ||                           \
+    (defined(COSMO_NN_USE_RKNN_BACKEND) && !defined(COSMO_NN_USE_RKLLM_BACKEND))
         FORBID_CALL(modelSvc, GetModelCfg(trompeloeil::_, trompeloeil::_, trompeloeil::_));
+#else
+        REQUIRE_CALL(modelSvc, GetModelCfg("valid_code", trompeloeil::_, trompeloeil::_)).RETURN(false);
+#endif
         REQUIRE(sut.EnsureInit("valid_code") == false);
     }
 
-    SECTION("Reset clears permanent failure, allowing retry") {
+    SECTION("A missing model does not prevent resolving another model or retrying the same code") {
+#if (defined(COSMO_NN_USE_HOST_BACKEND) && !defined(COSMO_NN_USE_RKNN_BACKEND)) ||                           \
+    (defined(COSMO_NN_USE_RKNN_BACKEND) && !defined(COSMO_NN_USE_RKLLM_BACKEND))
+        FORBID_CALL(modelSvc, GetModelCfg(trompeloeil::_, trompeloeil::_, trompeloeil::_));
+#else
+        trompeloeil::sequence sequence;
+        REQUIRE_CALL(modelSvc, GetModelCfg("missing_code", trompeloeil::_, trompeloeil::_))
+            .IN_SEQUENCE(sequence)
+            .RETURN(false);
+        REQUIRE_CALL(modelSvc, GetModelCfg("another_code", trompeloeil::_, trompeloeil::_))
+            .IN_SEQUENCE(sequence)
+            .RETURN(false);
+        REQUIRE_CALL(modelSvc, GetModelCfg("missing_code", trompeloeil::_, trompeloeil::_))
+            .IN_SEQUENCE(sequence)
+            .RETURN(false);
+#endif
+        REQUIRE_FALSE(sut.EnsureInit("missing_code"));
+        REQUIRE_FALSE(sut.EnsureInit("another_code"));
+        REQUIRE_FALSE(sut.EnsureInit("missing_code"));
+        REQUIRE_FALSE(sut.IsInitialized());
+    }
+
+    SECTION("Reset leaves the service ready to initialize") {
         REQUIRE(sut.EnsureInit("") == false);
         sut.Reset();
-        // After Reset, init_failed_ is cleared — would attempt GetModelCfg
         // GetModelCfg returns false → init fails again but for a different reason
 #if (defined(COSMO_NN_USE_HOST_BACKEND) && !defined(COSMO_NN_USE_RKNN_BACKEND)) ||                           \
     (defined(COSMO_NN_USE_RKNN_BACKEND) && !defined(COSMO_NN_USE_RKLLM_BACKEND))

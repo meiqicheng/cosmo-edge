@@ -26,6 +26,8 @@ struct Qwen3VLResult {
     std::string text;
     int64_t frame_index{-1};
     int64_t timestamp{-1};
+    double duration_ms{0};
+    size_t batch_size{1};
 };
 
 class Qwen3VLUnify {

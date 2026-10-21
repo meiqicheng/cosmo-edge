@@ -28,6 +28,7 @@ struct CemV2Api {
                                               std::uint32_t segment_index,
                                               const CmgV2SophonLoadOptions* options, void** out_bmrt);
     using CloseArtifact     = void (*)(void* context, CmgV2Artifact* artifact) noexcept;
+    using CheckLoadMemory   = CmgV2Status (*)(void* context, const char* model_path);
 
     std::uint32_t abi_major = 0;
     void* context           = nullptr;
@@ -35,6 +36,9 @@ struct CemV2Api {
     GetArtifactInfo get_artifact_info{};
     LoadSophonSegment load_sophon_segment{};
     CloseArtifact close_artifact{};
+    // Production checks available host RAM; mocks may inject a deterministic
+    // budget or leave this empty. This does not change the external guard ABI.
+    CheckLoadMemory check_load_memory{};
 };
 
 /// Minimal Sophon runtime surface needed for native user-model loading and
@@ -75,6 +79,7 @@ enum class SophonModelLoadError {
     kNativeRuntimeCreateFailed,
     kNativeLoadFailed,
     kNoMemory,
+    kMemoryAdmissionFailed,
 };
 
 struct SophonModelLoadResult {

@@ -1506,7 +1506,7 @@ def verify_conversion(
 
 
 def convert_main(arguments: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="convert_model.sh")
+    parser = argparse.ArgumentParser(prog="python3 tools/conversion_workflow_dispatch.py convert")
     parser.add_argument("--contract", required=True)
     parser.add_argument("--test-input")
     parser.add_argument("--record-example")
@@ -1540,7 +1540,7 @@ def convert_main(arguments: list[str]) -> int:
 
 
 def verify_main(arguments: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="verify.sh")
+    parser = argparse.ArgumentParser(prog="python3 tools/conversion_workflow_dispatch.py verify")
     parser.add_argument("--contract", required=True)
     parser.add_argument("--example")
     parser.add_argument("--record-example")

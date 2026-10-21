@@ -44,7 +44,6 @@ private:
     cosmo::Qwen3VLUnifyPtr inst_;       // The sole model instance
     std::string atomic_code_;           // Currently loaded algorithm code
     std::string native_identity_;
-    bool init_failed_{false};                  // Once set, no retry until Reset()
     std::atomic<int> active_worker_count_{0};  // Active video analysis workers
 };
 

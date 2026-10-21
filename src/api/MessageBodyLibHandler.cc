@@ -3,10 +3,12 @@
 #include "api/MessageBodyLibHandler.h"
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 
 #include "api/StagedImageInput.h"
 #include "db/TransactionGuard.h"
+#include "media/VideoFrame.h"
 #include "service/camera/ICameraTaskConfig.h"
 #include "service/face/IBodyLibService.h"
 #include "service/face/IPersonRecogDaoService.h"
@@ -24,6 +26,49 @@ namespace cosmo {
 static constexpr const char* kTag     = "BodyLibHandler";
 static constexpr int kDefaultPageNum  = 1;
 static constexpr int kDefaultPageSize = 10;
+
+namespace {
+
+    // Alarm queries return web paths, not absolute filesystem paths. Resolve only the
+    // two image namespaces accepted by body enrollment; never substitute by basename.
+    bool ResolveBodyPicturePath(const std::string& picture_url, std::string& resolved) {
+        if (picture_url.empty() || std::any_of(picture_url.begin(), picture_url.end(), [](unsigned char ch) {
+                return ch < 0x20 || ch == 0x7f || ch == '\\' || ch == ':' || ch == '?' || ch == '#';
+            })) {
+            return false;
+        }
+        const auto relative = picture_url.front() == '/' ? picture_url.substr(1) : picture_url;
+        const std::filesystem::path relative_path(relative);
+        if (relative_path.empty() || relative_path.has_root_path()) {
+            return false;
+        }
+        for (const auto& part : relative_path) {
+            if (part.empty() || part == "." || part == "..") {
+                return false;
+            }
+        }
+
+        const std::string photo_prefix = "weblibPic/personPicture/";
+        const std::string event_prefix = "event/";
+        std::string root;
+        std::string suffix;
+        if (relative.rfind(event_prefix, 0) == 0) {
+            root   = path::GetEventRootPath(false);
+            suffix = relative.substr(event_prefix.size());
+        } else if (relative.rfind(photo_prefix, 0) == 0) {
+            root   = path::GetPersonLibPhotoDir();
+            suffix = relative.substr(photo_prefix.size());
+        } else if (picture_url.front() != '/' && !relative_path.has_parent_path()) {
+            root   = path::GetPersonLibPhotoDir();
+            suffix = relative;
+        } else {
+            return false;
+        }
+        return path::ResolveExistingPathWithinRoot(root, (std::filesystem::path(root) / suffix).string(),
+                                                   path::PathEntryType::kRegularFile, resolved);
+    }
+
+}  // namespace
 
 MessageBodyLibHandler::MessageBodyLibHandler(service::IPersonRecogDaoService& dao_svc,
                                              service::IBodyLibService& body_lib_svc,
@@ -186,7 +231,7 @@ BodyLib::MsgQueryPersonPicturesSend MessageBodyLibHandler::Handle(BodyLib::MsgQu
 }
 
 BodyLib::MsgAddLibPersonSend MessageBodyLibHandler::Handle(BodyLib::MsgAddLibPersonRecv&& data,
-                                                           std::error_condition& /*errc*/) {
+                                                           std::error_condition& errc) {
     BodyLib::MsgAddLibPersonSend ret{};
     if (static_cast<Operation>(data.personOperation) != Operation::Add) {
         throw util::ErrorMessage(util::ErrorEnum::OperationNotSupport);
@@ -196,37 +241,13 @@ BodyLib::MsgAddLibPersonSend MessageBodyLibHandler::Handle(BodyLib::MsgAddLibPer
                                  "Workwear count for single photo cannot be empty");
     }
 
+    std::error_condition failure = util::ErrorEnum::FileNotExist;
     for (auto& personSrc : data.personList) {
-        if (personSrc.pictureUrl.empty()) {
-            continue;
-        }
-        // pictureUrl may be a web path (/weblibPic/...) or a local relative path. Take only the
-        // filename and confine to the person-photo dir; otherwise fall back to the legacy BaseDir +
-        // pictureUrl form confined to the base dir. Either way the resolved path must stay inside its
-        // allowed root to block path traversal (CWE-22).
-        const auto file_name = std::filesystem::path(personSrc.pictureUrl.ToString()).filename();
-        if (file_name.empty() || file_name == "." || file_name == "..") {
-            // path("../").filename() yields "" and would otherwise resolve to photo_dir itself.
-            LOG_WARN("{} AddLibPerson skip: invalid pictureUrl (no usable filename): {}", kTag,
+        std::string srcPath;
+        if (!ResolveBodyPicturePath(personSrc.pictureUrl.ToString(), srcPath)) {
+            LOG_WARN("{} AddLibPerson skip: picture is missing or outside image directories: {}", kTag,
                      personSrc.pictureUrl);
             continue;
-        }
-        const auto photo_dir           = cosmo::path::GetPersonLibPhotoDir();
-        const auto base_dir            = cosmo::path::GetBaseDir();
-        const std::string primary_path = (std::filesystem::path(photo_dir) / file_name).string();
-        const bool use_primary =
-            cosmo::path::IsWithinRoot(photo_dir, primary_path) && util::FileExist(primary_path);
-
-        std::string srcPath = primary_path;  // name kept for the unchanged decode/copy block below
-        if (!use_primary) {
-            srcPath = (std::filesystem::path(base_dir) / personSrc.pictureUrl.ToString()).string();
-            if (!cosmo::path::IsWithinRoot(base_dir, srcPath) || !util::FileExist(srcPath)) {
-                LOG_WARN(
-                    "{} AddLibPerson skip: path outside allowed root or not found, pictureUrl:{} "
-                    "resolved:{}",
-                    kTag, personSrc.pictureUrl, srcPath);
-                continue;
-            }
         }
 
         std::string personId = util::GenerateUUID();
@@ -236,17 +257,27 @@ BodyLib::MsgAddLibPersonSend MessageBodyLibHandler::Handle(BodyLib::MsgAddLibPer
         try {
             auto picBin    = util::ReadFileBin(srcPath);
             auto imageData = video_codec_.DecodeJpeg(picBin);
-            if (imageData) {
-                finalFeature = body_lib_svc_.ExtractBodyFeature(imageData);
-            } else {
+            if (!VideoFrameValid(imageData)) {
                 LOG_WARN("{} Decode Jpeg failed for {}", kTag, srcPath);
+                failure = util::ErrorEnum::DecodeFailed;
+                continue;
             }
+            finalFeature = body_lib_svc_.ExtractBodyFeature(imageData);
         } catch (const std::exception& e) {
             LOG_WARN("{} Feature extraction exception: {}", kTag, e.what());
+            failure = util::ErrorEnum::GetFeatureFailed;
+            continue;
+        }
+        if (finalFeature.empty() || !std::all_of(finalFeature.begin(), finalFeature.end(),
+                                                 [](float v) { return std::isfinite(v); })) {
+            LOG_WARN("{} AddLibPerson skip: empty or invalid body feature", kTag);
+            failure = util::ErrorEnum::GetFeatureFailed;
+            continue;
         }
 
         std::string dstFileName = personId + ".jpg";
         if (!dao_svc_.AddPerson(personId, data.personLibId.ToString(), dstFileName, finalFeature)) {
+            failure = util::ErrorEnum::DatabaseFailed;
             continue;
         }
 
@@ -263,6 +294,8 @@ BodyLib::MsgAddLibPersonSend MessageBodyLibHandler::Handle(BodyLib::MsgAddLibPer
     // Invalidate body cache for the modified library
     if (!ret.resData.personId.empty()) {
         InvalidateBodyCache(data.personLibId);
+    } else {
+        errc = failure;
     }
     return ret;
 }

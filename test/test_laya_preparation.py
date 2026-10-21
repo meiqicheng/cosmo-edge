@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools/laya_reference"))
-from compile_questions import prepare_cached
+from compile_questions import manifest_assets, prepare_cached
 from question_compiler import QuestionCompiler, QuestionCache
 
 
@@ -34,6 +34,37 @@ class PreparationTests(unittest.TestCase):
     def encoded(self, question=None):
         return json.dumps({"questions": [{"question": question or self.question, "text_state": ""}]},
                           ensure_ascii=False, sort_keys=True).encode()
+
+    def test_manifest_requires_current_compiler_source_identities(self):
+        source_dir = Path(__file__).resolve().parents[1] / "tools/laya_reference"
+        manifest_path = Path(self.root.name) / "manifest.json"
+        manifest = {"schema": 2, "qualification": "business-acceptance-pending",
+                    "implementation": {
+                        name: {"path": str(source_dir / name),
+                               "sha256": hashlib.sha256((source_dir / name).read_bytes()).hexdigest()}
+                        for name in ("compile_questions.py", "question_compiler.py",
+                                     "image_frontend.py", "visual_protocol.py")},
+                    "tokenizer": {"path": "tokenizer.json", "sha256": "a" * 64},
+                    "cpu_directory": "cpu", "cpu_files": {"rl_agent_config.json": "b" * 64}}
+
+        def load(value):
+            encoded = json.dumps(value).encode()
+            manifest_path.write_bytes(encoded)
+            return manifest_assets(manifest_path, hashlib.sha256(encoded).hexdigest())
+
+        self.assertEqual(load(manifest), (manifest_path.parent / "tokenizer.json", "a" * 64,
+                                         manifest_path.parent / "cpu/rl_agent_config.json", "b" * 64))
+        for name in manifest["implementation"]:
+            with self.subTest(source=name, fault="missing"):
+                changed = copy.deepcopy(manifest)
+                del changed["implementation"][name]
+                with self.assertRaises(KeyError):
+                    load(changed)
+            with self.subTest(source=name, fault="hash_mismatch"):
+                changed = copy.deepcopy(manifest)
+                changed["implementation"][name]["sha256"] = "0" * 64
+                with self.assertRaisesRegex(ValueError, "compiler_implementation_identity_mismatch"):
+                    load(changed)
 
     def test_explicit_order_survives_sorted_engine_json(self):
         data = self.encoded()

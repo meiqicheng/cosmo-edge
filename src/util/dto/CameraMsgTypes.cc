@@ -65,6 +65,7 @@ void from_json(const nlohmann::json& j, MsgCameraAttr& v) {
     JSON_OPT(j, v, codec);
     JSON_OPT(j, v, fps);
     JSON_OPT(j, v, channelStatus);
+    JSON_OPT(j, v, statusReason);
 }
 
 void to_json(nlohmann::json& j, const MsgCameraAttr& v) {
@@ -73,6 +74,7 @@ void to_json(nlohmann::json& j, const MsgCameraAttr& v) {
     j["codec"]         = v.codec;
     j["fps"]           = v.fps;
     j["channelStatus"] = v.channelStatus;
+    j["statusReason"]  = v.statusReason;
 }
 
 }  // namespace cosmo

@@ -61,7 +61,14 @@
           </template>
 
           <!-- 下拉选择框 -->
-          <div v-if="item.type.includes('modelSelect')">
+          <library-select
+            v-if="isPictureMatchLibrary(item)"
+            v-model="item.value"
+            @update:model-value="updatePictureMatchParam(item, $event)"
+            :type="item.key === 'param.faceSet' ? 'faceSet' : 'workClothesSet'"
+            class="form-content"
+          />
+          <div v-else-if="item.type.includes('modelSelect')">
             <el-select v-model="item.value" class="form-content" @change="modelSelectChange" :placeholder="t('validate.pleaseSelect', { name: '' })" filterable size="small">
               <el-option v-for="obj in atomicModelList" :key="obj.atomicCode" :label="`${obj.atomicName}（${obj.atomicCode}）`" :value="obj.atomicCode">
               </el-option>
@@ -98,7 +105,7 @@
 
           <!-- 输入框 -->
           <div v-else-if="item.type=== 'text'">
-            <el-input v-model="item.value" class="form-content" size="small"></el-input>
+            <el-input v-model="item.value" class="form-content" size="small" @update:model-value="updatePictureMatchParam(item, $event)"></el-input>
           </div>
 
           <!-- 树选择器多选 -->
@@ -239,14 +246,14 @@
         <!-- modelSelect 定制化组件  -->
         <div class="select-table-body" v-if="item.type.includes('modelSelect') && !['modelSelect_dino','modelSelect_ocr','modelSelect_sam2','modelSelect_qwen3vl','modelSelect_qwen3_5'].includes(item.type)">
           <div class="select-table-title">{{ t('glossary.selectLabel') }}</div>
-          <el-table :data="labelList" border size="small">
-            <el-table-column type="index" :label="t('field.no')" align="center" width="70">
+          <el-table :data="labelList" class="model-label-table" border size="small">
+            <el-table-column type="index" :label="t('field.no')" align="center" width="44">
             </el-table-column>
-            <el-table-column prop="nameCN" :label="t('field.name')" align="center">
+            <el-table-column prop="nameCN" :label="t('field.name')" min-width="150" class-name="model-label-name" show-overflow-tooltip>
             </el-table-column>
-            <el-table-column prop="class_name" :label="t('glossary.classId')" align="center">
+            <el-table-column prop="class_name" :label="t('glossary.classId')" min-width="150" class-name="model-label-name" show-overflow-tooltip>
             </el-table-column>
-            <el-table-column prop="used" :label="t('glossary.isUsed')" align="center">
+            <el-table-column prop="used" :label="t('glossary.isUsed')" align="center" width="66">
               <template #default="scope">
                 <el-checkbox v-model="scope.row.used"></el-checkbox>
               </template>
@@ -270,7 +277,7 @@
 
         <!-- 条件判断定制组件  -->
         <div v-else-if="item.type === 'condition'">
-          <condition-view ref="conditionRef" :condition="condition" :flowData="flowData" :atomicList="atomicList" @onClick="onClick"></condition-view>
+          <condition-view ref="conditionRef" :condition="condition" :flowData="conditionFlowData" :atomicList="atomicList" @onClick="onClick"></condition-view>
         </div>
       </div>
     </el-form>
@@ -282,6 +289,7 @@ import VisualQuestionEditor from '@/components/VisualQuestionEditor.vue'
 import { matchesParamDependency } from '@/utils/taskParamOwnership'
 import { ref, onMounted, onBeforeUnmount, getCurrentInstance, watch, computed, toRef, inject } from 'vue'
 import ConditionView from './ConditionView.vue'
+import LibrarySelect from './LibrarySelect.vue'
 import { v4 } from 'uuid'
 import { flowEditorKey } from './flowEditorContext.js'
 import TreeSelectMultiple from './TreeSelectMultiple.vue'
@@ -326,13 +334,34 @@ const props = defineProps({
     type: Object,
     default: () => ({})
   },
+  sceneParams: {
+    type: Array,
+    default: () => []
+  },
   atomicList: {
     type: Array,
     default: () => []
   }
 })
-const emit = defineEmits(['config-change'])
+const emit = defineEmits(['config-change', 'picture-match-param-change'])
+
+const isPictureLibraryMatch = computed(
+  () => (props.actionDetail?.actionId || props.actionDetail?.id) === 'PB_00006'
+)
+const isPicturePairMatch = computed(() => (props.actionDetail?.actionId || props.actionDetail?.id) === 'PB_00007')
+const isPictureComparison = computed(() => isPictureLibraryMatch.value || isPicturePairMatch.value)
+const isPairThreshold = item => isPicturePairMatch.value && item.key === 'pair.threshold'
+const isPictureMatchLibrary = item => isPictureLibraryMatch.value &&
+  (item.key === 'param.faceSet' || item.key === 'param.workClothesSet')
+const updatePictureMatchParam = (item, value) => {
+  if (!isPairThreshold(item) && !isPictureMatchLibrary(item) && !(isPictureLibraryMatch.value && item.key === 'param.limitScore')) return
+  // Only explicit edits update scene defaults; hydration must not overwrite them.
+  emit('picture-match-param-change', { ...item, value: String(value ?? ''), defaultValue: String(value ?? '') })
+}
 const editor = inject(flowEditorKey, null)
+const conditionFlowData = computed(() => (editor?.nodes?.value || [])
+  .filter(node => node.data?.flowData?.actionId)
+  .map(node => ({ ...node.data.flowData, configObject: node.data.configObject })))
 
 const isAreaAlarmAction = computed(
   () =>
@@ -478,12 +507,19 @@ const formReady = ref(false)
 onMounted(() => {
   const params = JSON.parse(props.actionDetail.inputParamConfig)
   params.forEach((item, index) => {
-    const input = _.find(props.configObject?.params, { key: item.key }) ||
-      _.find(props.configObject?.webConfig?.metaDataParams, { key: item.key })
+    // Nonempty scene defaults override node params during picture execution.
+    const sceneDefault = (isPairThreshold(item) || (isPictureLibraryMatch.value &&
+      (isPictureMatchLibrary(item) || item.key === 'param.limitScore')))
+      ? props.sceneParams.find(param => param.key === item.key)?.defaultValue
+      : undefined
+    const input = sceneDefault !== undefined && sceneDefault !== null && (isPairThreshold(item) || String(sceneDefault) !== '')
+      ? { value: sceneDefault }
+      : _.find(props.configObject?.params, { key: item.key }) ||
+        _.find(props.configObject?.webConfig?.metaDataParams, { key: item.key })
     if (input) {
       paramConfigs.value.push({
         ...item,
-        value: input.value
+        value: input.value ?? input.defaultValue ?? item.defaultValue ?? ''
       })
     } else {
       paramConfigs.value.push({
@@ -502,8 +538,6 @@ onMounted(() => {
     areaRuleUiType.value = inferAreaRuleUiType(currentAreaParams.value)
     areaRulePurpose.value = getAreaRulePurpose(areaRuleUiType.value)
   }
-
-  console.log(paramConfigs.value, '=============paramConfigs', props.atomicList)
 
   const modelSelect = _.find(paramConfigs.value, function (obj) {
     return obj.type.includes('modelSelect')
@@ -949,6 +983,10 @@ const isDependsOnSatisfied = (obj, visited = new Set()) => {
 }
 
 const showFormItem = (obj) => {
+  if (isPictureMatchLibrary(obj)) {
+    const kind = paramConfigs.value.find(item => item.key === 'match.libraryType')?.value || 'face'
+    return obj.key === (kind === 'body' ? 'param.workClothesSet' : 'param.faceSet') && isDependsOnSatisfied(obj)
+  }
   if (isAreaAlarmAction.value && areaRuleTechnicalKeys.includes(obj.key)) {
     return false
   }
@@ -959,7 +997,7 @@ const showFormItem = (obj) => {
   ) {
     return false
   }
-  if (obj.level === '2' && obj.type !== 'visualQuestions') return false
+  if (obj.level === '2' && obj.type !== 'visualQuestions' && !isPairThreshold(obj) && !(isPictureLibraryMatch.value && obj.key === 'param.limitScore')) return false
   if (hiddenParamKeys.includes(obj.key)) return false
   return isDependsOnSatisfied(obj)
 }
@@ -1483,6 +1521,7 @@ const submitForm = () => {
   }
   paramConfigs.value.forEach((item) => {
     if (item.level === '2') {
+      if (isPictureMatchLibrary(item) && !showFormItem(item)) return
       if (item.dependsOn) {
         const dependsOn = _.find(configObject.params, {
           key: item.dependsOn.key
@@ -1523,6 +1562,22 @@ const submitForm = () => {
       )
     }
   }
+  if (String(props.actionDetail.actionId || props.actionDetail.id || '').startsWith('P')) {
+    configObject.webConfig.metaDataParams = configObject.webConfig.metaDataParams.filter(item => !String(item.key).endsWith('.detPostion'))
+    if (labelFilterListType.value) {
+      targetLabelArr.value.forEach(item => configObject.params.push({
+        key: `filter.${item.labelCode}.side.min`, value: item.sideMinIsEnable == '1' ? '60' : '0'
+      }))
+    }
+    // Picture execution does not have a channel form to materialize defaults.
+    configObject.webConfig.metaDataParams.forEach(item => {
+      const value = isPictureComparison.value ? (item.value ?? item.defaultValue) : (item.value || item.defaultValue)
+      if (isPictureComparison.value) item.defaultValue = value
+      if (value !== undefined && (value !== '' || isPictureMatchLibrary(item) || isPairThreshold(item)) && !configObject.params.some(param => param.key === item.key)) {
+        configObject.params.push({ key: item.key, value: String(value) })
+      }
+    })
+  }
   return configObject
 }
 
@@ -1535,53 +1590,52 @@ defineExpose({
 <style lang="scss" scoped>
 /* 滚动条滑块以外区域 */
 ::-webkit-scrollbar-track-piece {
-  background-color: #f2f5f9; /* 设置滑块以外区域的背景颜色 */
+  background-color: var(--bg-secondary); /* 设置滑块以外区域的背景颜色 */
 }
 
 .form-body {
-  padding: 10px 0;
-  // height: 450px;
-  overflow-y: scroll;
+  padding: 4px 0;
+  min-width: 0;
 }
 
 .area-rule-overview {
   margin: 0 0 16px;
   padding: 12px;
-  border: 1px solid #dbeafe;
+  border: 1px solid var(--el-color-primary-light-9);
   border-radius: 8px;
-  background: #f8fbff;
+  background: var(--flow-info-bg);
 }
 
 .area-rule-overview__title {
   margin-bottom: 12px;
-  color: #1f2937;
+  color: var(--text-primary);
   font-size: 14px;
   font-weight: 600;
 }
 
 .area-rule-summary {
   padding: 10px 12px;
-  border-left: 3px solid #409eff;
+  border-left: 3px solid var(--primary-color);
   border-radius: 4px;
-  background: #ffffff;
-  color: #374151;
+  background: var(--bg-white);
+  color: var(--text-primary);
   font-size: 13px;
   line-height: 1.6;
 }
 
 .area-rule-summary.is-warning {
-  border-left-color: #e6a23c;
-  background: #fdf6ec;
+  border-left-color: var(--warning-color);
+  background: var(--flow-warning-bg);
 }
 
 .area-rule-summary__label {
-  color: #1f2937;
+  color: var(--text-primary);
   font-weight: 600;
 }
 
 .area-rule-summary__note {
   margin-top: 6px;
-  color: #6b7280;
+  color: var(--text-secondary);
 }
 
 .el-form-item {
@@ -1597,7 +1651,7 @@ defineExpose({
 }
 
 .select-table-body {
-  color: #606266;
+  color: var(--text-secondary);
   font-size: 14px;
   margin-bottom: 15px;
 }
@@ -1606,8 +1660,26 @@ defineExpose({
   padding-bottom: 10px;
 }
 
+.model-label-table {
+  width: 100%;
+
+  :deep(.el-table__cell) {
+    padding: 7px 0;
+  }
+
+  :deep(.cell) {
+    padding: 0 8px;
+  }
+
+  :deep(td.model-label-name .cell) {
+    white-space: nowrap;
+    word-break: normal;
+    overflow-wrap: normal;
+  }
+}
+
 .collapse-body {
-  color: #606266;
+  color: var(--text-secondary);
   font-size: 14px;
 }
 
@@ -1618,14 +1690,14 @@ defineExpose({
 .plus-icon {
   font-size: 25px;
   margin-left: 10px;
-  color: #1890ff;
+  color: var(--primary-color);
   cursor: pointer;
 }
 
 .close-icon {
   font-size: 25px;
   margin-left: 5px;
-  color: red;
+  color: var(--danger-color);
   cursor: pointer;
 }
 
@@ -1664,7 +1736,7 @@ defineExpose({
 }
 
 .select-table-body {
-  color: #606266;
+  color: var(--text-secondary);
   font-size: 14px;
   margin-bottom: 15px;
 }

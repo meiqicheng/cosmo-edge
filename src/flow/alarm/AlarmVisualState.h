@@ -21,6 +21,8 @@ inline service::VisualDecisionRuns VisualRuns(const DataAlarmUnit& unit) {
 // scalar target becomes the combined alarm's representative. Retain every audit
 // and every fence so edits/stops of any contributor invalidate the whole event.
 inline void AppendVisualState(DataAlarmUnit& destination, const DataAlarmUnit& source) {
+    destination.vlmResults.insert(destination.vlmResults.end(), source.vlmResults.begin(),
+                                  source.vlmResults.end());
     destination.visualJudgments.insert(destination.visualJudgments.end(), source.visualJudgments.begin(),
                                        source.visualJudgments.end());
     destination.visualCandidates.insert(destination.visualCandidates.end(), source.visualCandidates.begin(),

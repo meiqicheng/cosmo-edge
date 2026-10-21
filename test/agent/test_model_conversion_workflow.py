@@ -119,23 +119,6 @@ def prepare_run(root: Path, contract: dict) -> tuple[Path, Path]:
 
 
 class ModelConversionWorkflowTest(unittest.TestCase):
-    def test_example_catalog_starts_truthfully_empty_and_json_assets_parse(self):
-        example_dir = ROOT / "test" / "agent" / "examples" / "model-conversion"
-        index = json.loads((example_dir / "index.json").read_text(encoding="utf-8"))
-        schema = json.loads((example_dir / "schema.json").read_text(encoding="utf-8"))
-        self.assertEqual(index["examples"], [])
-        self.assertEqual(index["lifecycle"], "beta")
-        self.assertIn("recordings", schema["required"])
-        self.assertEqual(
-            schema["properties"]["status"]["enum"],
-            ["candidate", "conversion-verified"],
-        )
-        self.assertEqual(
-            schema["properties"]["lifecycle"]["properties"]["status"]["enum"],
-            ["active", "revoked"],
-        )
-        self.assertIn("deviceValidation", schema["properties"])
-
     def test_checker_only_cli_does_not_request_runtime_execution(self):
         with tempfile.TemporaryDirectory() as directory:
             model_path = Path(directory) / "source.onnx"

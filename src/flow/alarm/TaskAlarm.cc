@@ -67,7 +67,7 @@ namespace {
 
 TaskAlarm::~TaskAlarm() {
     LOG_INFO("{}Task:{} Stop", kTag, task_id);
-    Stop();
+    TaskAlarm::Stop();
     LOG_INFO("{}Task:{} Delete", kTag, task_id);
 }
 
@@ -202,6 +202,9 @@ void TaskAlarm::ActionInfo(std::vector<ActionRuntimeInfo>& actionInfos) {
 param.alarmInterval
 */
 bool TaskAlarm::AnalysisKey(MsgDynamicKeyValue& param) {
+    if (m_param.imagePrivacy.Apply(param.key.ToRefString(), param.value.ToString())) {
+        return m_param.imagePrivacy.Valid();
+    }
     auto normalized = param.key.ToString();
     if (normalized.rfind("param.", 0) == 0)
         normalized.erase(0, 6);
@@ -349,6 +352,11 @@ bool TaskAlarm::AnalysisKey(MsgDynamicKeyValue& param) {
     }
 
     return true;
+}
+
+void TaskAlarm::ConfigurePrivacyDetectors(const std::vector<std::string>& detectorIds) {
+    std::lock_guard<std::shared_mutex> lock(mtx);
+    m_privacyExpectedDetectors = detectorIds;
 }
 
 // Configuration setters share the alarm execution lock. Invalidate first so

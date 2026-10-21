@@ -18,7 +18,7 @@ next:
 | 层级 | 检查项 | 建议触发方式 |
 | --- | --- | --- |
 | 文档站 | `npm ci`、`npm run docs:verify` | Pull request |
-| 前端 | `npm ci`、`npm run i18n:check`、`npm run build`、`npm run resource-i18n:check` | Pull request / push |
+| 前端 | `npm ci`、`npm test`、`npm run build`、`npm run resource-i18n:check` | Pull request / push |
 | C++ 格式 | `scripts/format_check.sh --check` | Pull request / push |
 | C++ 静态分析 | `scripts/static_analysis.sh --cppcheck`、`scripts/static_analysis.sh --clang-tidy` | 定期 / 手动 / self-hosted |
 | CPU 测试构建 | `scripts/build_cpu_test.sh`、`build_cpu/cosmo-tests` | Pull request / 手动 |
@@ -39,9 +39,7 @@ npm run docs:verify
 
 1. `gitee:readme:check`：检查 Gitee README 与源文件是否同步。
 2. `docs:build`：构建完整 VitePress 文档站、检查站内链接，并生成基准报告页面。
-3. `docs:smoke`：检查五篇中英文核心指南和两个索引，共十二页的渲染 HTML、标题、
-   语言、导航、链接、图片 alt 和 frontmatter 泄漏。
-4. `benchmarks:v1.1:smoke`：验证基准源码与生成报告的证据、校验和、公开数据边界及报告链接。
+3. `benchmarks:v1.1:validate -- --output-root docs/.vitepress/dist/benchmarks/scenario-bench/v1.1`：直接验证基准源码和本次构建报告的证据、校验和、公开数据边界及包内链接。
 
 本地预览：
 
@@ -53,10 +51,14 @@ npm run docs:preview
 
 - `.github/workflows/pr-checks.yml` 中的 `docs` job 会在 pull request 上执行同一条
   `npm run docs:verify` 命令。
-- 教程结构和链接以构建结果为准，不再通过独立源码扫描强制固定章节措辞或禁用词。
+- 教程由 VitePress 编译并检查站内链接；不再通过专项脚本约束固定页面的标题、H1、
+  导航、图片 alt 或 frontmatter 渲染形态。
 - 基准完整验证已经覆盖源码，因此不在构建前重复执行 `--source-only`；该参数仍可用于
   单独检查基准源码。
-- 可选工作流中的 `docs:contracts` 运行基准验证器的回归测试。
+- 基准验证保留报告完整性、数据投影、证据限制、校验和与包内链接检查；不再锁定
+  CSS 类名和数量、标题或说明的具体措辞。
+- 不再专项扫描 README 和其他文档中的官网报告 URL，也不将这些绝对 URL 映射到本地
+  构建目录检查目标是否存在；报告清单和包内相对链接继续验证。
 - 当前依赖审计可能报告 npm dependency vulnerabilities，公开发布前应单独评估并记录处理结论。
 
 ## 前端检查
@@ -66,16 +68,19 @@ npm run docs:preview
 ```bash
 cd src/web
 npm ci
-npm run i18n:check
+npm test
 npm run build
 npm run resource-i18n:check
 ```
 
 说明：
 
-- `npm run build` 会先通过 `prebuild` 自动执行 `npm run i18n:check`。
-- `i18n:check` 包含两个入口：`i18n:check-glossary` 检查术语表同步与 short scope；
-  `i18n:check-locales` 检查双语键一致性、短译键及源码使用的翻译键。
+- `npm test` 使用 Node 原生测试运行器串行执行显式列出的 19 个测试入口，覆盖 API、
+  请求、参数、流程及组件行为；前端 CI 在构建前执行它。单项测试可直接运行
+  `node --experimental-vm-modules --test scripts/<测试文件>.mjs`。
+- `npm run build` 的 `prebuild` 只执行 `i18n:check`，不再隐式运行行为测试。
+- `i18n:check` 直接检查双语键一致性、短译键及源码使用的翻译键。
+  术语文档用于人工维护，不再强制其表格与运行时配置同步。
 - 弹窗按钮措辞不再由独立正则校验强制限制；组件行为和浏览器布局检查继续保留，
   可选工作流不再生成源码或 CSS 变体来验证这些检查本身。
 - `resource-i18n:check` 用于检查资源类国际化内容是否同步。

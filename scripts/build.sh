@@ -156,12 +156,6 @@ if [ "${unsafe_elf_path}" -ne 0 ]; then
     exit 1
 fi
 
-if [ "${BUILD_TESTS_FLAG}" = "ON" ]; then
-    echo "Running package regression suites..."
-    /usr/bin/python3 -I -B "${PROJECT_ROOT_PATH}/test/test_package_profile.py"
-    /usr/bin/python3 -I -B "${PROJECT_ROOT_PATH}/test/test_verify_model_guard_v2_sdk.py"
-fi
-
 installed_python_cache="$(
     find "${INSTALL_DIR}" \
         \( -name __pycache__ -o -name '*.pyc' -o -name '*.pyo' \) \

@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -40,6 +41,7 @@ private:
     // Parameter configuration
     std::string prompt_{""};
     bool advanced_mode_{false};
+    bool target_input_{false};
     bool worker_registered_{false};  // True after NotifyWorkerStart(); guards NotifyWorkerStop()
     Qwen3VLGenerationStyle generation_style_{Qwen3VLGenerationStyle::STANDARD};
     Qwen3VLGenerationParam gen_param_;
@@ -49,6 +51,8 @@ private:
     std::shared_ptr<VisualJudgment> visual_judgment_;
     bool stopped_{false};
     bool has_upstream_targets_{false};
+    std::map<std::string, std::string> applied_parameters_;
+    bool parameters_applied_{false};
 };
 
 using PQwen3VLWorkerPtr = std::shared_ptr<PQwen3VLWorker>;

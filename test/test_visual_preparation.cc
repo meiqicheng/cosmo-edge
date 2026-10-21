@@ -22,8 +22,8 @@ VisualQuestionCompilerOptions Options() {
         {"assets",
                 {{"tokenizer_sha256", std::string(64, 'b')}, {"model_config_sha256", std::string(64, 'c')}}},
         {"implementation", Json::object()}};
-    for (const auto* name : {"compile_questions.py", "question_compiler.py", "image_frontend.py",
-                             "visual_protocol.py", "laya_shadow_worker.py"})
+    for (const auto* name :
+         {"compile_questions.py", "question_compiler.py", "image_frontend.py", "visual_protocol.py"})
         result.binding["implementation"][name] = std::string(64, 'd');
     return result;
 }
@@ -77,7 +77,7 @@ cosmo::util::BoundedProcessResult Output(const Json& value) {
 
 TEST_CASE("Visual configuration keeps order and binds receipts to the exact source and release",
           "[visual-preparation]") {
-    const int fault = GENERATE(0, 1, 2, 3, 4, 5, 6, 7);
+    const int fault = GENERATE(0, 1, 2, 3, 4, 5, 6, 7, 8, 9);
     std::vector<std::string> arguments;
     VisualQuestionServiceImpl service(Options(), [&](const auto& argv, const auto& input, auto, const auto&) {
         arguments   = argv;
@@ -103,6 +103,12 @@ TEST_CASE("Visual configuration keeps order and binds receipts to the exact sour
                 break;
             case 7:
                 result["questions"][0]["qtype"] = 2.1;
+                break;
+            case 8:
+                result["binding"]["implementation"].erase("visual_protocol.py");
+                break;
+            case 9:
+                result["binding"]["implementation"]["question_compiler.py"] = std::string(64, 'f');
                 break;
         }
         return Output(result);

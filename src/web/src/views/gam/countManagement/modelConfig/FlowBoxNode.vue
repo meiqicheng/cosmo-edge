@@ -77,22 +77,22 @@ const tableData = computed(() => (props.data?.list || []).map(item => ({
 
 <style scoped lang="scss">
 .box-node-container {
-  background: #f7f8fa;
-  border-radius: 16px;
+  background: var(--bg-panel);
+  border-radius: 7px;
   width: 560px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+  box-shadow: none;
   position: relative;
   display: flex;
   flex-direction: column;
-   padding: 10px 14px 14px;
-  border: 1px solid #f0f2f5;
+  padding: 14px;
+  border: 1px solid var(--border-light);
   cursor: default;
 }
 
 .node-header {
-  margin-bottom: 24px;
+  margin-bottom: 14px;
   text-align: center;
-  color: #1d2129;
+  color: var(--text-primary);
 }
 
 .node-title {
@@ -106,19 +106,20 @@ const tableData = computed(() => (props.data?.list || []).map(item => ({
 }
 
 .config-section {
-  background: #fff;
-  border-radius: 12px;
-  padding: 20px;
+  background: var(--bg-white);
+  border-radius: 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--border-light);
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  gap: 12px;
+  box-shadow: none;
 }
 
 .config-title {
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 600;
-  color: #1d2129;
+  color: var(--text-primary);
   margin-bottom: 4px;
 }
 
@@ -127,8 +128,8 @@ const tableData = computed(() => (props.data?.list || []).map(item => ({
   overflow: hidden;
   
   :deep(.el-table__header-wrapper) th {
-    background-color: #f7f8fa !important;
-    color: #1d2129;
+    background-color: var(--flow-io-header-bg) !important;
+    color: var(--text-primary);
     font-weight: 600;
   }
 }
@@ -136,8 +137,8 @@ const tableData = computed(() => (props.data?.list || []).map(item => ({
 :deep(.vue-flow__handle) {
   width: 10px;
   height: 10px;
-  background: #909399;
-  border: 2px solid #fff;
+  background: var(--text-secondary);
+  border: 2px solid var(--flow-handle-ring);
   box-shadow: 0 0 0 2px rgba(144, 147, 153, 0.2);
 }
 </style>

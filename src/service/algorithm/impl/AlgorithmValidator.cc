@@ -53,6 +53,20 @@ cosmo::util::ErrorEnum AlgorithmValidator::ParseAndValidatePacket(const std::str
         return cosmo::util::ErrorEnum::ActionAlgArrangeConfigFail;
     }
 
+    if (cfgInfo.algorithmUsage == 2) {
+        MsgAlgorithmMetaData pictureMetadata;
+        if (DecodeAlgorithmMetadata(cfgInfo.algorithmMetadata, pictureMetadata)) {
+            for (const auto& param : pictureMetadata.params) {
+                // An empty pair threshold explicitly requests scores without a decision.
+                if (param.defaultValue.empty() && param.key != "pair.threshold")
+                    continue;
+                MsgDynamicKeyValue value;
+                value.key   = param.key;
+                value.value = param.defaultValue;
+                cfgInfo.processdata->pictureDefaults.push_back(std::move(value));
+            }
+        }
+    }
     ValidateModels(cfgInfo);
 
     return cosmo::util::ErrorEnum::Success;

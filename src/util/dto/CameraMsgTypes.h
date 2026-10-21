@@ -30,7 +30,8 @@ struct MsgCameraAttr {
     std::string codec;
     float fps{0.0};
     ChannelStatus channelStatus{ChannelStatus::ChannelStatusOffline};  // 0: offline, 1: online, 2: auth error
-    int dataStatus{0};  // service::camera::AlgDemuxStatus status
+    int dataStatus{0};         // service::camera::AlgDemuxStatus status
+    std::string statusReason;  // Stable diagnostic code; never contains source URLs or credentials.
     // Runtime-only guard. It is intentionally not serialized into the public
     // camera DTO because it only coordinates the demuxer and task monitor.
     bool repeatPending{false};

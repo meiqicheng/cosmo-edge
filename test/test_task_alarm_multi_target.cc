@@ -154,6 +154,48 @@ TEST_CASE("Typed visual ROI records follow the actual merged alarm record and di
     CHECK(reloaded.property.visualJudgments == event.property.visualJudgments);
 }
 
+TEST_CASE("Video VLM answers survive alarm merge, storage and event serialization", "[qwen][alarm]") {
+    TaskAlarmDependencies mocks;
+    CapturingEventNotifier notifier;
+    cosmo::test::ScopedServiceOverride<cosmo::service::IEventNotifier> registration(notifier);
+    REQUIRE_CALL(mocks.cameraSvc, GetChannelName("channel")).RETURN("Camera");
+    REQUIRE_CALL(mocks.configReadSvc, IsNetworkModel()).RETURN(true);
+    std::string stored;
+    REQUIRE_CALL(mocks.alarmRecordSvc, Insert(trompeloeil::_))
+        .LR_SIDE_EFFECT(stored = _1.property)
+        .RETURN(true);
+    cosmo::ActionNode action;
+    action.flowActionId = "alarm-flow";
+    cosmo::TaskAlarm alarm("channel", "task", action);
+    auto frame = MakeTaskAlarmFrame();
+    for (auto& unit : frame->taskDataAlarm.alarmData->alarms) {
+        unit.bLlmPrejudged = true;
+        cosmo::VlmResult answer;
+        answer.nodeId     = "vlm";
+        answer.targetId   = unit.strTrackId;
+        answer.modelCode  = "3612265";
+        answer.question   = "Is a person visible?";
+        answer.answer     = "yes";
+        answer.decision   = "matched";
+        answer.durationMs = 42.5;
+        answer.batchSize  = 2;
+        answer.frameIndex = "123";
+        answer.timestamp  = "456789";
+        unit.vlmResults.push_back(answer);
+    }
+    alarm.HandFrame(frame);
+    REQUIRE(notifier.httpEvents.size() == 1);
+    const auto& event = notifier.httpEvents.front();
+    REQUIRE(event.bHaveProperty);
+    REQUIRE(event.property.vlmResults.size() == 2);
+    CHECK(event.property.vlmResults[0].targetId == "track-4");
+    CHECK(event.property.vlmResults[1].targetId == "track-9");
+    const auto expected = nlohmann::json(event.property.vlmResults);
+    CHECK(nlohmann::json::parse(stored)["vlmResults"] == expected);
+    const auto reloaded = nlohmann::json(event).get<cosmo::CMsgOnEventsReq>();
+    CHECK(nlohmann::json(reloaded.property.vlmResults) == expected);
+}
+
 TEST_CASE("Stopped visual runs cannot publish queued alarm units", "[visual-flow][alarm]") {
     TaskAlarmDependencies mocks;
     CapturingEventNotifier notifier;

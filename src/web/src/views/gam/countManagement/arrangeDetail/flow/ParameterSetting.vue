@@ -8,8 +8,8 @@
       </el-radio-group>
     </div>
 
-    <div style="display: flex;flex-wrap: wrap;">
-      <div v-if="viewMode === 'simple'" class="simple-mode">
+    <div class="parameter-list" :class="viewMode === 'simple' ? 'parameter-list-simple' : 'parameter-list-detail'">
+      <div v-if="viewMode === 'simple'" class="simple-mode parameter-column-headings">
         <div class="param-name param-header">{{ t('glossary.paramName') }}</div>
         <div class="param-value param-header">{{ t('glossary.defaultValue') }}</div>
         <div class="show-level param-header">{{ t('glossary.displayLevel') }}</div>
@@ -22,11 +22,14 @@
               <div class="param-name">
                 {{ resolveParameterName(item) }}
                 <el-tooltip v-if="item.describe" :content="resolveParameterDescription(item)" placement="top" effect="dark">
-                  <i class="el-icon-question" style="margin-right: 5px;color: #909399;cursor: pointer;"></i>
+                  <i class="el-icon-question parameter-help"></i>
                 </el-tooltip>{{ localeColon }}
               </div>
               <div class="param-value">
-                <template v-if="item.moduleType === 'slider'">
+                <template v-if="isLibraryType(item.moduleType)">
+                  <library-select v-model="item.defaultValue" :type="item.moduleType" />
+                </template>
+                <template v-else-if="item.moduleType === 'slider'">
                   <el-slider v-model.number="item.defaultValue" :min="Number(item.scopeMinValue)" :max="Number(item.scopeMaxValue)"></el-slider>
                 </template>
                 <template v-else-if="item.moduleType === 'switch'">
@@ -148,7 +151,8 @@
           <div v-if="item.showMore">
             <div class="formDiv">
               <div class="formtext">{{ t('glossary.defaultValue') }}{{ localeColon }}</div>
-              <el-input v-model="item.defaultValue" :placeholder="t('validate.pleaseEnter', { name: '' })" class="formR" size="small" @focus="isEditing = true" @blur="isEditing = false"></el-input>
+              <library-select v-if="isLibraryType(item.moduleType)" v-model="item.defaultValue" :type="item.moduleType" class="formR" />
+              <el-input v-else v-model="item.defaultValue" :placeholder="t('validate.pleaseEnter', { name: '' })" class="formR" size="small" @focus="isEditing = true" @blur="isEditing = false"></el-input>
             </div>
 
             <div class="formDiv">
@@ -218,6 +222,7 @@ import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { t, localeColon, currentLocale } from '@/i18n'
 import { resolveI18nOptionLabel, resolveI18nText } from '@/utils/i18nResource'
+import LibrarySelect from './LibrarySelect.vue'
 import {
   deriveChannelEditableFromVisibility,
   normalizeChannelVisibilitySelection,
@@ -234,6 +239,7 @@ const props = defineProps({
 
 // Data
 const isSelecting = ref(false)
+const isLibraryType = type => type === 'faceSet' || type === 'workClothesSet'
 const viewMode = ref('simple')
 const showMore = ref(false)
 const options = computed(() => [
@@ -790,18 +796,44 @@ defineExpose({
 </script>
 
 <style scoped lang="scss">
+.param-setting-body {
+  min-width: 0;
+}
+
+.parameter-list {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.parameter-list-simple {
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-white);
+}
+
+.parameter-list-detail {
+  gap: 16px;
+  align-items: flex-start;
+}
+
 .box {
   position: relative;
-  padding: 0 30px 20px 30px;
-  width: 330px;
-  margin: 10px;
+  box-sizing: border-box;
+  padding: 0 20px 20px;
+  flex: 0 1 370px;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: var(--bg-white);
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
 
   &.simple-box {
     width: 100%;
+    flex-basis: 100%;
     max-width: none;
     border: none;
     box-shadow: none;
@@ -816,12 +848,14 @@ defineExpose({
     align-items: center;
     .formtext {
       font-size: 14px;
-      width: 100px;
+      flex: 0 0 100px;
       text-align: right;
       color: var(--text-secondary);
     }
     .formR {
-      width: 200px;
+      flex: 1;
+      width: auto;
+      min-width: 0;
     }
   }
 
@@ -835,7 +869,7 @@ defineExpose({
     right: 0;
     width: 50px;
     height: 50px;
-    background: var(--danger-color);
+    background: var(--flow-danger-button-bg);
     clip-path: circle(40% at 98% 0);
     cursor: pointer;
 
@@ -859,13 +893,15 @@ defineExpose({
 .btn {
   position: relative;
   height: 173px;
-  padding: 30px;
-  width: 300px;
-  margin: 10px;
+  box-sizing: border-box;
+  padding: 24px;
+  width: 370px;
+  max-width: 100%;
+  margin: 0;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: var(--bg-white);
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -907,16 +943,17 @@ defineExpose({
   justify-content: center;
   width: 96px;
   height: 40px;
-  border: none;
-  border-radius: 9999px;
-  background: linear-gradient(90deg, #3182ce 0%, #4299e1 100%);
-  color: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-white);
+  color: var(--text-secondary);
   cursor: pointer;
-  box-shadow: 0 8px 18px rgba(49, 130, 206, 0.25);
+  box-shadow: none;
 }
 .add-card:hover {
-  box-shadow: 0 10px 22px rgba(49, 130, 206, 0.32);
-  transform: translateY(-1px);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background: var(--bg-hover);
 }
 .add-card:active {
   transform: translateY(0);
@@ -927,7 +964,7 @@ defineExpose({
 .add-card-label {
   margin-top: 10px;
   font-size: 14px;
-  color: #111827;
+  color: var(--text-primary);
 }
 
 .down-btn {
@@ -949,78 +986,88 @@ defineExpose({
 }
 
 .mode-switch {
-  position: fixed;
-  top: 136px;
-  right: 32px;
-  z-index: 1000;
-  padding: 6px 8px;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
-  border: 1px solid var(--border-color);
-  border-radius: 9999px;
-  backdrop-filter: saturate(130%) blur(2px);
   display: flex;
   align-items: center;
+  justify-content: flex-end;
+  margin-bottom: 12px;
 }
 
 :deep(.mode-switch .el-radio-group) {
   display: inline-flex;
   gap: 2px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 3px;
+  background: var(--bg-white);
 }
 
-/* 优化按钮外观为小胶囊 */
 :deep(.mode-switch .el-radio-button .el-radio-button__inner) {
   border: none;
   box-shadow: none;
-  border-radius: 9999px !important;
-  padding: 6px 12px;
+  border-radius: 4px !important;
+  padding: 7px 12px;
   height: auto;
   line-height: 1;
 }
 
-/* 激活态色彩更清晰 */
 :deep(.mode-switch .el-radio-button.is-active .el-radio-button__inner) {
-  background: var(--primary-color, #3182ce);
-  color: #fff;
+  background: var(--el-color-primary-light-9);
+  color: var(--primary-color);
 }
 
 /* 非激活态悬停反馈 */
 :deep(.mode-switch
     .el-radio-button:not(.is-active)
     .el-radio-button__inner:hover) {
-  background: #f3f4f6;
+  background: var(--bg-secondary);
 }
 
 .simple-mode {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.25fr) minmax(120px, .7fr);
+  column-gap: 32px;
   align-items: center;
-  padding: 15px;
+  box-sizing: border-box;
+  padding: 10px 24px;
+  min-height: 56px;
   width: 100%;
-  background: var(--bg-primary);
+  background: var(--bg-white);
   border-bottom: 1px solid var(--border-light);
 }
 
 .show-level {
-  width: 160px;
-  margin-left: 80px;
+  min-width: 0;
+  margin: 0;
 }
 
 .param-name {
-  display: inline-block;
-  width: 200px;
-  text-align: right;
+  min-width: 0;
+  text-align: left;
   font-size: 14px;
   color: var(--text-secondary);
+  overflow-wrap: anywhere;
 }
 
 .simple-item {
-  display: flex;
-  align-items: center;
+  display: contents;
 }
 
 .param-value {
-  display: inline-block;
-  width: 250px;
+  min-width: 0;
+  width: 100%;
+  max-width: 440px;
+
+  :deep(.el-radio-group),
+  :deep(.el-checkbox-group) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+
+  :deep(.el-radio),
+  :deep(.el-checkbox) { margin-right: 0; }
+
+  :deep(.el-slider) { width: calc(100% - 16px); margin: 0 8px; }
 
   &.slider-value {
     padding-top: 8px; // 微调滑块位置
@@ -1028,16 +1075,35 @@ defineExpose({
 }
 
 .param-header {
-  text-align: center;
-  font-size: 18px;
+  text-align: left;
+  font-size: 14px;
   color: var(--text-primary);
   font-weight: 600;
 }
 
+.parameter-column-headings { background: var(--bg-subtle); }
+.parameter-help { margin-right: 5px; color: var(--text-muted); cursor: pointer; }
+
 .simple-tips {
-  margin-left: 20px;
-  margin-top: 40px;
-  color: var(--text-muted);
+  width: 100%;
+  padding: 14px 24px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@media (max-width: 1100px) {
+  .simple-mode {
+    grid-template-columns: minmax(160px, 1fr) minmax(180px, 1.1fr) minmax(100px, .55fr);
+    column-gap: 20px;
+    padding-inline: 18px;
+  }
+}
+
+@media (max-width: 720px) {
+  .parameter-list-simple { overflow-x: auto; }
+  .simple-mode { min-width: 620px; }
+  .simple-tips { min-width: 620px; }
 }
 
 // 修改单选按钮组样式
