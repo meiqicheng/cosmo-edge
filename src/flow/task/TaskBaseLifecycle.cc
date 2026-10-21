@@ -5,7 +5,6 @@
 
 #include "flow/alarm/TaskAlarm.h"
 #include "flow/alarm/TaskFaceAlarm.h"
-#include "flow/channel/AlgChannel.h"
 #include "flow/common/AlgTaskNativeCapability.h"
 #include "flow/task/TaskBase.h"
 #include "util/Log.h"
